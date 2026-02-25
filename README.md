@@ -4,7 +4,7 @@ Julia implementation of Bischof-Stewart column-pivoted QR with an optional early
 
 Detailed validation/performance documentation:
 
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/docs/TESTS_AND_BENCHMARKS.md`
+- `docs/TESTS_AND_BENCHMARKS.md`
 
 ## Requirements
 
@@ -109,16 +109,16 @@ julia --project=. benchmark/compare_results.jl benchmark/results/baseline_YYYYMM
 
 Outputs are written to:
 
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/timings.csv`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/summary.md`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/sweep_timings.csv`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/sweep_summary.md`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/regime_timings.csv`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/regime_summary.md`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/profile_breakdown.csv`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/profile_breakdown_summary.md`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/validation_report.md`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/guardrail_failures.csv`
+- `benchmark/results/timings.csv`
+- `benchmark/results/summary.md`
+- `benchmark/results/sweep_timings.csv`
+- `benchmark/results/sweep_summary.md`
+- `benchmark/results/regime_timings.csv`
+- `benchmark/results/regime_summary.md`
+- `benchmark/results/profile_breakdown.csv`
+- `benchmark/results/profile_breakdown_summary.md`
+- `benchmark/results/validation_report.md`
+- `benchmark/results/guardrail_failures.csv`
 
 ## Plotting benchmark results
 

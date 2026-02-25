@@ -25,7 +25,7 @@ Run all tests:
 julia --project=. test/runtests.jl
 ```
 
-The suite is defined in `/Users/anildamle/Dropbox/Trystuff/BSpivoting/test/test_bsqr.jl` and currently covers:
+The suite is defined in `test/test_bsqr.jl` and currently covers:
 
 1. `Bischof-Stewart CPQR correctness`
    - Residual and orthogonality checks for `m<n`, `m=n`, and `m>n`.
@@ -50,13 +50,13 @@ The suite is defined in `/Users/anildamle/Dropbox/Trystuff/BSpivoting/test/test_
 
 Primary benchmark script:
 
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/bench_cpqr.jl`
+- `benchmark/bench_cpqr.jl`
 - systematic sweep script:
-  - `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/bench_cpqr_sweep.jl`
+  - `benchmark/bench_cpqr_sweep.jl`
 - regime scaling script:
-  - `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/bench_cpqr_regimes.jl`
+  - `benchmark/bench_cpqr_regimes.jl`
 - profiling script:
-  - `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/profile_bsqr_breakdown.jl`
+  - `benchmark/profile_bsqr_breakdown.jl`
 
 Run benchmark:
 
@@ -204,7 +204,7 @@ julia --project=. benchmark/compare_results.jl benchmark/results/baseline_YYYYMM
 
 Outputs are written under:
 
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/`
+- `benchmark/results/`
 
 Files:
 
@@ -252,11 +252,11 @@ Interpretation:
 
 Plot script:
 
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/plot_results.jl`
+- `benchmark/plot_results.jl`
 - sweep plot script:
-  - `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/plot_sweep_results.jl`
+  - `benchmark/plot_sweep_results.jl`
 - regime plot script:
-  - `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/plot_regime_results.jl`
+  - `benchmark/plot_regime_results.jl`
 
 Run:
 
@@ -300,9 +300,9 @@ Regime timing plots are log-log, include shaded 95% timing intervals, and includ
 
 Output plots (PNG) are written to:
 
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/plots`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/sweep_plots`
-- `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/results/regime_plots`
+- `benchmark/results/plots`
+- `benchmark/results/sweep_plots`
+- `benchmark/results/regime_plots`
 
 Notes:
 
@@ -336,6 +336,6 @@ When adding coverage:
 1. Add correctness assertions before timing changes.
 2. Keep benchmark fairness constraints unchanged.
 3. For new matrix families/sizes, update:
-   - `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/matrix_generators.jl`
-   - `/Users/anildamle/Dropbox/Trystuff/BSpivoting/benchmark/bench_cpqr.jl`
+   - `benchmark/matrix_generators.jl`
+   - `benchmark/bench_cpqr.jl`
 4. If adding a bsqr-only optimization mode (e.g., preallocation), benchmark it in a separate method label and do not use it as the baseline `bsqr_full` comparison against `dgeqp3`.
