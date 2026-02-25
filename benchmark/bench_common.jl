@@ -19,6 +19,8 @@ include("matrix_generators.jl")
 using .MatrixGenerators
 
 const DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
+const BSQR_METHOD_LABEL = "bsqr_full"
+const DGEQP3_METHOD_LABEL = "dgeqp3"
 
 function backend_string()
     return sprint(show, BLAS.get_config())
@@ -134,6 +136,28 @@ function bench_trial_ci(f; warmup::Int = 2, samples::Int = 24)
     return tmin, tmed, tci_low, tci_high, alloc
 end
 
+function _bench_and_quality_basic(fbench::F, quality::Q; warmup::Int, samples::Int) where {F<:Function,Q<:Function}
+    tmin, tmed, alloc = bench_trial_basic(fbench; warmup = warmup, samples = samples)
+    Ffact = fbench()
+    resid, orth = quality(Ffact)
+    return (tmin = tmin, tmed = tmed, alloc = alloc, resid = resid, orth = orth)
+end
+
+function _bench_and_quality_ci(fbench::F, quality::Q; warmup::Int, samples::Int) where {F<:Function,Q<:Function}
+    tmin, tmed, tci_low, tci_high, alloc = bench_trial_ci(fbench; warmup = warmup, samples = samples)
+    Ffact = fbench()
+    resid, orth = quality(Ffact)
+    return (
+        tmin = tmin,
+        tmed = tmed,
+        tci_low = tci_low,
+        tci_high = tci_high,
+        alloc = alloc,
+        resid = resid,
+        orth = orth,
+    )
+end
+
 function residual_bs(A::Matrix{Float64}, F::BSQRPivoted)
     Q = BSPivotQR._explicit_q(F)
     T = BSPivotQR._packed_to_qt(F)
@@ -168,6 +192,44 @@ end
 
 run_qr_fair(A::Matrix{Float64}) = qr(copy(A), ColumnNorm())
 
+function bench_pair_basic(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
+    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
+    bs = _bench_and_quality_basic(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+
+    f_qr() = run_qr_fair(A)
+    dg = _bench_and_quality_basic(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
+
+    return (
+        (; method = BSQR_METHOD_LABEL, bs...),
+        (; method = DGEQP3_METHOD_LABEL, dg...),
+    )
+end
+
+function bench_pair_ci(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
+    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
+    bs = _bench_and_quality_ci(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+
+    f_qr() = run_qr_fair(A)
+    dg = _bench_and_quality_ci(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
+
+    return (
+        (; method = BSQR_METHOD_LABEL, bs...),
+        (; method = DGEQP3_METHOD_LABEL, dg...),
+    )
+end
+
+function grouped_rows_with_baseline(rows, keyf::F; sortby::S = identity) where {F<:Function,S<:Function}
+    groups = sort(collect(unique(keyf(r) for r in rows)); by = sortby)
+    out = NamedTuple[]
+    for key in groups
+        keyrows = filter(r -> keyf(r) == key, rows)
+        drows = filter(r -> r.method == DGEQP3_METHOD_LABEL, keyrows)
+        isempty(drows) && continue
+        push!(out, (key = key, rows = sort(keyrows, by = x -> x.method), baseline = only(drows)))
+    end
+    return out
+end
+
 function make_matrix(family::Symbol, m::Int, n::Int, rng::AbstractRNG)
     if family === :gaussian
         return Matrix{Float64}(gaussian_matrix(m, n, rng))
@@ -182,7 +244,9 @@ function make_matrix(family::Symbol, m::Int, n::Int, rng::AbstractRNG)
 end
 
 export DEFAULT_NORM_RECOMP_TOL
-export accelerate_active, backend_string, bench_trial_basic, bench_trial_ci
+export BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL
+export accelerate_active, backend_string, bench_pair_basic, bench_pair_ci
+export bench_trial_basic, bench_trial_ci, grouped_rows_with_baseline
 export check_backend, configure_blas_threads, make_matrix
 export parse_env_float, parse_env_int, parse_float_list, parse_int_list, parse_symbol_list
 export residual_bs, residual_qr, run_bsqr_fair, run_qr_fair

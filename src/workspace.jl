@@ -8,8 +8,10 @@ mutable struct BSWorkspace
     work::Vector{Float64}
 end
 
+@inline _nrem(n::Int) = max(n - 1, 0)
+
 function BSWorkspace(_m::Int, n::Int, kmax::Int)
-    nrem = max(n - 1, 0)
+    nrem = _nrem(n)
     return BSWorkspace(
         zeros(Float64, kmax, n),
         zeros(Float64, n),
@@ -37,8 +39,8 @@ function _require_workspace(
     length(ws.wnorm2) >= n || throw(ArgumentError("workspace.wnorm2 too small"))
     length(ws.s) >= n || throw(ArgumentError("workspace.s too small"))
     length(ws.s_ref) >= n || throw(ArgumentError("workspace.s_ref too small"))
-    length(ws.beta) >= max(n - 1, 0) || throw(ArgumentError("workspace.beta too small"))
-    length(ws.dots) >= max(n - 1, 0) || throw(ArgumentError("workspace.dots too small"))
+    length(ws.beta) >= _nrem(n) || throw(ArgumentError("workspace.beta too small"))
+    length(ws.dots) >= _nrem(n) || throw(ArgumentError("workspace.dots too small"))
     length(ws.work) >= max(n, 1) || throw(ArgumentError("workspace.work too small"))
 
     # Reuse workspace buffers without eager full zeroing; kernel overwrites active regions.

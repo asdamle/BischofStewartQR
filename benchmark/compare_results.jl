@@ -9,6 +9,9 @@ const SWEEP_FILE = "sweep_timings.csv"
 const REGIME_FILE = "regime_timings.csv"
 
 const SLOWDOWN_THRESH = 0.02
+const TIMINGS_KEYCOLS = ["family", "m", "n", "k", "method"]
+const SWEEP_KEYCOLS = ["family", "aspect", "m", "n", "k", "method"]
+const REGIME_KEYCOLS = ["family", "regime", "fixed_value", "var_value", "m", "n", "k", "method"]
 
 function _load_csv(path::String)
     isfile(path) || error("Missing CSV: $path")
@@ -31,12 +34,12 @@ end
 
 _pint(r::Dict{String,String}, k::String) = parse(Int, r[k])
 _pfloat(r::Dict{String,String}, k::String) = parse(Float64, r[k])
+_row_key(r::Dict{String,String}, keycols::Vector{String}) = tuple((r[c] for c in keycols)...)
 
 function _index_rows(rows::Vector{Dict{String,String}}, keycols::Vector{String})
     idx = Dict{Tuple,Dict{String,String}}()
     for r in rows
-        key = tuple((r[c] for c in keycols)...)
-        idx[key] = r
+        idx[_row_key(r, keycols)] = r
     end
     return idx
 end
@@ -47,8 +50,7 @@ function _quality_failures(crows, brows, keycols; label::String)
     compared = 0
 
     for c in crows
-        key = tuple((c[k] for k in keycols)...)
-        b = get(base_idx, key, nothing)
+        b = get(base_idx, _row_key(c, keycols), nothing)
         b === nothing && continue
         compared += 1
 
@@ -126,25 +128,24 @@ function _select_key_cases(srows, rrows)
 end
 
 function _slowdown_failures(c_srows, b_srows, c_rrows, b_rrows; thresh::Float64)
-    skey = ["family", "aspect", "m", "n", "k", "method"]
-    rkey = ["family", "regime", "fixed_value", "var_value", "m", "n", "k", "method"]
+    cand_s_idx = _index_rows(c_srows, SWEEP_KEYCOLS)
+    base_s_idx = _index_rows(b_srows, SWEEP_KEYCOLS)
+    cand_r_idx = _index_rows(c_rrows, REGIME_KEYCOLS)
+    base_r_idx = _index_rows(b_rrows, REGIME_KEYCOLS)
 
-    cand_s_idx = _index_rows(c_srows, skey)
-    base_s_idx = _index_rows(b_srows, skey)
-    cand_r_idx = _index_rows(c_rrows, rkey)
-    base_r_idx = _index_rows(b_rrows, rkey)
-
+    # Key cases intentionally emphasize worst-case scaling regions:
+    # short-wide Gaussian/ill-conditioned, square, and orthonormal-row regime tails.
     cases = _select_key_cases(c_srows, c_rrows)
     failures = NamedTuple[]
     inspected = 0
 
     for (source, label, c) in cases
         if source === :regime
-            key = tuple((c[k] for k in rkey)...)
+            key = _row_key(c, REGIME_KEYCOLS)
             b = get(base_r_idx, key, nothing)
             c2 = get(cand_r_idx, key, nothing)
         elseif source === :sweep
-            key = tuple((c[k] for k in skey)...)
+            key = _row_key(c, SWEEP_KEYCOLS)
             b = get(base_s_idx, key, nothing)
             c2 = get(cand_s_idx, key, nothing)
         end
@@ -156,6 +157,8 @@ function _slowdown_failures(c_srows, b_srows, c_rrows, b_rrows; thresh::Float64)
         slowdown = bt == 0.0 ? 0.0 : (ct / bt - 1.0)
         has_ci = haskey(b, "tci_low_s") && haskey(b, "tci_high_s") &&
                  haskey(c2, "tci_low_s") && haskey(c2, "tci_high_s")
+        # Prefer interval-separation guardrails when CIs are available; otherwise
+        # fall back to direct median slowdown thresholding.
         violates = if has_ci
             b_hi = _pfloat(b, "tci_high_s")
             c_lo = _pfloat(c2, "tci_low_s")
@@ -195,9 +198,9 @@ function compare_results(
     c_s = _load_csv(joinpath(candidate_dir, SWEEP_FILE))
     c_r = _load_csv(joinpath(candidate_dir, REGIME_FILE))
 
-    qf_t, cmp_t = _quality_failures(c_t, b_t, ["family", "m", "n", "k", "method"]; label = TIMINGS_FILE)
-    qf_s, cmp_s = _quality_failures(c_s, b_s, ["family", "aspect", "m", "n", "k", "method"]; label = SWEEP_FILE)
-    qf_r, cmp_r = _quality_failures(c_r, b_r, ["family", "regime", "fixed_value", "var_value", "m", "n", "k", "method"]; label = REGIME_FILE)
+    qf_t, cmp_t = _quality_failures(c_t, b_t, TIMINGS_KEYCOLS; label = TIMINGS_FILE)
+    qf_s, cmp_s = _quality_failures(c_s, b_s, SWEEP_KEYCOLS; label = SWEEP_FILE)
+    qf_r, cmp_r = _quality_failures(c_r, b_r, REGIME_KEYCOLS; label = REGIME_FILE)
     quality_failures = vcat(qf_t, qf_s, qf_r)
 
     perf_failures, inspected = _slowdown_failures(c_s, b_s, c_r, b_r; thresh = slowdown_thresh)

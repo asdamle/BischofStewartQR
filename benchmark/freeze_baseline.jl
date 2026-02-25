@@ -5,8 +5,8 @@ using LinearAlgebra
 
 include("bench_common.jl")
 using .BenchCommon
-
-const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
+include("validation_pipeline_common.jl")
+using .ValidationPipelineCommon
 const RESULTS_DIR = joinpath(@__DIR__, "results")
 
 const SNAPSHOT_FILES = [
@@ -21,11 +21,6 @@ const SNAPSHOT_FILES = [
 ]
 
 const SNAPSHOT_DIRS = ["plots", "sweep_plots", "regime_plots"]
-
-function _run_step(cmd::Cmd, envvars::Dict{String,String})
-    println(">> ", cmd)
-    run(addenv(Cmd(cmd; dir = REPO_ROOT), envvars...))
-end
 
 function _write_metadata(path::String, envvars::Dict{String,String})
     cpu_model = try
@@ -75,25 +70,12 @@ function run_freeze()
     outdir = joinpath(RESULTS_DIR, "baseline_" * tag)
     mkpath(outdir)
 
-    envvars = Dict(
-        "BS_BLAS_THREADS" => get(ENV, "BS_BLAS_THREADS", string(BLAS.get_num_threads())),
-        "BS_USE_ACCELERATE" => get(ENV, "BS_USE_ACCELERATE", "1"),
-        "BS_REQUIRE_ACCELERATE" => get(ENV, "BS_REQUIRE_ACCELERATE", Sys.isapple() ? "1" : "0"),
-        "BS_NORM_RECOMP_TOL" => get(ENV, "BS_NORM_RECOMP_TOL", string(DEFAULT_NORM_RECOMP_TOL)),
-        "BS_QUICK" => "1",
-        "BS_SWEEP_QUICK" => "1",
-        "BS_REGIME_QUICK" => "1",
-        "BS_PROFILE_QUICK" => "1",
+    envvars = build_validation_env(
+        ; quick = true,
+        require_accelerate_default = Sys.isapple() ? "1" : "0",
     )
-
-    _run_step(`julia --project=. test/runtests.jl`, envvars)
-    _run_step(`julia --project=. benchmark/bench_cpqr.jl`, envvars)
-    _run_step(`julia --project=. benchmark/bench_cpqr_sweep.jl`, envvars)
-    _run_step(`julia --project=. benchmark/bench_cpqr_regimes.jl`, envvars)
-    _run_step(`julia --project=. benchmark/profile_bsqr_breakdown.jl`, envvars)
-    _run_step(`julia --project=. benchmark/plot_results.jl`, envvars)
-    _run_step(`julia --project=. benchmark/plot_sweep_results.jl`, envvars)
-    _run_step(`julia --project=. benchmark/plot_regime_results.jl`, envvars)
+    envvars["BS_NORM_RECOMP_TOL"] = get(ENV, "BS_NORM_RECOMP_TOL", string(DEFAULT_NORM_RECOMP_TOL))
+    run_validation_pipeline(envvars)
 
     _copy_outputs!(outdir)
     _write_metadata(joinpath(outdir, "metadata.txt"), envvars)

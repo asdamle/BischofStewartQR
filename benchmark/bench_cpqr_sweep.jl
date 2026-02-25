@@ -52,19 +52,25 @@ function run_sweep()
                 kfull = min(m, n)
                 aspect_s = @sprintf("%.3f", aspect)
 
-                f_bs_full() = run_bsqr_fair(A, kfull, norm_recomp_tol)
-                tmin, tmed, tci_low, tci_high, alloc = bench_trial_ci(f_bs_full; warmup = warmup, samples = samples)
-                Fbs = f_bs_full()
-                rb, qb = residual_bs(A, Fbs)
-                push!(rows, (family = family, aspect = aspect, m = m, n = n, k = kfull, method = "bsqr_full", tmin = tmin, tmed = tmed, tci_low = tci_low, tci_high = tci_high, alloc = alloc, resid = rb, orth = qb))
-                println(io, "$(family),$aspect_s,$m,$n,$kfull,bsqr_full,$tmin,$tmed,$tci_low,$tci_high,$alloc,$rb,$qb")
-
-                f_qr() = run_qr_fair(A)
-                tmin, tmed, tci_low, tci_high, alloc = bench_trial_ci(f_qr; warmup = warmup, samples = samples)
-                Fq = f_qr()
-                rq, qq = residual_qr(A, Fq)
-                push!(rows, (family = family, aspect = aspect, m = m, n = n, k = kfull, method = "dgeqp3", tmin = tmin, tmed = tmed, tci_low = tci_low, tci_high = tci_high, alloc = alloc, resid = rq, orth = qq))
-                println(io, "$(family),$aspect_s,$m,$n,$kfull,dgeqp3,$tmin,$tmed,$tci_low,$tci_high,$alloc,$rq,$qq")
+                bs_row, dg_row = bench_pair_ci(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
+                for row in (bs_row, dg_row)
+                    push!(rows, (
+                        family = family,
+                        aspect = aspect,
+                        m = m,
+                        n = n,
+                        k = kfull,
+                        method = row.method,
+                        tmin = row.tmin,
+                        tmed = row.tmed,
+                        tci_low = row.tci_low,
+                        tci_high = row.tci_high,
+                        alloc = row.alloc,
+                        resid = row.resid,
+                        orth = row.orth,
+                    ))
+                    println(io, "$(family),$aspect_s,$m,$n,$kfull,$(row.method),$(row.tmin),$(row.tmed),$(row.tci_low),$(row.tci_high),$(row.alloc),$(row.resid),$(row.orth)")
+                end
             end
         end
     end
@@ -80,13 +86,9 @@ function run_sweep()
         println(md, "| family | aspect m/n | m | n | k | method | median (s) | 95% CI (s) | min (s) | speedup vs dgeqp3 | residual | orthogonality |")
         println(md, "|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|")
 
-        groups = unique((r.family, r.aspect, r.m, r.n) for r in rows)
-        for (family, aspect, m, n) in sort(collect(groups), by = x -> (string(x[1]), x[2], x[4], x[3]))
-            keyrows = filter(r -> r.family == family && r.aspect == aspect && r.m == m && r.n == n, rows)
-            drows = filter(r -> r.method == "dgeqp3", keyrows)
-            isempty(drows) && continue
-            d = only(drows)
-            for r in sort(keyrows, by = x -> x.method)
+        for group in grouped_rows_with_baseline(rows, r -> (r.family, r.aspect, r.m, r.n); sortby = x -> (string(x[1]), x[2], x[4], x[3]))
+            d = group.baseline
+            for r in group.rows
                 speed = d.tmed / r.tmed
                 ci = "[$(round(r.tci_low, sigdigits=5)), $(round(r.tci_high, sigdigits=5))]"
                 println(md, "| $(r.family) | $(@sprintf("%.3f", r.aspect)) | $(r.m) | $(r.n) | $(r.k) | $(r.method) | $(round(r.tmed, sigdigits=5)) | $(ci) | $(round(r.tmin, sigdigits=5)) | $(round(speed, sigdigits=5)) | $(round(r.resid, sigdigits=5)) | $(round(r.orth, sigdigits=5)) |")

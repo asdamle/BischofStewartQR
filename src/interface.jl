@@ -12,6 +12,8 @@ rinv_r12(F::BSQRPivoted) = F.rinv_r12 === nothing ? nothing : copy(F.rinv_r12)
 function _packed_to_qt(F::BSQRPivoted)
     T = copy(F.factors)
     m = size(T, 1)
+    # Factors store Householder vectors below the diagonal; zero those entries
+    # to recover the explicit upper-trapezoidal factor T used in A[:,p] = Q*T.
     for i in 1:F.ksteps
         if i < m
             fill!(view(T, (i + 1):m, i), 0.0)

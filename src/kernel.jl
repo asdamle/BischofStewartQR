@@ -35,6 +35,62 @@ function _with_blas_threads(f::F, blas_threads::Union{Nothing,Integer}) where {F
     end
 end
 
+@inline function _validate_norm_recomp_tol(norm_recomp_tol::Float64)
+    (0.0 <= norm_recomp_tol <= 1.0) ||
+        throw(ArgumentError("norm_recomp_tol must satisfy 0 <= norm_recomp_tol <= 1"))
+    return nothing
+end
+
+function _validate_bsqr_common_args(
+    A::StridedMatrix{Float64},
+    k::Integer,
+    check::Bool,
+    norm_recomp_tol::Float64,
+)
+    m, n = size(A)
+    kmax = min(m, n)
+    (0 <= k <= kmax) || throw(ArgumentError("k must satisfy 0 <= k <= min(m, n)"))
+    if check
+        all(isfinite, A) || throw(ArgumentError("A contains non-finite values"))
+    end
+    _validate_norm_recomp_tol(norm_recomp_tol)
+    return m, n, Int(k)
+end
+
+@inline function _validate_prealloc_buffers!(
+    tau::Vector{Float64},
+    jpvt::Vector{Int},
+    k::Int,
+    n::Int,
+)
+    length(tau) >= k ||
+        throw(ArgumentError("tau has length $(length(tau)) but needs at least k=$k"))
+    length(jpvt) >= n ||
+        throw(ArgumentError("jpvt has length $(length(jpvt)) but needs at least n=$n"))
+    return nothing
+end
+
+@inline function _reset_pivots!(jpvt::Vector{Int}, n::Int)
+    @inbounds for j in 1:n
+        jpvt[j] = j
+    end
+    return nothing
+end
+
+@inline function _extract_rinv_r12(
+    ws::BSWorkspace,
+    ksteps::Int,
+    n::Int,
+)
+    if ksteps == 0
+        return zeros(Float64, 0, n)
+    elseif ksteps < n
+        return Matrix(view(ws.W, 1:ksteps, (ksteps + 1):n))
+    else
+        return zeros(Float64, ksteps, 0)
+    end
+end
+
 function bsqr(
     A::AbstractMatrix{<:Real};
     k::Integer = min(size(A)...),
@@ -78,25 +134,14 @@ function bsqr!(
     norm_recomp_tol::Float64 = _DEFAULT_NORM_RECOMP_TOL,
     blas_threads::Union{Nothing,Integer} = nothing,
 )
-    m, n = size(A)
-    kmax = min(m, n)
-    (0 <= k <= kmax) || throw(ArgumentError("k must satisfy 0 <= k <= min(m, n)"))
-    kwork = Int(k)
-    length(tau) >= k || throw(ArgumentError("tau has length $(length(tau)) but needs at least k=$k"))
-    length(jpvt) >= n || throw(ArgumentError("jpvt has length $(length(jpvt)) but needs at least n=$n"))
-
-    if check
-        all(isfinite, A) || throw(ArgumentError("A contains non-finite values"))
-    end
-    (0.0 <= norm_recomp_tol <= 1.0) || throw(ArgumentError("norm_recomp_tol must satisfy 0 <= norm_recomp_tol <= 1"))
+    m, n, kwork = _validate_bsqr_common_args(A, k, check, norm_recomp_tol)
+    _validate_prealloc_buffers!(tau, jpvt, kwork, n)
 
     ws = _require_workspace(workspace, m, n, kwork)
     if reset_pivots
-        @inbounds for j in 1:n
-            jpvt[j] = j
-        end
+        _reset_pivots!(jpvt, n)
     end
-    fill!(view(tau, 1:k), 0.0)
+    fill!(view(tau, 1:kwork), 0.0)
     if frob_inv_trace !== nothing
         empty!(frob_inv_trace)
     end
@@ -107,7 +152,7 @@ function bsqr!(
             tau,
             jpvt,
             ws,
-            k;
+            kwork;
             frob_inv_trace = frob_inv_trace,
             rank_stop = rank_stop,
             norm_recomp_tol = norm_recomp_tol,
@@ -126,18 +171,10 @@ function bsqr!(
     blas_threads::Union{Nothing,Integer} = nothing,
     workspace::Union{Nothing,BSWorkspace} = nothing,
 )
-    m, n = size(A)
-    kmax = min(m, n)
-    (0 <= k <= kmax) || throw(ArgumentError("k must satisfy 0 <= k <= min(m, n)"))
-    kwork = Int(k)
-
-    if check
-        all(isfinite, A) || throw(ArgumentError("A contains non-finite values"))
-    end
-    (0.0 <= norm_recomp_tol <= 1.0) || throw(ArgumentError("norm_recomp_tol must satisfy 0 <= norm_recomp_tol <= 1"))
+    m, n, kwork = _validate_bsqr_common_args(A, k, check, norm_recomp_tol)
 
     ws = _require_workspace(workspace, m, n, kwork)
-    tau = zeros(Float64, k)
+    tau = zeros(Float64, kwork)
     jpvt = collect(1:n)
     frob_trace = track_inverse_frob ? Float64[] : nothing
 
@@ -147,23 +184,13 @@ function bsqr!(
             tau,
             jpvt,
             ws,
-            k;
+            kwork;
             frob_inv_trace = frob_trace,
             rank_stop = rank_stop,
             norm_recomp_tol = norm_recomp_tol,
         )
     end
-    rinv_r12_data = if return_rinv_r12
-        if ksteps == 0
-            zeros(Float64, 0, n)
-        elseif ksteps < n
-            Matrix(view(ws.W, 1:ksteps, (ksteps + 1):n))
-        else
-            zeros(Float64, ksteps, 0)
-        end
-    else
-        nothing
-    end
+    rinv_r12_data = return_rinv_r12 ? _extract_rinv_r12(ws, ksteps, n) : nothing
 
     factors = A isa Matrix{Float64} ? A : Matrix(A)
     return BSQRPivoted(factors, tau, jpvt, ksteps, frob_trace, rinv_r12_data)
@@ -202,6 +229,7 @@ function _bsqr_kernel!(
 
         @inbounds for j in i:n
             sj = ws.s[j]
+            # Bischof-Stewart pivot criterion: minimize (1 + ||w_j||^2) / ||a_j^(i)||^2.
             cj = sj > 0.0 ? (1.0 + ws.wnorm2[j]) / sj : Inf
             if cj < best_c
                 best_c = cj
@@ -229,6 +257,8 @@ function _bsqr_kernel!(
 
         pivot_norm2 = ws.s[i]
         atol = tol_scale * max(ws.s_ref[i], 1.0)
+        # Rank-stop tolerance is scaled to matrix size/reference norm to avoid
+        # stopping on benign floating-point noise.
         if !(pivot_norm2 > atol)
             if rank_stop
                 tau[i] = 0.0
@@ -270,6 +300,9 @@ function _bsqr_kernel!(
 
             wnorm2_pivot = ws.wnorm2[i]
             dots = view(ws.dots, 1:nrem)
+            # ws.W stores R11^{-1}R12 rows built so far; ws.wnorm2 tracks per-column
+            # ||w_j||^2 used directly by the pivot criterion.
+            has_prefix = i > 1
             if i > 1
                 BLAS.gemv!(
                     'T',
@@ -290,50 +323,27 @@ function _bsqr_kernel!(
             copyto!(view(ws.W, i, (i + 1):n), beta_vec)
 
             wcoeff = wnorm2_pivot + 1.0
-            if i > 1
-                @inbounds for t in 1:nrem
-                    j = i + t
-                    b = beta_vec[t]
-                    d = dots[t]
+            @inbounds for t in 1:nrem
+                j = i + t
+                b = beta_vec[t]
+                d = has_prefix ? dots[t] : 0.0
 
-                    wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
-                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+                wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
+                ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
 
-                    if kernel_stats === nothing
-                        recomputed = _downdate_colnorm2!(A, ws, i, j, alpha[t], m, norm_recomp_tol)
-                    else
-                        t_down = time_ns()
-                        recomputed = _downdate_colnorm2!(A, ws, i, j, alpha[t], m, norm_recomp_tol)
-                        downdate_ns_local += time_ns() - t_down
-                    end
-                    if norm_recomp_count !== nothing && recomputed
-                        norm_recomp_count[] += 1
-                    end
-                    if kernel_stats !== nothing && recomputed
-                        kernel_stats.recompute_count += 1
-                    end
-                end
-            else
-                @inbounds for t in 1:nrem
-                    j = i + t
-                    b = beta_vec[t]
-
-                    wn = ws.wnorm2[j] + b * b * wcoeff
-                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
-
-                    if kernel_stats === nothing
-                        recomputed = _downdate_colnorm2!(A, ws, i, j, alpha[t], m, norm_recomp_tol)
-                    else
-                        t_down = time_ns()
-                        recomputed = _downdate_colnorm2!(A, ws, i, j, alpha[t], m, norm_recomp_tol)
-                        downdate_ns_local += time_ns() - t_down
-                    end
-                    if norm_recomp_count !== nothing && recomputed
-                        norm_recomp_count[] += 1
-                    end
-                    if kernel_stats !== nothing && recomputed
-                        kernel_stats.recompute_count += 1
-                    end
+                recomputed, down_ns = _downdate_with_stats!(
+                    A,
+                    ws,
+                    i,
+                    j,
+                    alpha[t],
+                    m,
+                    norm_recomp_tol,
+                    kernel_stats,
+                )
+                downdate_ns_local += down_ns
+                if norm_recomp_count !== nothing && recomputed
+                    norm_recomp_count[] += 1
                 end
             end
             if kernel_stats !== nothing
@@ -355,6 +365,39 @@ end
 
 const _DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
 
+@inline function _downdate_with_stats!(
+    A::StridedMatrix{Float64},
+    ws::BSWorkspace,
+    i::Int,
+    j::Int,
+    alpha_ij::Float64,
+    m::Int,
+    norm_recomp_tol::Float64,
+    ::Nothing,
+)
+    recomputed = _downdate_colnorm2!(A, ws, i, j, alpha_ij, m, norm_recomp_tol)
+    return recomputed, 0
+end
+
+@inline function _downdate_with_stats!(
+    A::StridedMatrix{Float64},
+    ws::BSWorkspace,
+    i::Int,
+    j::Int,
+    alpha_ij::Float64,
+    m::Int,
+    norm_recomp_tol::Float64,
+    kernel_stats::BSKernelStats,
+)
+    t_down = time_ns()
+    recomputed = _downdate_colnorm2!(A, ws, i, j, alpha_ij, m, norm_recomp_tol)
+    down_ns = time_ns() - t_down
+    if recomputed
+        kernel_stats.recompute_count += 1
+    end
+    return recomputed, down_ns
+end
+
 @inline function _downdate_colnorm2!(
     A::StridedMatrix{Float64},
     ws::BSWorkspace,
@@ -373,8 +416,8 @@ const _DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
     sj = old_s - alpha_ij * alpha_ij
     sj = sj > 0.0 ? sj : 0.0
 
-    # LAPACK-like partial norm safeguard: refresh only when norm estimate
-    # has decayed significantly relative to its reference exact norm.
+    # LAPACK-style safeguard: refresh only when the running norm estimate has
+    # decayed enough relative to the last exact reference norm.
     if sj <= ws.s_ref[j] * norm_recomp_tol
         if i < m
             tail_norm = BLAS.nrm2(view(A, (i + 1):m, j))

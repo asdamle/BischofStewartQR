@@ -208,6 +208,31 @@ end
     @test_throws ArgumentError bsqr(A; norm_recomp_tol = 2.0)
 end
 
+@testset "Shared validation path parity" begin
+    rng = MersenneTwister(2029)
+    A = randn(rng, 12, 8)
+    m, n = size(A)
+    k = min(m, n)
+    tau = zeros(Float64, k)
+    jpvt = collect(1:n)
+    ws = BSPivotQR.BSWorkspace(m, n, k)
+
+    Ainf = copy(A)
+    Ainf[1, 1] = Inf
+
+    @test_throws ArgumentError bsqr!(copy(A); norm_recomp_tol = -1.0)
+    @test_throws ArgumentError bsqr!(copy(A), tau, jpvt, ws; norm_recomp_tol = -1.0)
+
+    @test_throws ArgumentError bsqr!(copy(A); norm_recomp_tol = 2.0)
+    @test_throws ArgumentError bsqr!(copy(A), tau, jpvt, ws; norm_recomp_tol = 2.0)
+
+    @test_throws ArgumentError bsqr!(copy(A); k = k + 1)
+    @test_throws ArgumentError bsqr!(copy(A), tau, jpvt, ws; k = k + 1)
+
+    @test_throws ArgumentError bsqr!(copy(Ainf); check = true)
+    @test_throws ArgumentError bsqr!(copy(Ainf), tau, jpvt, ws; check = true)
+end
+
 @testset "Optional R11^{-1}R12 return" begin
     rng = MersenneTwister(7)
     A = randn(rng, 18, 12)

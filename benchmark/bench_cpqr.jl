@@ -45,19 +45,22 @@ function run_benchmarks()
             A = make_matrix(family, m, n, rng)
             kfull = min(size(A)...)
 
-            f_bs_full() = run_bsqr_fair(A, kfull, norm_recomp_tol)
-            tmin, tmed, alloc = bench_trial_basic(f_bs_full; warmup = warmup, samples = samples)
-            Fbs = f_bs_full()
-            rb, qb = residual_bs(A, Fbs)
-            push!(rows, (family = family, m = size(A, 1), n = size(A, 2), k = kfull, method = "bsqr_full", tmin = tmin, tmed = tmed, alloc = alloc, resid = rb, orth = qb))
-            println(io, "$(family),$(size(A,1)),$(size(A,2)),$kfull,bsqr_full,$tmin,$tmed,$alloc,$rb,$qb")
-
-            f_qr() = run_qr_fair(A)
-            tmin, tmed, alloc = bench_trial_basic(f_qr; warmup = warmup, samples = samples)
-            Fq = f_qr()
-            rq, qq = residual_qr(A, Fq)
-            push!(rows, (family = family, m = size(A, 1), n = size(A, 2), k = kfull, method = "dgeqp3", tmin = tmin, tmed = tmed, alloc = alloc, resid = rq, orth = qq))
-            println(io, "$(family),$(size(A,1)),$(size(A,2)),$kfull,dgeqp3,$tmin,$tmed,$alloc,$rq,$qq")
+            bs_row, dg_row = bench_pair_basic(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
+            for row in (bs_row, dg_row)
+                push!(rows, (
+                    family = family,
+                    m = size(A, 1),
+                    n = size(A, 2),
+                    k = kfull,
+                    method = row.method,
+                    tmin = row.tmin,
+                    tmed = row.tmed,
+                    alloc = row.alloc,
+                    resid = row.resid,
+                    orth = row.orth,
+                ))
+                println(io, "$(family),$(size(A,1)),$(size(A,2)),$kfull,$(row.method),$(row.tmin),$(row.tmed),$(row.alloc),$(row.resid),$(row.orth)")
+            end
         end
     end
     close(io)
@@ -72,13 +75,9 @@ function run_benchmarks()
         println(md, "| family | m | n | k | method | median (s) | min (s) | speedup vs dgeqp3 | residual | orthogonality |")
         println(md, "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|")
 
-        groups = unique((r.family, r.m, r.n) for r in rows)
-        for (family, m, n) in sort(collect(groups), by = x -> (string(x[1]), x[2], x[3]))
-            keyrows = filter(r -> r.family == family && r.m == m && r.n == n, rows)
-            dgeqp3_rows = filter(r -> r.method == "dgeqp3", keyrows)
-            isempty(dgeqp3_rows) && continue
-            d = only(dgeqp3_rows)
-            for r in sort(keyrows, by = x -> x.method)
+        for group in grouped_rows_with_baseline(rows, r -> (r.family, r.m, r.n); sortby = x -> (string(x[1]), x[2], x[3]))
+            d = group.baseline
+            for r in group.rows
                 speed = d.tmed / r.tmed
                 println(md, "| $(r.family) | $(r.m) | $(r.n) | $(r.k) | $(r.method) | $(round(r.tmed, sigdigits=4)) | $(round(r.tmin, sigdigits=4)) | $(round(speed, sigdigits=4)) | $(round(r.resid, sigdigits=4)) | $(round(r.orth, sigdigits=4)) |")
             end
