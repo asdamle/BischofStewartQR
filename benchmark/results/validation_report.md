@@ -1,7 +1,7 @@
 # Validation Report
 
-- Generated: 2026-02-25T10:58:35.399
-- Baseline: `/Users/anildamle/Dropbox/Trystuff/mGKS_Codex/benchmark/results/baseline_codex_check`
+- Generated: 2026-02-25T12:55:08.905
+- Baseline: `/Users/anildamle/Dropbox/Trystuff/mGKS_Codex/benchmark/results/baseline_assessment_20260225_125347`
 - Candidate: `/Users/anildamle/Dropbox/Trystuff/mGKS_Codex/benchmark/results`
 - Guardrail: slowdown <= 2.0% on key cases
 - Result: **PASS**

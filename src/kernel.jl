@@ -210,6 +210,7 @@ function _bsqr_kernel!(
     kernel_stats::Union{Nothing,BSKernelStats} = nothing,
 )
     m, n = size(A)
+    short_wide_fastpath = _use_short_wide_fastpath(m, n) && _short_wide_fastpath_enabled()
     k == 0 && return 0
     tol_scale = eps(Float64) * max(m, n)
 
@@ -294,8 +295,20 @@ function _bsqr_kernel!(
             alpha = view(A, i, (i + 1):n)
             beta_vec = view(ws.beta, 1:nrem)
             invdiag = beta_i != 0.0 ? (1.0 / beta_i) : 0.0
-            @inbounds for t in 1:nrem
-                beta_vec[t] = alpha[t] * invdiag
+
+            if short_wide_fastpath
+                # Short-wide fast path: materialize W-row and beta in one pass to avoid
+                # an extra strided copy over the full trailing width.
+                @inbounds for t in 1:nrem
+                    j = i + t
+                    b = alpha[t] * invdiag
+                    beta_vec[t] = b
+                    ws.W[i, j] = b
+                end
+            else
+                @inbounds for t in 1:nrem
+                    beta_vec[t] = alpha[t] * invdiag
+                end
             end
 
             wnorm2_pivot = ws.wnorm2[i]
@@ -303,47 +316,76 @@ function _bsqr_kernel!(
             # ws.W stores R11^{-1}R12 rows built so far; ws.wnorm2 tracks per-column
             # ||w_j||^2 used directly by the pivot criterion.
             has_prefix = i > 1
-            if i > 1
+            if has_prefix
+                Wprefix = view(ws.W, 1:(i - 1), (i + 1):n)
+                wpivot = view(ws.W, 1:(i - 1), i)
                 BLAS.gemv!(
                     'T',
                     1.0,
-                    view(ws.W, 1:(i - 1), (i + 1):n),
-                    view(ws.W, 1:(i - 1), i),
+                    Wprefix,
+                    wpivot,
                     0.0,
                     dots,
                 )
                 BLAS.ger!(
                     -1.0,
-                    view(ws.W, 1:(i - 1), i),
+                    wpivot,
                     beta_vec,
-                    view(ws.W, 1:(i - 1), (i + 1):n),
+                    Wprefix,
                 )
             end
 
-            copyto!(view(ws.W, i, (i + 1):n), beta_vec)
+            if !short_wide_fastpath
+                copyto!(view(ws.W, i, (i + 1):n), beta_vec)
+            end
 
             wcoeff = wnorm2_pivot + 1.0
-            @inbounds for t in 1:nrem
-                j = i + t
-                b = beta_vec[t]
-                d = has_prefix ? dots[t] : 0.0
+            if has_prefix
+                @inbounds for t in 1:nrem
+                    j = i + t
+                    b = beta_vec[t]
+                    d = dots[t]
 
-                wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
-                ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+                    wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
+                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
 
-                recomputed, down_ns = _downdate_with_stats!(
-                    A,
-                    ws,
-                    i,
-                    j,
-                    alpha[t],
-                    m,
-                    norm_recomp_tol,
-                    kernel_stats,
-                )
-                downdate_ns_local += down_ns
-                if norm_recomp_count !== nothing && recomputed
-                    norm_recomp_count[] += 1
+                    recomputed, down_ns = _downdate_with_stats!(
+                        A,
+                        ws,
+                        i,
+                        j,
+                        alpha[t],
+                        m,
+                        norm_recomp_tol,
+                        kernel_stats,
+                    )
+                    downdate_ns_local += down_ns
+                    if norm_recomp_count !== nothing && recomputed
+                        norm_recomp_count[] += 1
+                    end
+                end
+            else
+                @inbounds for t in 1:nrem
+                    j = i + t
+                    b = beta_vec[t]
+
+                    wn = ws.wnorm2[j] + b * b
+                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+
+                    recomputed, down_ns = _downdate_with_stats!(
+                        A,
+                        ws,
+                        i,
+                        j,
+                        alpha[t],
+                        m,
+                        norm_recomp_tol,
+                        kernel_stats,
+                    )
+                    downdate_ns_local += down_ns
+                    if norm_recomp_count !== nothing && recomputed
+                        norm_recomp_count[] += 1
+                    end
                 end
             end
             if kernel_stats !== nothing
@@ -364,6 +406,11 @@ function _bsqr_kernel!(
 end
 
 const _DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
+const _SHORT_WIDE_FASTPATH_ASPECT = 4
+const _SHORT_WIDE_FASTPATH_MMAX = 256
+
+@inline _use_short_wide_fastpath(m::Int, n::Int) = (m <= _SHORT_WIDE_FASTPATH_MMAX) && (n >= _SHORT_WIDE_FASTPATH_ASPECT * m)
+@inline _short_wide_fastpath_enabled() = strip(get(ENV, "BS_SHORT_WIDE_FASTPATH", "1")) != "0"
 
 @inline function _downdate_with_stats!(
     A::StridedMatrix{Float64},

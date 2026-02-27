@@ -107,6 +107,25 @@ Compare current outputs against a baseline snapshot:
 julia --project=. benchmark/compare_results.jl benchmark/results/baseline_YYYYMMDD_HHMMSS
 ```
 
+Comprehensive status + deep assessment workflow:
+
+```bash
+julia --project=. benchmark/assess_status.jl
+julia --project=. benchmark/analyze_assessment.jl
+```
+
+Run only deep assessment phase (skip stage-1 triage reruns):
+
+```bash
+BS_ASSESS_RUN_STAGE1=0 julia --project=. benchmark/assess_status.jl
+```
+
+Run deep assessment in expanded mode:
+
+```bash
+BS_ASSESS_DEEP_QUICK=0 julia --project=. benchmark/assess_status.jl
+```
+
 Outputs are written to:
 
 - `benchmark/results/timings.csv`
@@ -119,6 +138,12 @@ Outputs are written to:
 - `benchmark/results/profile_breakdown_summary.md`
 - `benchmark/results/validation_report.md`
 - `benchmark/results/guardrail_failures.csv`
+- `benchmark/results/status_triage_YYYYMMDD_HHMMSS.md`
+- `benchmark/results/profile_hotspots_YYYYMMDD_HHMMSS.csv`
+- `benchmark/results/assessment_raw.csv`
+- `benchmark/results/assessment_summary.md`
+- `benchmark/results/optimization_candidates.md`
+- `benchmark/results/perf_assessment_conclusion.md`
 
 ## Plotting benchmark results
 

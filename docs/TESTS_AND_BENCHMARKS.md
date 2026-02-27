@@ -135,6 +135,18 @@ This is the single source of truth for benchmark behavior:
    - baseline path used by validation runners for automatic baseline-vs-candidate comparison.
 15. `BS_SLOWDOWN_THRESH`
    - slowdown guardrail threshold for `benchmark/compare_results.jl` (default `0.02`, i.e., 2%).
+16. `BS_ASSESS_RUN_STAGE1`, `BS_ASSESS_RUN_STAGE2`
+   - controls triage/deep phases for `benchmark/assess_status.jl` (default `1` for both).
+17. `BS_ASSESS_DEEP_QUICK`
+   - `1`: reduced deep-assessment grid for faster turnaround.
+   - default `1`; set `0` for expanded matrix/regime grid.
+18. `BS_ASSESS_WARMUP`, `BS_ASSESS_SAMPLES`, `BS_ASSESS_PROFILE_REPS`
+   - warmup/sample/profile repetition controls for Stage-2 deep assessment.
+19. `BS_ASSESS_TOLS`
+   - comma-separated tolerance sweep for deep assessment.
+   - default: `sqrt(eps),1e-10,1e-12,0.0`.
+20. `BS_ASSESS_FAMILIES`
+   - comma-separated family subset for deep assessment (`gaussian`, `ill_conditioned`, `orthonormal_rows`).
 
 Example reproducible run:
 
@@ -200,6 +212,25 @@ julia --project=. benchmark/freeze_baseline.jl
 julia --project=. benchmark/compare_results.jl benchmark/results/baseline_YYYYMMDD_HHMMSS
 ```
 
+Comprehensive status + deep assessment:
+
+```bash
+julia --project=. benchmark/assess_status.jl
+julia --project=. benchmark/analyze_assessment.jl
+```
+
+Skip triage reruns and execute only Stage-2 deep assessment:
+
+```bash
+BS_ASSESS_RUN_STAGE1=0 julia --project=. benchmark/assess_status.jl
+```
+
+Run expanded deep-assessment matrix (larger grids/samples):
+
+```bash
+BS_ASSESS_DEEP_QUICK=0 julia --project=. benchmark/assess_status.jl
+```
+
 ## Benchmark Outputs
 
 Outputs are written under:
@@ -234,6 +265,18 @@ Files:
    - baseline-vs-candidate pass/fail summary including 2% slowdown guardrail checks.
 10. `guardrail_failures.csv`
    - machine-readable list of guardrail or quality failures.
+11. `status_triage_YYYYMMDD_HHMMSS.md`
+   - stage-1 triage snapshot with environment fingerprint, speedup distribution summary, sanity checks, and stress-check results.
+12. `profile_hotspots_YYYYMMDD_HHMMSS.csv`
+   - stage-1 profile export with phase percentages per case (`pivot`, `householder`, `apply`, `W-update`, `downdate`).
+13. `assessment_raw.csv`
+   - stage-2 additive raw dataset for CI-aware speedups and phase metrics.
+14. `assessment_summary.md`
+   - significance-aware aggregate summary and quality-risk/hotspot correlation analysis.
+15. `optimization_candidates.md`
+   - ranked K1-K5 optimization backlog with go/no-go guidance.
+16. `perf_assessment_conclusion.md`
+   - concise executive conclusion: status, bottlenecks, top opportunities, and stability no-go areas.
 
 Baseline freeze outputs:
 
