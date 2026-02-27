@@ -18,6 +18,12 @@ Detailed validation/performance documentation:
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
 ```
 
+For validation pipelines and plotting scripts, also install matplotlib:
+
+```bash
+python3 -m pip install matplotlib
+```
+
 ## API
 
 - `bsqr(A; k=min(size(A)...), check=true, track_inverse_frob=false, return_rinv_r12=false, rank_stop=true, norm_recomp_tol=sqrt(eps(Float64)), blas_threads=nothing)`
@@ -74,6 +80,8 @@ BS_REGIME_QUICK=1 julia --project=. benchmark/bench_cpqr_regimes.jl
 ```
 
 Note: for the orthonormal-row family, regime benchmark only evaluates fixed-`m`/increasing-`n` (short-wide growth).
+Set `BS_REGIME_FAMILIES` to restrict regime benchmarking to a subset of families.
+Set `BS_SHORT_WIDE_FASTPATH=0` to disable the BSQR short-wide kernel fast path for diagnostics.
 
 Kernel breakdown profile (pinpoint bsqr runtime origin by phase):
 
@@ -94,6 +102,8 @@ Tier 2 (full gate):
 ```bash
 julia --project=. benchmark/run_validation_tier2.jl
 ```
+
+Note: validation runners execute plotting scripts and require matplotlib (`python3 -m pip install matplotlib`).
 
 Baseline snapshot (for candidate-vs-baseline comparisons):
 

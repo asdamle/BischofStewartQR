@@ -91,6 +91,12 @@ end
     end
 end
 
+"""
+    bsqr(A; kwargs...) -> BSQRPivoted
+
+Out-of-place Bischof-Stewart column-pivoted QR. Converts `A` to `Float64`,
+factorizes in-place on a copy, and returns a `BSQRPivoted` wrapper.
+"""
 function bsqr(
     A::AbstractMatrix{<:Real};
     k::Integer = min(size(A)...),
@@ -160,6 +166,12 @@ function bsqr!(
     end
 end
 
+"""
+    bsqr!(A; kwargs...) -> BSQRPivoted
+
+In-place Bischof-Stewart factorization on `A::StridedMatrix{Float64}` that
+allocates internal scratch unless `workspace` is provided.
+"""
 function bsqr!(
     A::StridedMatrix{Float64};
     k::Integer = min(size(A)...),

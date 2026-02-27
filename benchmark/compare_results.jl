@@ -204,7 +204,8 @@ function compare_results(
     quality_failures = vcat(qf_t, qf_s, qf_r)
 
     perf_failures, inspected = _slowdown_failures(c_s, b_s, c_r, b_r; thresh = slowdown_thresh)
-    passed = isempty(quality_failures) && isempty(perf_failures)
+    coverage_failure = inspected == 0
+    passed = isempty(quality_failures) && isempty(perf_failures) && !coverage_failure
 
     out_md = joinpath(candidate_dir, "validation_report.md")
     out_csv = joinpath(candidate_dir, "guardrail_failures.csv")
@@ -220,9 +221,14 @@ function compare_results(
         println(io, "## Coverage")
         println(io, "- Quality rows compared: $(cmp_t + cmp_s + cmp_r) (`timings=$(cmp_t)`, `sweep=$(cmp_s)`, `regime=$(cmp_r)`)")
         println(io, "- Key performance cases inspected: $inspected")
+        if coverage_failure
+            println(io, "- Guardrail coverage: **FAIL** (no comparable key performance cases)")
+        end
         println(io, "")
         println(io, "## Performance Failures")
-        if isempty(perf_failures)
+        if coverage_failure
+            println(io, "- guardrail_coverage: no comparable key performance cases between baseline and candidate")
+        elseif isempty(perf_failures)
             println(io, "- none")
         else
             for f in perf_failures
@@ -248,6 +254,9 @@ function compare_results(
 
     open(out_csv, "w") do io
         println(io, "kind,key_case,source,family,method,m,n,baseline_tmed,candidate_tmed,slowdown,residual,residual_tol,orthogonality,orthogonality_tol")
+        if coverage_failure
+            println(io, "coverage,guardrail_coverage,,,,,,,,,,,,")
+        end
         for f in perf_failures
             println(io, "performance,$(f.key_case),,$(f.family),bsqr_full,$(f.m),$(f.n),$(f.baseline_tmed),$(f.candidate_tmed),$(f.slowdown),,,,")
         end

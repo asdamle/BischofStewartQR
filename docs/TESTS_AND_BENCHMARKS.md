@@ -10,12 +10,14 @@ From repository root:
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
 ```
 
-Optional packages:
+Additional packages:
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.add("AppleAccelerate")'
 python3 -m pip install matplotlib
 ```
+
+`AppleAccelerate` is optional (macOS backend preference). `matplotlib` is required for plotting scripts and for tier validation runners because they invoke plotting steps.
 
 ## Test Suite
 
@@ -147,6 +149,11 @@ This is the single source of truth for benchmark behavior:
    - default: `sqrt(eps),1e-10,1e-12,0.0`.
 20. `BS_ASSESS_FAMILIES`
    - comma-separated family subset for deep assessment (`gaussian`, `ill_conditioned`, `orthonormal_rows`).
+21. `BS_REGIME_FAMILIES`
+   - comma-separated family subset for `bench_cpqr_regimes.jl` (`gaussian`, `ill_conditioned`, `orthonormal_rows`).
+22. `BS_SHORT_WIDE_FASTPATH`
+   - controls BSQR short-wide kernel fast path (`1` enabled, `0` disabled).
+   - default: `1`.
 
 Example reproducible run:
 
@@ -204,6 +211,8 @@ Validation runners:
 julia --project=. benchmark/run_validation_tier1.jl
 julia --project=. benchmark/run_validation_tier2.jl
 ```
+
+Note: tier validation runners execute plotting scripts; ensure `python3 -m pip install matplotlib` has been run.
 
 Baseline snapshot + comparison:
 
