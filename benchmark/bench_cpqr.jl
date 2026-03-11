@@ -45,8 +45,7 @@ function run_benchmarks()
             A = make_matrix(family, m, n, rng)
             kfull = min(size(A)...)
 
-            bs_row, dg_row = bench_pair_basic(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
-            for row in (bs_row, dg_row)
+            for row in bench_pair_basic(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
                 push!(rows, (
                     family = family,
                     m = size(A, 1),

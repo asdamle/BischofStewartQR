@@ -52,8 +52,7 @@ function run_sweep()
                 kfull = min(m, n)
                 aspect_s = @sprintf("%.3f", aspect)
 
-                bs_row, dg_row = bench_pair_ci(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
-                for row in (bs_row, dg_row)
+                for row in bench_pair_ci(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
                     push!(rows, (
                         family = family,
                         aspect = aspect,

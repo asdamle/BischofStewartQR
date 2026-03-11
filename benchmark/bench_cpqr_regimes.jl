@@ -21,8 +21,7 @@ function _bench_case!(rows, io, rng, family::Symbol, regime::String, fixed_value
     A = make_matrix(family, m, n, rng)
     kfull = min(m, n)
 
-    bs_row, dg_row = bench_pair_ci(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
-    for row in (bs_row, dg_row)
+    for row in bench_pair_ci(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
         push!(rows, (
             family = family,
             regime = regime,

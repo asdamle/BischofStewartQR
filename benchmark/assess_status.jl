@@ -442,16 +442,20 @@ function _write_assessment_raw(ts::String)
                 A = make_matrix(family, m, n, rng)
                 kfull = min(m, n)
                 for tol in tols
-                    bs_row, dg_row = bench_pair_ci(A, kfull, tol; warmup = warmup, samples = samples)
                     p = _profile_case_percentages(A, tol; reps = profile_reps)
-                    println(
-                        io,
-                        "$ts,$family,$(c.regime),$m,$n,$kfull,$tol,$(bs_row.method),$(bs_row.tmin),$(bs_row.tmed),$(bs_row.tci_low),$(bs_row.tci_high),$(bs_row.alloc),$(bs_row.resid),$(bs_row.orth),$(p.pivot_pct),$(p.householder_pct),$(p.apply_pct),$(p.w_update_pct),$(p.downdate_pct),$(p.recompute_count)",
-                    )
-                    println(
-                        io,
-                        "$ts,$family,$(c.regime),$m,$n,$kfull,$tol,$(dg_row.method),$(dg_row.tmin),$(dg_row.tmed),$(dg_row.tci_low),$(dg_row.tci_high),$(dg_row.alloc),$(dg_row.resid),$(dg_row.orth),NaN,NaN,NaN,NaN,NaN,NaN",
-                    )
+                    for row in bench_pair_ci(A, kfull, tol; warmup = warmup, samples = samples)
+                        if row.method == BSQR_METHOD_LABEL
+                            println(
+                                io,
+                                "$ts,$family,$(c.regime),$m,$n,$kfull,$tol,$(row.method),$(row.tmin),$(row.tmed),$(row.tci_low),$(row.tci_high),$(row.alloc),$(row.resid),$(row.orth),$(p.pivot_pct),$(p.householder_pct),$(p.apply_pct),$(p.w_update_pct),$(p.downdate_pct),$(p.recompute_count)",
+                            )
+                        else
+                            println(
+                                io,
+                                "$ts,$family,$(c.regime),$m,$n,$kfull,$tol,$(row.method),$(row.tmin),$(row.tmed),$(row.tci_low),$(row.tci_high),$(row.alloc),$(row.resid),$(row.orth),NaN,NaN,NaN,NaN,NaN,NaN",
+                            )
+                        end
+                    end
                 end
             end
         end

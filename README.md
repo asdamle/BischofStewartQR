@@ -60,6 +60,8 @@ BS_BLAS_THREADS=8 BS_USE_ACCELERATE=1 BS_REQUIRE_ACCELERATE=0 julia --project=. 
 
 Benchmark fairness note: benchmark scripts compare `bsqr!` and `qr(..., ColumnNorm())` on equal footing using fresh `copy(A)` per trial, disable bsqr-only extras (`workspace` reuse, `track_inverse_frob`, `return_rinv_r12`), and force full-step runs (`k=min(m,n)`, `rank_stop=false`).
 Use `BS_NORM_RECOMP_TOL` to tune the partial-norm recomputation threshold when exploring robustness/performance tradeoffs.
+Set `BS_BENCH_INCLUDE_LAZY=1` to add the internal `bsqr_lazy_blas` prototype to benchmark output.
+Tune the prototype with `BS_LAZY_BATCH_SIZE` or with `BS_LAZY_BATCH_FRACTION`, `BS_LAZY_BATCH_MIN`, and `BS_LAZY_BATCH_MAX`.
 
 Quick smoke run:
 

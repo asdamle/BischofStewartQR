@@ -154,11 +154,29 @@ This is the single source of truth for benchmark behavior:
 22. `BS_SHORT_WIDE_FASTPATH`
    - controls BSQR short-wide kernel fast path (`1` enabled, `0` disabled).
    - default: `1`.
+23. `BS_BENCH_INCLUDE_LAZY`
+   - `1`: add the internal `bsqr_lazy_blas` prototype to benchmark outputs.
+   - default: `0`.
+24. `BS_LAZY_BATCH_SIZE`
+   - fixed refresh batch size for the lazy BLAS prototype.
+   - unset by default; if unset, batch size is chosen from the fraction/min/max knobs below.
+25. `BS_LAZY_BATCH_FRACTION`
+   - proportional refresh batch size for the lazy BLAS prototype when `BS_LAZY_BATCH_SIZE` is unset.
+   - default: `0.125`.
+26. `BS_LAZY_BATCH_MIN`, `BS_LAZY_BATCH_MAX`
+   - lower/upper caps for lazy refresh batch size.
+   - defaults: `min(8, n)` and no upper cap.
 
 Example reproducible run:
 
 ```bash
 BS_BLAS_THREADS=8 BS_USE_ACCELERATE=1 BS_REQUIRE_ACCELERATE=1 julia --project=. benchmark/bench_cpqr.jl
+```
+
+Lazy prototype smoke run:
+
+```bash
+BS_BENCH_INCLUDE_LAZY=1 BS_LAZY_BATCH_SIZE=8 BS_BLAS_THREADS=8 julia --project=. benchmark/bench_cpqr.jl
 ```
 
 Systematic sweep run:

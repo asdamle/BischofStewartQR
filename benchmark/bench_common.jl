@@ -20,6 +20,7 @@ using .MatrixGenerators
 
 const DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
 const BSQR_METHOD_LABEL = "bsqr_full"
+const BSQR_LAZY_BLAS_METHOD_LABEL = "bsqr_lazy_blas"
 const DGEQP3_METHOD_LABEL = "dgeqp3"
 
 function backend_string()
@@ -111,6 +112,25 @@ function parse_symbol_list(
     return unique(vals)
 end
 
+function lazy_benchmark_enabled()
+    return get(ENV, "BS_BENCH_INCLUDE_LAZY", "0") == "1"
+end
+
+function lazy_batch_kwargs(n::Int)
+    batch_size_s = strip(get(ENV, "BS_LAZY_BATCH_SIZE", ""))
+    batch_size = isempty(batch_size_s) ? nothing : parse(Int, batch_size_s)
+    batch_fraction = parse_env_float("BS_LAZY_BATCH_FRACTION", 0.125; minval = 0.0, maxval = 1.0)
+    batch_min = parse_env_int("BS_LAZY_BATCH_MIN", min(8, max(n, 1)))
+    batch_max_s = strip(get(ENV, "BS_LAZY_BATCH_MAX", ""))
+    batch_max = isempty(batch_max_s) ? nothing : parse(Int, batch_max_s)
+    return (
+        lazy_batch_size = batch_size,
+        lazy_batch_fraction = batch_fraction,
+        lazy_batch_min = batch_min,
+        lazy_batch_max = batch_max,
+    )
+end
+
 function bench_trial_basic(f; warmup::Int = 2, samples::Int = 8)
     for _ in 1:warmup
         f()
@@ -190,32 +210,59 @@ function run_bsqr_fair(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64)
     )
 end
 
-run_qr_fair(A::Matrix{Float64}) = qr(copy(A), ColumnNorm())
-
-function bench_pair_basic(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
-    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
-    bs = _bench_and_quality_basic(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
-
-    f_qr() = run_qr_fair(A)
-    dg = _bench_and_quality_basic(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
-
-    return (
-        (; method = BSQR_METHOD_LABEL, bs...),
-        (; method = DGEQP3_METHOD_LABEL, dg...),
+function run_bsqr_lazy_blas_fair(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64)
+    _ = norm_recomp_tol
+    kwargs = lazy_batch_kwargs(size(A, 2))
+    return BSPivotQR._bsqr_lazy_blas(
+        copy(A);
+        k = k,
+        check = false,
+        rank_stop = false,
+        blas_threads = nothing,
+        kwargs...,
     )
 end
 
+run_qr_fair(A::Matrix{Float64}) = qr(copy(A), ColumnNorm())
+
+function bench_pair_basic(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
+    rows = NamedTuple[]
+
+    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
+    bs = _bench_and_quality_basic(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+    push!(rows, (; method = BSQR_METHOD_LABEL, bs...))
+
+    if lazy_benchmark_enabled()
+        f_lazy() = run_bsqr_lazy_blas_fair(A, k, norm_recomp_tol)
+        lazy = _bench_and_quality_basic(f_lazy, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+        push!(rows, (; method = BSQR_LAZY_BLAS_METHOD_LABEL, lazy...))
+    end
+
+    f_qr() = run_qr_fair(A)
+    dg = _bench_and_quality_basic(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
+    push!(rows, (; method = DGEQP3_METHOD_LABEL, dg...))
+
+    return rows
+end
+
 function bench_pair_ci(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
+    rows = NamedTuple[]
+
     f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
     bs = _bench_and_quality_ci(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+    push!(rows, (; method = BSQR_METHOD_LABEL, bs...))
+
+    if lazy_benchmark_enabled()
+        f_lazy() = run_bsqr_lazy_blas_fair(A, k, norm_recomp_tol)
+        lazy = _bench_and_quality_ci(f_lazy, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+        push!(rows, (; method = BSQR_LAZY_BLAS_METHOD_LABEL, lazy...))
+    end
 
     f_qr() = run_qr_fair(A)
     dg = _bench_and_quality_ci(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
+    push!(rows, (; method = DGEQP3_METHOD_LABEL, dg...))
 
-    return (
-        (; method = BSQR_METHOD_LABEL, bs...),
-        (; method = DGEQP3_METHOD_LABEL, dg...),
-    )
+    return rows
 end
 
 function grouped_rows_with_baseline(rows, keyf::F; sortby::S = identity) where {F<:Function,S<:Function}
@@ -244,11 +291,12 @@ function make_matrix(family::Symbol, m::Int, n::Int, rng::AbstractRNG)
 end
 
 export DEFAULT_NORM_RECOMP_TOL
-export BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL
+export BSQR_METHOD_LABEL, BSQR_LAZY_BLAS_METHOD_LABEL, DGEQP3_METHOD_LABEL
 export accelerate_active, backend_string, bench_pair_basic, bench_pair_ci
 export bench_trial_basic, bench_trial_ci, grouped_rows_with_baseline
 export check_backend, configure_blas_threads, make_matrix
+export lazy_batch_kwargs, lazy_benchmark_enabled
 export parse_env_float, parse_env_int, parse_float_list, parse_int_list, parse_symbol_list
-export residual_bs, residual_qr, run_bsqr_fair, run_qr_fair
+export residual_bs, residual_qr, run_bsqr_fair, run_bsqr_lazy_blas_fair, run_qr_fair
 
 end
