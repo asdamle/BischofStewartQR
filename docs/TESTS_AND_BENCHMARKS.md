@@ -64,10 +64,6 @@ julia --project=. benchmark/plot_publication_results.jl
 - `BS_NORM_RECOMP_TOL`
   - partial-norm recomputation tolerance.
   - default: `sqrt(eps(Float64))`.
-- `BS_HOUSEHOLDER_LAPACK_LARF`
-  - reflector-apply implementation toggle.
-  - `1` (default): `LAPACK.larf!` path.
-  - `0`: manual BLAS (`gemv`/`ger`) fallback.
 
 ### Example Commands
 

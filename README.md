@@ -72,7 +72,6 @@ Useful knobs:
 - `BS_PUB_WARMUP` (default: `1`)
 - `BS_PUB_SAMPLES` (default: `30`)
 - `BS_NORM_RECOMP_TOL` (default: `sqrt(eps(Float64))`)
-- `BS_HOUSEHOLDER_LAPACK_LARF` (`1` by default; set `0` to force the manual BLAS path)
 
 Example run with explicit knobs:
 

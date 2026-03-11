@@ -353,7 +353,7 @@ function _bsqr_kernel!(
             end
 
             wcoeff = wnorm2_pivot + 1.0
-            recompute_slots = view(ws.work, 1:nrem)
+            recompute_slots = view(ws.recompute_idx, 1:nrem)
             nrecompute = 0
             if has_prefix
                 @inbounds for t in 1:nrem
@@ -435,17 +435,37 @@ end
 const _DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
 const _SHORT_WIDE_FASTPATH_ASPECT = 4
 const _SHORT_WIDE_FASTPATH_MMAX = 256
+const _RECOMP_NORM2_LOOP_THRESHOLD = 256
 
 @inline _use_short_wide_fastpath(m::Int, n::Int) = (m <= _SHORT_WIDE_FASTPATH_MMAX) && (n >= _SHORT_WIDE_FASTPATH_ASPECT * m)
 @inline _short_wide_fastpath_enabled() = strip(get(ENV, "BS_SHORT_WIDE_FASTPATH", "1")) != "0"
-@inline _householder_lapack_larf_enabled() = strip(get(ENV, "BS_HOUSEHOLDER_LAPACK_LARF", "1")) != "0"
+
+@inline function _tail_colnorm2(
+    A::StridedMatrix{Float64},
+    row_start::Int,
+    row_end::Int,
+    col::Int,
+)
+    len = row_end - row_start + 1
+    len > 0 || return 0.0
+    if len <= _RECOMP_NORM2_LOOP_THRESHOLD
+        acc = 0.0
+        @inbounds @simd for r in row_start:row_end
+            v = A[r, col]
+            acc = muladd(v, v, acc)
+        end
+        return acc
+    end
+    nrm = BLAS.nrm2(view(A, row_start:row_end, col))
+    return nrm * nrm
+end
 
 @inline function _refresh_recompute_colnorms!(
     A::StridedMatrix{Float64},
     ws::BSWorkspace,
     i::Int,
     m::Int,
-    recompute_slots::AbstractVector{Float64},
+    recompute_slots::AbstractVector{Int},
     nrecompute::Int,
     norm_recomp_count::Union{Nothing,Base.RefValue{Int}},
     kernel_stats::Union{Nothing,BSKernelStats},
@@ -454,14 +474,9 @@ const _SHORT_WIDE_FASTPATH_MMAX = 256
 
     t_down = kernel_stats === nothing ? 0 : time_ns()
     @inbounds for q in 1:nrecompute
-        t = Int(recompute_slots[q])
+        t = recompute_slots[q]
         j = i + t
-        if i < m
-            tail_norm = BLAS.nrm2(view(A, (i + 1):m, j))
-            sj = tail_norm * tail_norm
-        else
-            sj = 0.0
-        end
+        sj = _tail_colnorm2(A, i + 1, m, j)
         ws.s_ref[j] = sj
         ws.s[j] = sj
     end
@@ -530,36 +545,14 @@ function _apply_householder_left!(
     cols > 0 || return nothing
     w = view(work, 1:cols)
 
-    if _householder_lapack_larf_enabled()
-        # Optional LAPACK path for A[i:m, i+1:n] -= tau * v * (v' * A[i:m, i+1:n]),
-        # where v = A[i:m, i] with v[1] == 1 set by the caller.
-        LAPACK.larf!(
-            'L',
-            view(A, i:m, i),
-            tau,
-            view(A, i:m, (i + 1):n),
-            w,
-        )
-        return nothing
-    end
-
-    copyto!(w, view(A, i, (i + 1):n))
-    if i < m
-        BLAS.gemv!(
-            'T',
-            1.0,
-            view(A, (i + 1):m, (i + 1):n),
-            view(A, (i + 1):m, i),
-            1.0,
-            w,
-        )
-    end
-    BLAS.scal!(tau, w)
-
-    BLAS.axpy!(-1.0, w, view(A, i, (i + 1):n))
-    if i < m
-        BLAS.ger!(-1.0, view(A, (i + 1):m, i), w, view(A, (i + 1):m, (i + 1):n))
-    end
-
+    # Apply A[i:m, i+1:n] -= tau * v * (v' * A[i:m, i+1:n]),
+    # where v = A[i:m, i] with v[1] == 1 set by the caller.
+    LAPACK.larf!(
+        'L',
+        view(A, i:m, i),
+        tau,
+        view(A, i:m, (i + 1):n),
+        w,
+    )
     return nothing
 end

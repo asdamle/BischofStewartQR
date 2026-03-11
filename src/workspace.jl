@@ -5,6 +5,7 @@ mutable struct BSWorkspace
     s_ref::Vector{Float64}
     beta::Vector{Float64}
     dots::Vector{Float64}
+    recompute_idx::Vector{Int}
     work::Vector{Float64}
 end
 
@@ -19,6 +20,7 @@ function BSWorkspace(_m::Int, n::Int, kmax::Int)
         zeros(Float64, n),
         zeros(Float64, nrem),
         zeros(Float64, nrem),
+        zeros(Int, nrem),
         zeros(Float64, max(n, 1)),
     )
 end
@@ -41,6 +43,7 @@ function _require_workspace(
     length(ws.s_ref) >= n || throw(ArgumentError("workspace.s_ref too small"))
     length(ws.beta) >= _nrem(n) || throw(ArgumentError("workspace.beta too small"))
     length(ws.dots) >= _nrem(n) || throw(ArgumentError("workspace.dots too small"))
+    length(ws.recompute_idx) >= _nrem(n) || throw(ArgumentError("workspace.recompute_idx too small"))
     length(ws.work) >= max(n, 1) || throw(ArgumentError("workspace.work too small"))
 
     # Reuse workspace buffers without eager full zeroing; kernel overwrites active regions.
