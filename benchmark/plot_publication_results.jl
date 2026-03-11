@@ -140,42 +140,63 @@ def save_fig(fig, stem):
     fig.savefig(os.path.join(outdir, f"{stem}.pdf"))
     plt.close(fig)
 
-def _auto_height(kind, n_panels=1, n_items=0):
+def _auto_height(kind, nrows=1, ncols=1, n_items=0):
+    panel_rows = max(1, nrows)
+    panel_cols = max(1, ncols)
+    multi_col = panel_cols > 1
     if layout == "single_column":
         if kind == "line_panels":
-            return max(2.8, 1.55 * n_panels + 0.85)
+            if multi_col:
+                return max(2.8, 1.2 * panel_rows + 1.1)
+            return max(2.8, 1.55 * panel_rows + 0.85)
         if kind == "heatmap_panels":
-            return max(2.8, 1.4 * n_panels + 0.95)
+            if multi_col:
+                return max(2.8, 1.05 * panel_rows + 1.2)
+            return max(2.8, 1.4 * panel_rows + 0.95)
         if kind == "quality":
             return 5.0
         if kind == "aggregate":
             return max(3.0, 0.34 * n_items + 1.35)
     else:
         if kind == "line_panels":
-            return max(3.8, 1.15 * n_panels + 0.8)
+            if multi_col:
+                return max(3.4, 1.0 * panel_rows + 0.95)
+            return max(3.8, 1.15 * panel_rows + 0.8)
         if kind == "heatmap_panels":
-            return max(3.8, 1.05 * n_panels + 1.0)
+            if multi_col:
+                return max(3.4, 0.95 * panel_rows + 1.05)
+            return max(3.8, 1.05 * panel_rows + 1.0)
         if kind == "quality":
             return 3.8
         if kind == "aggregate":
             return max(3.2, 0.28 * n_items + 1.3)
-    return max(3.0, 1.5 * n_panels + 1.0)
+    return max(3.0, 1.5 * panel_rows + 1.0)
 
-def mk_axes_grid(nr, nc, kind):
+def _panel_grid(n_panels):
+    if n_panels <= 2:
+        return n_panels, 1
+    return int(math.ceil(n_panels / 2)), 2
+
+def mk_axes_grid(nr, nc, kind, constrained=True):
+    width_in = fig_width_in
+    if layout == "single_column" and nc > 1:
+        width_in = double_col_width_in
     fig, axes = plt.subplots(
         nr,
         nc,
-        figsize=(fig_width_in, _auto_height(kind, nr * nc)),
+        figsize=(width_in, _auto_height(kind, nr, nc)),
         squeeze=False,
-        constrained_layout=True,
+        constrained_layout=constrained,
     )
     return fig, axes
 
 # Figure 1: square runtime log-log (per family, faceted by threads)
 panel_keys = [(fam, th) for fam in families for th in threads]
-fig1, axes1 = mk_axes_grid(len(panel_keys), 1, "line_panels")
+fig1_nr, fig1_nc = _panel_grid(len(panel_keys))
+fig1, axes1 = mk_axes_grid(fig1_nr, fig1_nc, "line_panels")
+axes1_flat = axes1.ravel()
 for idx, (fam, th) in enumerate(panel_keys):
-    ax = axes1[idx][0]
+    ax = axes1_flat[idx]
     sub = [
         r for r in rows
         if r["family"] == fam and r["regime"] == "square" and r["blas_threads"] == th
@@ -196,19 +217,23 @@ for idx, (fam, th) in enumerate(panel_keys):
     ax.set_xscale("log", base=2)
     ax.set_yscale("log")
     ax.set_title(f"{fam} | BLAS={th}")
-    if idx == len(panel_keys) - 1:
+    if idx // fig1_nc == fig1_nr - 1:
         ax.set_xlabel("m=n")
     ax.set_ylabel("median time (s)")
     ax.grid(True, alpha=0.25)
-axes1[0][0].legend(loc="best", frameon=True)
+for ax in axes1_flat[len(panel_keys):]:
+    ax.set_visible(False)
+axes1_flat[0].legend(loc="best", frameon=True)
 save_fig(fig1, "figure1_square_runtime")
 
 # Figure 2: short-wide runtime vs n (fixed m curves, per family, faceted by threads)
-fig2, axes2 = mk_axes_grid(len(panel_keys), 1, "line_panels")
+fig2_nr, fig2_nc = _panel_grid(len(panel_keys))
+fig2, axes2 = mk_axes_grid(fig2_nr, fig2_nc, "line_panels", constrained=False)
+axes2_flat = axes2.ravel()
 global_short_ms = sorted({r["m"] for r in rows if r["regime"] == "short_wide"})
 cmap = plt.get_cmap("tab10")
 for idx, (fam, th) in enumerate(panel_keys):
-    ax = axes2[idx][0]
+    ax = axes2_flat[idx]
     sub = [
         r for r in rows
         if r["family"] == fam and r["regime"] == "short_wide" and r["blas_threads"] == th
@@ -233,10 +258,13 @@ for idx, (fam, th) in enumerate(panel_keys):
     ax.set_xscale("log", base=2)
     ax.set_yscale("log")
     ax.set_title(f"{fam} | BLAS={th}")
-    if idx == len(panel_keys) - 1:
+    if idx // fig2_nc == fig2_nr - 1:
         ax.set_xlabel("n")
     ax.set_ylabel("median time (s)")
     ax.grid(True, alpha=0.25)
+for ax in axes2_flat[len(panel_keys):]:
+    ax.set_visible(False)
+fig2.subplots_adjust(bottom=0.22, top=0.96, left=0.1, right=0.99, hspace=0.35, wspace=0.25)
 method_handles = [
     Line2D([0], [0], color="black", marker="o", linestyle="-", label="BSQR"),
     Line2D([0], [0], color="black", marker="D", linestyle="--", label="DGEQP3"),
@@ -247,17 +275,17 @@ m_handles = [
 ]
 leg_method = fig2.legend(
     handles=method_handles,
-    loc="upper center",
-    bbox_to_anchor=(0.5, 1.018),
+    loc="lower center",
+    bbox_to_anchor=(0.5, 0.105),
     ncol=2,
     frameon=True,
     title="Method",
 )
 leg_m = fig2.legend(
     handles=m_handles,
-    loc="upper center",
-    bbox_to_anchor=(0.5, 0.993),
-    ncol=max(1, min(3, len(m_handles))),
+    loc="lower center",
+    bbox_to_anchor=(0.5, 0.02),
+    ncol=max(1, min(5, len(m_handles))),
     frameon=True,
     title="m (rows)",
 )
@@ -265,7 +293,9 @@ fig2.add_artist(leg_method)
 save_fig(fig2, "figure2_shortwide_runtime")
 
 # Figure 3: short-wide speedup heatmaps over (m, n/m) per family/thread
-fig3, axes3 = mk_axes_grid(len(panel_keys), 1, "heatmap_panels")
+fig3_nr, fig3_nc = _panel_grid(len(panel_keys))
+fig3, axes3 = mk_axes_grid(fig3_nr, fig3_nc, "heatmap_panels")
+axes3_flat = axes3.ravel()
 all_speed = [s["speedup"] for s in speed_rows if s["regime"] == "short_wide" and math.isfinite(s["speedup"])]
 vmin = np.nanmin(all_speed) if all_speed else 0.5
 vmax = np.nanmax(all_speed) if all_speed else 1.5
@@ -279,7 +309,7 @@ if vmin >= 1.0:
 norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=1.0, vmax=vmax)
 imh = None
 for idx, (fam, th) in enumerate(panel_keys):
-    ax = axes3[idx][0]
+    ax = axes3_flat[idx]
     sub = [
         s for s in speed_rows
         if s["family"] == fam and s["blas_threads"] == th and s["regime"] == "short_wide"
@@ -297,11 +327,13 @@ for idx, (fam, th) in enumerate(panel_keys):
     ax.set_xticklabels([f"{a:.1f}" for a in aspects], rotation=45, ha="right")
     ax.set_yticks(range(len(ms)))
     ax.set_yticklabels([str(m) for m in ms])
-    if idx == len(panel_keys) - 1:
+    if idx // fig3_nc == fig3_nr - 1:
         ax.set_xlabel("aspect (n/m)")
     ax.set_ylabel("m")
+for ax in axes3_flat[len(panel_keys):]:
+    ax.set_visible(False)
 if imh is not None:
-    cbar = fig3.colorbar(imh, ax=axes3.ravel().tolist(), shrink=0.8, pad=0.01)
+    cbar = fig3.colorbar(imh, ax=list(axes3_flat[:len(panel_keys)]), shrink=0.8, pad=0.01)
     cbar.set_label("speedup dgeqp3/bsqr")
 save_fig(fig3, "figure3_shortwide_speedup_heatmap")
 

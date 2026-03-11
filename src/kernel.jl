@@ -353,6 +353,8 @@ function _bsqr_kernel!(
             end
 
             wcoeff = wnorm2_pivot + 1.0
+            recompute_slots = view(ws.work, 1:nrem)
+            nrecompute = 0
             if has_prefix
                 @inbounds for t in 1:nrem
                     j = i + t
@@ -360,19 +362,24 @@ function _bsqr_kernel!(
                     d = dots[t]
 
                     wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
-                    down_ns = _set_wnorm_and_downdate!(
-                        A,
-                        ws,
-                        i,
-                        j,
-                        wn,
-                        alpha[t],
-                        m,
-                        norm_recomp_tol,
-                        norm_recomp_count,
-                        kernel_stats,
-                    )
-                    downdate_ns_local += down_ns
+                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+
+                    old_s = ws.s[j]
+                    if !(old_s > 0.0)
+                        ws.s[j] = 0.0
+                        continue
+                    end
+
+                    sj = old_s - alpha[t] * alpha[t]
+                    sj = sj > 0.0 ? sj : 0.0
+                    ws.s[j] = sj
+
+                    # LAPACK-style safeguard: refresh only when the running norm
+                    # estimate has decayed enough relative to the last exact reference norm.
+                    if sj <= ws.s_ref[j] * norm_recomp_tol
+                        nrecompute += 1
+                        recompute_slots[nrecompute] = t
+                    end
                 end
             else
                 @inbounds for t in 1:nrem
@@ -380,21 +387,34 @@ function _bsqr_kernel!(
                     b = beta_vec[t]
 
                     wn = ws.wnorm2[j] + b * b
-                    down_ns = _set_wnorm_and_downdate!(
-                        A,
-                        ws,
-                        i,
-                        j,
-                        wn,
-                        alpha[t],
-                        m,
-                        norm_recomp_tol,
-                        norm_recomp_count,
-                        kernel_stats,
-                    )
-                    downdate_ns_local += down_ns
+                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+
+                    old_s = ws.s[j]
+                    if !(old_s > 0.0)
+                        ws.s[j] = 0.0
+                        continue
+                    end
+
+                    sj = old_s - alpha[t] * alpha[t]
+                    sj = sj > 0.0 ? sj : 0.0
+                    ws.s[j] = sj
+
+                    if sj <= ws.s_ref[j] * norm_recomp_tol
+                        nrecompute += 1
+                        recompute_slots[nrecompute] = t
+                    end
                 end
             end
+            downdate_ns_local += _refresh_recompute_colnorms!(
+                A,
+                ws,
+                i,
+                m,
+                recompute_slots,
+                nrecompute,
+                norm_recomp_count,
+                kernel_stats,
+            )
             if kernel_stats !== nothing
                 elapsed = time_ns() - t_update
                 kernel_stats.norm_downdate_ns += downdate_ns_local
@@ -418,81 +438,24 @@ const _SHORT_WIDE_FASTPATH_MMAX = 256
 
 @inline _use_short_wide_fastpath(m::Int, n::Int) = (m <= _SHORT_WIDE_FASTPATH_MMAX) && (n >= _SHORT_WIDE_FASTPATH_ASPECT * m)
 @inline _short_wide_fastpath_enabled() = strip(get(ENV, "BS_SHORT_WIDE_FASTPATH", "1")) != "0"
+@inline _householder_lapack_larf_enabled() = strip(get(ENV, "BS_HOUSEHOLDER_LAPACK_LARF", "1")) != "0"
 
-@inline function _set_wnorm_and_downdate!(
+@inline function _refresh_recompute_colnorms!(
     A::StridedMatrix{Float64},
     ws::BSWorkspace,
     i::Int,
-    j::Int,
-    wn::Float64,
-    alpha_ij::Float64,
     m::Int,
-    norm_recomp_tol::Float64,
+    recompute_slots::AbstractVector{Float64},
+    nrecompute::Int,
     norm_recomp_count::Union{Nothing,Base.RefValue{Int}},
     kernel_stats::Union{Nothing,BSKernelStats},
 )
-    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
-    recomputed, down_ns = _downdate_with_stats!(A, ws, i, j, alpha_ij, m, norm_recomp_tol, kernel_stats)
-    if norm_recomp_count !== nothing && recomputed
-        norm_recomp_count[] += 1
-    end
-    return down_ns
-end
+    nrecompute == 0 && return 0
 
-@inline function _downdate_with_stats!(
-    A::StridedMatrix{Float64},
-    ws::BSWorkspace,
-    i::Int,
-    j::Int,
-    alpha_ij::Float64,
-    m::Int,
-    norm_recomp_tol::Float64,
-    ::Nothing,
-)
-    recomputed = _downdate_colnorm2!(A, ws, i, j, alpha_ij, m, norm_recomp_tol)
-    return recomputed, 0
-end
-
-@inline function _downdate_with_stats!(
-    A::StridedMatrix{Float64},
-    ws::BSWorkspace,
-    i::Int,
-    j::Int,
-    alpha_ij::Float64,
-    m::Int,
-    norm_recomp_tol::Float64,
-    kernel_stats::BSKernelStats,
-)
-    t_down = time_ns()
-    recomputed = _downdate_colnorm2!(A, ws, i, j, alpha_ij, m, norm_recomp_tol)
-    down_ns = time_ns() - t_down
-    if recomputed
-        kernel_stats.recompute_count += 1
-    end
-    return recomputed, down_ns
-end
-
-@inline function _downdate_colnorm2!(
-    A::StridedMatrix{Float64},
-    ws::BSWorkspace,
-    i::Int,
-    j::Int,
-    alpha_ij::Float64,
-    m::Int,
-    norm_recomp_tol::Float64,
-)
-    old_s = ws.s[j]
-    if !(old_s > 0.0)
-        ws.s[j] = 0.0
-        return false
-    end
-
-    sj = old_s - alpha_ij * alpha_ij
-    sj = sj > 0.0 ? sj : 0.0
-
-    # LAPACK-style safeguard: refresh only when the running norm estimate has
-    # decayed enough relative to the last exact reference norm.
-    if sj <= ws.s_ref[j] * norm_recomp_tol
+    t_down = kernel_stats === nothing ? 0 : time_ns()
+    @inbounds for q in 1:nrecompute
+        t = Int(recompute_slots[q])
+        j = i + t
         if i < m
             tail_norm = BLAS.nrm2(view(A, (i + 1):m, j))
             sj = tail_norm * tail_norm
@@ -501,11 +464,16 @@ end
         end
         ws.s_ref[j] = sj
         ws.s[j] = sj
-        return true
     end
 
-    ws.s[j] = sj
-    return false
+    if norm_recomp_count !== nothing
+        norm_recomp_count[] += nrecompute
+    end
+    if kernel_stats !== nothing
+        kernel_stats.recompute_count += nrecompute
+        return time_ns() - t_down
+    end
+    return 0
 end
 
 function _swap_entries!(v::Vector{T}, i::Int, j::Int) where {T}
@@ -561,6 +529,19 @@ function _apply_householder_left!(
     cols = n - i
     cols > 0 || return nothing
     w = view(work, 1:cols)
+
+    if _householder_lapack_larf_enabled()
+        # Optional LAPACK path for A[i:m, i+1:n] -= tau * v * (v' * A[i:m, i+1:n]),
+        # where v = A[i:m, i] with v[1] == 1 set by the caller.
+        LAPACK.larf!(
+            'L',
+            view(A, i:m, i),
+            tau,
+            view(A, i:m, (i + 1):n),
+            w,
+        )
+        return nothing
+    end
 
     copyto!(w, view(A, i, (i + 1):n))
     if i < m

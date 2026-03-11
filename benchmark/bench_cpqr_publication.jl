@@ -207,7 +207,7 @@ function run_publication_benchmarks()
     short_ms = _parse_short_ms()
     short_aspects = _parse_short_aspects()
     warmup = parse_env_int("BS_PUB_WARMUP", 1; minval = 0)
-    samples = parse_env_int("BS_PUB_SAMPLES", 12; minval = 1)
+    samples = parse_env_int("BS_PUB_SAMPLES", 30; minval = 1)
 
     run_id = Dates.format(now(), "yyyymmdd_HHMMSS")
     timestamp = string(Dates.now())
