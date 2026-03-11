@@ -1,7 +1,7 @@
 # Assessment Summary
 
 - Generated: 2026-02-25T12:58:27.992
-- Raw dataset: `/Users/anildamle/Dropbox/Trystuff/mGKS_Codex/benchmark/results/assessment_raw.csv`
+- Raw dataset: `benchmark/results/assessment_raw.csv`
 - Pair count: 200
 
 ## Overall Speedup Distribution (`dgeqp3/bsqr`)

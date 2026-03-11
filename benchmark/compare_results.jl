@@ -3,6 +3,7 @@
 using Dates
 
 const DEFAULT_CANDIDATE_DIR = joinpath(@__DIR__, "results")
+const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 
 const TIMINGS_FILE = "timings.csv"
 const SWEEP_FILE = "sweep_timings.csv"
@@ -12,6 +13,10 @@ const SLOWDOWN_THRESH = 0.02
 const TIMINGS_KEYCOLS = ["family", "m", "n", "k", "method"]
 const SWEEP_KEYCOLS = ["family", "aspect", "m", "n", "k", "method"]
 const REGIME_KEYCOLS = ["family", "regime", "fixed_value", "var_value", "m", "n", "k", "method"]
+
+function _display_path(path::String)
+    return relpath(abspath(path), REPO_ROOT)
+end
 
 function _load_csv(path::String)
     isfile(path) || error("Missing CSV: $path")
@@ -213,8 +218,8 @@ function compare_results(
         println(io, "# Validation Report")
         println(io, "")
         println(io, "- Generated: $(Dates.now())")
-        println(io, "- Baseline: `$(abspath(baseline_dir))`")
-        println(io, "- Candidate: `$(abspath(candidate_dir))`")
+        println(io, "- Baseline: `$(_display_path(baseline_dir))`")
+        println(io, "- Candidate: `$(_display_path(candidate_dir))`")
         println(io, "- Guardrail: slowdown <= $(100 * slowdown_thresh)% on key cases")
         println(io, "- Result: **", passed ? "PASS" : "FAIL", "**")
         println(io, "")

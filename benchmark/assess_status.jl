@@ -12,6 +12,7 @@ using .BenchCommon
 include("validation_pipeline_common.jl")
 using .ValidationPipelineCommon
 
+const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 const RESULTS_DIR = joinpath(@__DIR__, "results")
 const PROFILE_BREAKDOWN_CSV = joinpath(RESULTS_DIR, "profile_breakdown.csv")
 const TIMINGS_CSV = joinpath(RESULTS_DIR, "timings.csv")
@@ -47,6 +48,10 @@ const SUMMARY_PAIRS = (
 
 @inline _f64(x::AbstractString) = parse(Float64, x)
 @inline _i64(x::AbstractString) = parse(Int, x)
+
+function _display_path(path::String)
+    return relpath(abspath(path), REPO_ROOT)
+end
 
 function _timestamp_tag()
     return Dates.format(now(), "yyyymmdd_HHMMSS")
@@ -269,9 +274,9 @@ function _write_status_triage(
         println(io, "- CPU threads: `$(Sys.CPU_THREADS)`")
         println(io, "- BLAS threads: `$(BLAS.get_num_threads())`")
         println(io, "- BLAS config: `$(backend_string())`")
-        println(io, "- Baseline dir: `$(baseline_dir === nothing ? "none" : baseline_dir)`")
-        println(io, "- Validation report: `$(VALIDATION_MD)`")
-        println(io, "- Hotspot CSV: `$(hotspots_path)`")
+        println(io, "- Baseline dir: `$(baseline_dir === nothing ? "none" : _display_path(baseline_dir))`")
+        println(io, "- Validation report: `$(_display_path(VALIDATION_MD))`")
+        println(io, "- Hotspot CSV: `$(_display_path(hotspots_path))`")
         println(io, "")
         println(io, "## Pass/Fail Status")
         println(io, "- Tests + quick validation pipeline: **PASS**")

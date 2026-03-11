@@ -4,6 +4,7 @@ using Dates
 using Printf
 using Statistics
 
+const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 const RESULTS_DIR = joinpath(@__DIR__, "results")
 const RAW_CSV = joinpath(RESULTS_DIR, "assessment_raw.csv")
 const SUMMARY_MD = joinpath(RESULTS_DIR, "assessment_summary.md")
@@ -15,6 +16,10 @@ const PHASE_KEYS = ("pivot_pct", "householder_pct", "apply_pct", "w_update_pct",
 
 @inline _f64(s::AbstractString) = parse(Float64, s)
 @inline _i64(s::AbstractString) = parse(Int, s)
+
+function _display_path(path::String)
+    return relpath(abspath(path), REPO_ROOT)
+end
 
 function _load_csv_rows(path::String)
     isfile(path) || error("Missing CSV: $path")
@@ -323,7 +328,7 @@ function _write_summary(rows::Vector{Dict{String,String}}, pairs::Vector{NamedTu
         println(io, "# Assessment Summary")
         println(io, "")
         println(io, "- Generated: $(Dates.now())")
-        println(io, "- Raw dataset: `$(RAW_CSV)`")
+        println(io, "- Raw dataset: `$(_display_path(RAW_CSV))`")
         println(io, "- Pair count: $(length(pairs))")
         println(io, "")
         speeds = [p.speedup for p in pairs]
