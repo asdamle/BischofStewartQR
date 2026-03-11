@@ -21,7 +21,7 @@ _parse_families() = parse_symbol_list(
 )
 
 function _parse_threads()
-    vals = parse_int_list("BS_PUB_THREADS", [1, 8])
+    vals = parse_int_list("BS_PUB_THREADS", [1, 4])
     isempty(vals) && error("BS_PUB_THREADS must contain at least one value")
     all(>=(1), vals) || error("BS_PUB_THREADS entries must be >= 1")
     return vals

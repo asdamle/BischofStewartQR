@@ -1,22 +1,22 @@
 # Publication Benchmark Summary
 
-- Run ID: `20260310_213519`
-- Generated: 2026-03-10T21:40:46.238
+- Run ID: `20260310_215816`
+- Generated: 2026-03-10T22:03:36.442
 - BLAS: LBTConfig([ILP64] libopenblas64_.dylib, [LP64] Accelerate, [ILP64] Accelerate)
-- Threads: 1, 8
+- Threads: 1, 4
 - Seeds: 20260310, 20260311
 
 | family | regime | blas_threads | geomean speedup (dgeqp3/bsqr) |
 |---|---|---:|---:|
-| gaussian | short_wide | 1 | 0.4482 |
-| gaussian | short_wide | 8 | 0.44592 |
-| gaussian | square | 1 | 0.48594 |
-| gaussian | square | 8 | 0.48724 |
-| ill_conditioned | short_wide | 1 | 0.48954 |
-| ill_conditioned | short_wide | 8 | 0.49425 |
-| ill_conditioned | square | 1 | 0.53084 |
-| ill_conditioned | square | 8 | 0.51388 |
-| orthonormal_rows | short_wide | 1 | 0.44864 |
-| orthonormal_rows | short_wide | 8 | 0.4446 |
-| orthonormal_rows | square | 1 | 0.48854 |
-| orthonormal_rows | square | 8 | 0.49282 |
+| gaussian | short_wide | 1 | 0.44524 |
+| gaussian | short_wide | 4 | 0.45573 |
+| gaussian | square | 1 | 0.47511 |
+| gaussian | square | 4 | 0.4853 |
+| ill_conditioned | short_wide | 1 | 0.50319 |
+| ill_conditioned | short_wide | 4 | 0.47308 |
+| ill_conditioned | square | 1 | 0.52385 |
+| ill_conditioned | square | 4 | 0.51934 |
+| orthonormal_rows | short_wide | 1 | 0.44275 |
+| orthonormal_rows | short_wide | 4 | 0.45531 |
+| orthonormal_rows | square | 1 | 0.49064 |
+| orthonormal_rows | square | 4 | 0.53373 |

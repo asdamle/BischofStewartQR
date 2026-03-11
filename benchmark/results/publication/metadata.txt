@@ -1,5 +1,5 @@
-run_id = 20260310_213519
-timestamp = 2026-03-10T21:40:46.244
+run_id = 20260310_215816
+timestamp = 2026-03-10T22:03:36.453
 julia_version = 1.11.6
 cpu_model = Apple M3
 cpu_threads = 4
@@ -7,7 +7,7 @@ blas_threads_at_end = 4
 blas_config = LBTConfig([ILP64] libopenblas64_.dylib, [LP64] Accelerate, [ILP64] Accelerate)
 
 [publication_knobs]
-BS_PUB_THREADS = 1,8
+BS_PUB_THREADS = 1,4
 BS_PUB_SEEDS = 20260310,20260311
 BS_PUB_FAMILIES = gaussian,ill_conditioned,orthonormal_rows
 BS_PUB_SQUARE_MS = 64,128,256,384,512

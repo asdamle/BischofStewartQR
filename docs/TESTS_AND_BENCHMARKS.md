@@ -171,7 +171,7 @@ This is the single source of truth for benchmark behavior:
    - default: `benchmark/results/publication`.
 28. `BS_PUB_THREADS`
    - comma-separated BLAS thread settings used inside publication benchmark runs.
-   - default: `1,8`.
+   - default: `1,4`.
 29. `BS_PUB_SEEDS`
    - comma-separated RNG seeds for publication benchmark runs.
    - default: `20260310,20260311`.
@@ -256,7 +256,7 @@ julia --project=. benchmark/plot_publication_results.jl
 Publication workflow with explicit knobs:
 
 ```bash
-BS_PUB_THREADS=1,8 BS_PUB_SEEDS=20260310,20260311 BS_PUB_WARMUP=1 BS_PUB_SAMPLES=12 julia --project=. benchmark/bench_cpqr_publication.jl
+BS_PUB_THREADS=1,4 BS_PUB_SEEDS=20260310,20260311 BS_PUB_WARMUP=1 BS_PUB_SAMPLES=12 julia --project=. benchmark/bench_cpqr_publication.jl
 julia --project=. benchmark/plot_publication_results.jl benchmark/results/publication/publication_timings.csv benchmark/results/publication/plots benchmark/results/publication/tables
 ```
 

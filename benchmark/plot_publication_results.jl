@@ -16,6 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 
 input_path = sys.argv[1]
@@ -60,13 +61,21 @@ if set(r["method"] for r in rows) - set(methods):
     raise RuntimeError("Unexpected methods in publication CSV; expected only bsqr_full and dgeqp3")
 
 plt.rcParams.update({
-    "font.size": 8,
-    "axes.titlesize": 8,
-    "axes.labelsize": 8,
-    "legend.fontsize": 7,
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
+    "font.size": 10,
+    "axes.titlesize": 10,
+    "axes.labelsize": 10,
+    "legend.fontsize": 9,
+    "legend.title_fontsize": 9,
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
 })
+
+layout = os.getenv("BS_PUB_LAYOUT", "single_column").strip().lower()
+if layout not in ("single_column", "double_column"):
+    raise RuntimeError("BS_PUB_LAYOUT must be 'single_column' or 'double_column'")
+single_col_width_in = float(os.getenv("BS_PUB_SINGLE_COL_WIDTH_IN", "3.35"))
+double_col_width_in = float(os.getenv("BS_PUB_DOUBLE_COL_WIDTH_IN", "6.9"))
+fig_width_in = single_col_width_in if layout == "single_column" else double_col_width_in
 
 def finite(vals):
     return [v for v in vals if math.isfinite(v)]
@@ -131,92 +140,132 @@ def save_fig(fig, stem):
     fig.savefig(os.path.join(outdir, f"{stem}.pdf"))
     plt.close(fig)
 
-def mk_axes_grid(nr, nc, width_scale=2.7, height_scale=2.1):
+def _auto_height(kind, n_panels=1, n_items=0):
+    if layout == "single_column":
+        if kind == "line_panels":
+            return max(2.8, 1.55 * n_panels + 0.85)
+        if kind == "heatmap_panels":
+            return max(2.8, 1.4 * n_panels + 0.95)
+        if kind == "quality":
+            return 5.0
+        if kind == "aggregate":
+            return max(3.0, 0.34 * n_items + 1.35)
+    else:
+        if kind == "line_panels":
+            return max(3.8, 1.15 * n_panels + 0.8)
+        if kind == "heatmap_panels":
+            return max(3.8, 1.05 * n_panels + 1.0)
+        if kind == "quality":
+            return 3.8
+        if kind == "aggregate":
+            return max(3.2, 0.28 * n_items + 1.3)
+    return max(3.0, 1.5 * n_panels + 1.0)
+
+def mk_axes_grid(nr, nc, kind):
     fig, axes = plt.subplots(
         nr,
         nc,
-        figsize=(max(3.6, width_scale * nc), max(4.0, height_scale * nr)),
+        figsize=(fig_width_in, _auto_height(kind, nr * nc)),
         squeeze=False,
         constrained_layout=True,
     )
     return fig, axes
 
 # Figure 1: square runtime log-log (per family, faceted by threads)
-fig1, axes1 = mk_axes_grid(len(families), len(threads), width_scale=2.6, height_scale=2.0)
-for i, fam in enumerate(families):
-    for j, th in enumerate(threads):
-        ax = axes1[i][j]
-        sub = [
-            r for r in rows
-            if r["family"] == fam and r["regime"] == "square" and r["blas_threads"] == th
-        ]
-        ms = sorted({r["m"] for r in sub})
+panel_keys = [(fam, th) for fam in families for th in threads]
+fig1, axes1 = mk_axes_grid(len(panel_keys), 1, "line_panels")
+for idx, (fam, th) in enumerate(panel_keys):
+    ax = axes1[idx][0]
+    sub = [
+        r for r in rows
+        if r["family"] == fam and r["regime"] == "square" and r["blas_threads"] == th
+    ]
+    ms = sorted({r["m"] for r in sub})
+    for method, marker, ls in [("bsqr_full", "o", "-"), ("dgeqp3", "D", "--")]:
+        ymed = []
+        ylow = []
+        yhigh = []
+        for m in ms:
+            vals = [r["tmed"] for r in sub if r["m"] == m and r["method"] == method]
+            med, lo, hi = median_min_max(vals)
+            ymed.append(med)
+            ylow.append(lo)
+            yhigh.append(hi)
+        ax.plot(ms, ymed, marker=marker, linestyle=ls, label=method)
+        ax.fill_between(ms, ylow, yhigh, alpha=0.18)
+    ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
+    ax.set_title(f"{fam} | BLAS={th}")
+    if idx == len(panel_keys) - 1:
+        ax.set_xlabel("m=n")
+    ax.set_ylabel("median time (s)")
+    ax.grid(True, alpha=0.25)
+axes1[0][0].legend(loc="best", frameon=True)
+save_fig(fig1, "figure1_square_runtime")
+
+# Figure 2: short-wide runtime vs n (fixed m curves, per family, faceted by threads)
+fig2, axes2 = mk_axes_grid(len(panel_keys), 1, "line_panels")
+global_short_ms = sorted({r["m"] for r in rows if r["regime"] == "short_wide"})
+cmap = plt.get_cmap("tab10")
+for idx, (fam, th) in enumerate(panel_keys):
+    ax = axes2[idx][0]
+    sub = [
+        r for r in rows
+        if r["family"] == fam and r["regime"] == "short_wide" and r["blas_threads"] == th
+    ]
+    ms = sorted({r["m"] for r in sub})
+    for midx, m in enumerate(ms):
+        color = cmap(midx % 10)
         for method, marker, ls in [("bsqr_full", "o", "-"), ("dgeqp3", "D", "--")]:
+            rn = [r for r in sub if r["m"] == m and r["method"] == method]
+            ns = sorted({r["n"] for r in rn})
             ymed = []
             ylow = []
             yhigh = []
-            for m in ms:
-                vals = [r["tmed"] for r in sub if r["m"] == m and r["method"] == method]
+            for n in ns:
+                vals = [r["tmed"] for r in rn if r["n"] == n]
                 med, lo, hi = median_min_max(vals)
                 ymed.append(med)
                 ylow.append(lo)
                 yhigh.append(hi)
-            ax.plot(ms, ymed, marker=marker, linestyle=ls, label=method)
-            ax.fill_between(ms, ylow, yhigh, alpha=0.18)
-        ax.set_xscale("log", base=2)
-        ax.set_yscale("log")
-        ax.set_title(f"{fam}, BLAS={th}")
-        if i == len(families) - 1:
-            ax.set_xlabel("m=n")
-        if j == 0:
-            ax.set_ylabel("median time (s)")
-        ax.grid(True, alpha=0.25)
-axes1[0][0].legend(loc="best")
-save_fig(fig1, "figure1_square_runtime")
-
-# Figure 2: short-wide runtime vs n (fixed m curves, per family, faceted by threads)
-fig2, axes2 = mk_axes_grid(len(families), len(threads), width_scale=2.9, height_scale=2.0)
-for i, fam in enumerate(families):
-    for j, th in enumerate(threads):
-        ax = axes2[i][j]
-        sub = [
-            r for r in rows
-            if r["family"] == fam and r["regime"] == "short_wide" and r["blas_threads"] == th
-        ]
-        ms = sorted({r["m"] for r in sub})
-        cmap = plt.get_cmap("tab10")
-        for midx, m in enumerate(ms):
-            color = cmap(midx % 10)
-            for method, marker, ls in [("bsqr_full", "o", "-"), ("dgeqp3", "D", "--")]:
-                rn = [r for r in sub if r["m"] == m and r["method"] == method]
-                ns = sorted({r["n"] for r in rn})
-                ymed = []
-                ylow = []
-                yhigh = []
-                for n in ns:
-                    vals = [r["tmed"] for r in rn if r["n"] == n]
-                    med, lo, hi = median_min_max(vals)
-                    ymed.append(med)
-                    ylow.append(lo)
-                    yhigh.append(hi)
-                label = f"m={m} {method}"
-                ax.plot(ns, ymed, marker=marker, linestyle=ls, color=color, label=label)
-                ax.fill_between(ns, ylow, yhigh, color=color, alpha=0.12)
-        ax.set_xscale("log", base=2)
-        ax.set_yscale("log")
-        ax.set_title(f"{fam}, BLAS={th}")
-        if i == len(families) - 1:
-            ax.set_xlabel("n")
-        if j == 0:
-            ax.set_ylabel("median time (s)")
-        ax.grid(True, alpha=0.25)
-handles, labels = axes2[0][0].get_legend_handles_labels()
-if handles:
-    fig2.legend(handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.02))
+            ax.plot(ns, ymed, marker=marker, linestyle=ls, color=color)
+            ax.fill_between(ns, ylow, yhigh, color=color, alpha=0.12)
+    ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
+    ax.set_title(f"{fam} | BLAS={th}")
+    if idx == len(panel_keys) - 1:
+        ax.set_xlabel("n")
+    ax.set_ylabel("median time (s)")
+    ax.grid(True, alpha=0.25)
+method_handles = [
+    Line2D([0], [0], color="black", marker="o", linestyle="-", label="BSQR"),
+    Line2D([0], [0], color="black", marker="D", linestyle="--", label="DGEQP3"),
+]
+m_handles = [
+    Line2D([0], [0], color=cmap(i % 10), linestyle="-", marker=None, label=str(m))
+    for i, m in enumerate(global_short_ms)
+]
+leg_method = fig2.legend(
+    handles=method_handles,
+    loc="upper center",
+    bbox_to_anchor=(0.5, 1.018),
+    ncol=2,
+    frameon=True,
+    title="Method",
+)
+leg_m = fig2.legend(
+    handles=m_handles,
+    loc="upper center",
+    bbox_to_anchor=(0.5, 0.993),
+    ncol=max(1, min(3, len(m_handles))),
+    frameon=True,
+    title="m (rows)",
+)
+fig2.add_artist(leg_method)
 save_fig(fig2, "figure2_shortwide_runtime")
 
 # Figure 3: short-wide speedup heatmaps over (m, n/m) per family/thread
-fig3, axes3 = mk_axes_grid(len(families), len(threads), width_scale=2.7, height_scale=2.0)
+fig3, axes3 = mk_axes_grid(len(panel_keys), 1, "heatmap_panels")
 all_speed = [s["speedup"] for s in speed_rows if s["regime"] == "short_wide" and math.isfinite(s["speedup"])]
 vmin = np.nanmin(all_speed) if all_speed else 0.5
 vmax = np.nanmax(all_speed) if all_speed else 1.5
@@ -228,66 +277,80 @@ if vmax <= 1.0:
 if vmin >= 1.0:
     vmin = 0.99
 norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=1.0, vmax=vmax)
-for i, fam in enumerate(families):
-    for j, th in enumerate(threads):
-        ax = axes3[i][j]
-        sub = [
-            s for s in speed_rows
-            if s["family"] == fam and s["blas_threads"] == th and s["regime"] == "short_wide"
-        ]
-        ms = sorted({s["m"] for s in sub})
-        aspects = sorted({s["aspect"] for s in sub})
-        Z = np.full((len(ms), len(aspects)), np.nan)
-        for im, m in enumerate(ms):
-            for ia, aspect in enumerate(aspects):
-                vals = [s["speedup"] for s in sub if s["m"] == m and abs(s["aspect"] - aspect) < 1e-12]
-                Z[im, ia] = geomean(vals)
-        imh = ax.imshow(Z, origin="lower", aspect="auto", cmap="RdYlGn", norm=norm)
-        ax.set_title(f"{fam}, BLAS={th}")
-        ax.set_xticks(range(len(aspects)))
-        ax.set_xticklabels([f"{a:.1f}" for a in aspects], rotation=45, ha="right")
-        ax.set_yticks(range(len(ms)))
-        ax.set_yticklabels([str(m) for m in ms])
-        if i == len(families) - 1:
-            ax.set_xlabel("aspect (n/m)")
-        if j == 0:
-            ax.set_ylabel("m")
-cbar = fig3.colorbar(imh, ax=axes3.ravel().tolist(), shrink=0.8)
-cbar.set_label("speedup dgeqp3/bsqr")
+imh = None
+for idx, (fam, th) in enumerate(panel_keys):
+    ax = axes3[idx][0]
+    sub = [
+        s for s in speed_rows
+        if s["family"] == fam and s["blas_threads"] == th and s["regime"] == "short_wide"
+    ]
+    ms = sorted({s["m"] for s in sub})
+    aspects = sorted({s["aspect"] for s in sub})
+    Z = np.full((len(ms), len(aspects)), np.nan)
+    for im, m in enumerate(ms):
+        for ia, aspect in enumerate(aspects):
+            vals = [s["speedup"] for s in sub if s["m"] == m and abs(s["aspect"] - aspect) < 1e-12]
+            Z[im, ia] = geomean(vals)
+    imh = ax.imshow(Z, origin="lower", aspect="auto", cmap="RdYlGn", norm=norm)
+    ax.set_title(f"{fam} | BLAS={th}")
+    ax.set_xticks(range(len(aspects)))
+    ax.set_xticklabels([f"{a:.1f}" for a in aspects], rotation=45, ha="right")
+    ax.set_yticks(range(len(ms)))
+    ax.set_yticklabels([str(m) for m in ms])
+    if idx == len(panel_keys) - 1:
+        ax.set_xlabel("aspect (n/m)")
+    ax.set_ylabel("m")
+if imh is not None:
+    cbar = fig3.colorbar(imh, ax=axes3.ravel().tolist(), shrink=0.8, pad=0.01)
+    cbar.set_label("speedup dgeqp3/bsqr")
 save_fig(fig3, "figure3_shortwide_speedup_heatmap")
 
 # Figure 4: quality plot (residual and orthogonality, log-scale) across regimes
-def regime_method_stats(metric):
-    labels = []
-    meds = []
-    lows = []
-    highs = []
-    for regime in regimes:
-        for method in methods:
-            vals = [r[metric] for r in rows if r["regime"] == regime and r["method"] == method]
-            if vals:
-                arr = np.asarray(vals, dtype=float)
-                labels.append(f"{regime}\\n{method}")
-                meds.append(float(np.median(arr)))
-                lows.append(float(np.percentile(arr, 10)))
-                highs.append(float(np.percentile(arr, 90)))
-    return labels, meds, lows, highs
+def grouped_quality(metric, regime, method):
+    vals = [r[metric] for r in rows if r["regime"] == regime and r["method"] == method]
+    if not vals:
+        return float("nan"), float("nan"), float("nan")
+    arr = np.asarray(vals, dtype=float)
+    return float(np.median(arr)), float(np.percentile(arr, 10)), float(np.percentile(arr, 90))
 
-fig4, axes4 = plt.subplots(1, 2, figsize=(7.0, 3.0), squeeze=False, constrained_layout=True)
-for ax, metric, title in [
-    (axes4[0][0], "residual", "Residual"),
-    (axes4[0][1], "orthogonality", "Orthogonality"),
-]:
-    labels, meds, lows, highs = regime_method_stats(metric)
-    x = np.arange(len(labels))
-    yerr = np.vstack([np.asarray(meds) - np.asarray(lows), np.asarray(highs) - np.asarray(meds)])
-    ax.bar(x, meds, width=0.7, color="#4C78A8")
-    ax.errorbar(x, meds, yerr=yerr, fmt="none", ecolor="black", capsize=3, linewidth=0.8)
+if layout == "single_column":
+    fig4, axes4 = plt.subplots(2, 1, figsize=(fig_width_in, _auto_height("quality")), squeeze=False, constrained_layout=True)
+    quality_axes = [axes4[0][0], axes4[1][0]]
+else:
+    fig4, axes4 = plt.subplots(1, 2, figsize=(fig_width_in, _auto_height("quality")), squeeze=False, constrained_layout=True)
+    quality_axes = [axes4[0][0], axes4[0][1]]
+regime_labels = ["square", "short_wide"]
+regime_display = ["square", "short-wide"]
+x = np.arange(len(regime_labels))
+barw = 0.34
+for ax, metric, title in zip(quality_axes, ["residual", "orthogonality"], ["Residual", "Orthogonality"]):
+    y_bs = []
+    y_bs_lo = []
+    y_bs_hi = []
+    y_dg = []
+    y_dg_lo = []
+    y_dg_hi = []
+    for regime in regime_labels:
+        med, lo, hi = grouped_quality(metric, regime, "bsqr_full")
+        y_bs.append(med)
+        y_bs_lo.append(lo)
+        y_bs_hi.append(hi)
+        med, lo, hi = grouped_quality(metric, regime, "dgeqp3")
+        y_dg.append(med)
+        y_dg_lo.append(lo)
+        y_dg_hi.append(hi)
+    yerr_bs = np.vstack([np.asarray(y_bs) - np.asarray(y_bs_lo), np.asarray(y_bs_hi) - np.asarray(y_bs)])
+    yerr_dg = np.vstack([np.asarray(y_dg) - np.asarray(y_dg_lo), np.asarray(y_dg_hi) - np.asarray(y_dg)])
+    ax.bar(x - barw / 2, y_bs, width=barw, color="#4C78A8", label="bsqr_full")
+    ax.bar(x + barw / 2, y_dg, width=barw, color="#F58518", label="dgeqp3")
+    ax.errorbar(x - barw / 2, y_bs, yerr=yerr_bs, fmt="none", ecolor="black", capsize=3, linewidth=0.8)
+    ax.errorbar(x + barw / 2, y_dg, yerr=yerr_dg, fmt="none", ecolor="black", capsize=3, linewidth=0.8)
     ax.set_yscale("log")
     ax.set_xticks(x)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(regime_display)
     ax.set_title(title)
     ax.grid(True, axis="y", alpha=0.25)
+quality_axes[0].legend(loc="upper left")
 save_fig(fig4, "figure4_quality")
 
 # Figure 5: aggregate speedup bars with per-seed intervals
@@ -300,6 +363,13 @@ combo_seed_vals = defaultdict(list)
 for (fam, regime, th, seed), vals in seed_group.items():
     combo_seed_vals[(fam, regime, th)].append(geomean(vals))
 
+def short_family_name(name):
+    if name == "ill_conditioned":
+        return "ill-cond"
+    if name == "orthonormal_rows":
+        return "orth-rows"
+    return name
+
 labels = []
 centers = []
 lows = []
@@ -311,22 +381,28 @@ for key in sorted(combo_seed_vals.keys()):
     center = geomean(vals)
     lo = min(vals)
     hi = max(vals)
-    labels.append(f"{key[0]}\\n{key[1]}\\nBLAS={key[2]}")
+    regime_short = "sq" if key[1] == "square" else "sw"
+    labels.append(f"{short_family_name(key[0])} | {regime_short} | t{key[2]}")
     centers.append(center)
     lows.append(lo)
     highs.append(hi)
 
-fig5, ax5 = plt.subplots(1, 1, figsize=(7.4, 3.4), constrained_layout=True)
-x = np.arange(len(labels))
-yerr = np.vstack([np.asarray(centers) - np.asarray(lows), np.asarray(highs) - np.asarray(centers)])
-ax5.bar(x, centers, width=0.7, color="#72B7B2")
-ax5.errorbar(x, centers, yerr=yerr, fmt="none", ecolor="black", capsize=3, linewidth=0.8)
-ax5.axhline(1.0, color="black", linestyle="--", linewidth=1.0)
-ax5.set_xticks(x)
-ax5.set_xticklabels(labels)
-ax5.set_ylabel("geomean speedup (dgeqp3/bsqr)")
+fig5, ax5 = plt.subplots(
+    1,
+    1,
+    figsize=(fig_width_in, _auto_height("aggregate", n_items=len(labels))),
+    constrained_layout=True,
+)
+y = np.arange(len(labels))
+xerr = np.vstack([np.asarray(centers) - np.asarray(lows), np.asarray(highs) - np.asarray(centers)])
+ax5.barh(y, centers, color="#72B7B2")
+ax5.errorbar(centers, y, xerr=xerr, fmt="none", ecolor="black", capsize=3, linewidth=0.8)
+ax5.axvline(1.0, color="black", linestyle="--", linewidth=1.0)
+ax5.set_yticks(y)
+ax5.set_yticklabels(labels)
+ax5.set_xlabel("geomean speedup (dgeqp3/bsqr)")
 ax5.set_title("Aggregate speedup by family/regime/thread")
-ax5.grid(True, axis="y", alpha=0.25)
+ax5.grid(True, axis="x", alpha=0.25)
 save_fig(fig5, "figure5_aggregate_speedup")
 
 # Caption-ready tables
