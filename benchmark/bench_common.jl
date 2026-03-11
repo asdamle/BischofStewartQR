@@ -178,6 +178,33 @@ function _bench_and_quality_ci(fbench::F, quality::Q; warmup::Int, samples::Int)
     )
 end
 
+function _bench_pair(
+    A::Matrix{Float64},
+    k::Int,
+    norm_recomp_tol::Float64;
+    warmup::Int,
+    samples::Int,
+    bench_quality::B,
+) where {B<:Function}
+    rows = NamedTuple[]
+
+    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
+    bs = bench_quality(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+    push!(rows, (; method = BSQR_METHOD_LABEL, bs...))
+
+    if lazy_benchmark_enabled()
+        f_lazy() = run_bsqr_lazy_blas_fair(A, k, norm_recomp_tol)
+        lazy = bench_quality(f_lazy, F -> residual_bs(A, F); warmup = warmup, samples = samples)
+        push!(rows, (; method = BSQR_LAZY_BLAS_METHOD_LABEL, lazy...))
+    end
+
+    f_qr() = run_qr_fair(A)
+    dg = bench_quality(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
+    push!(rows, (; method = DGEQP3_METHOD_LABEL, dg...))
+
+    return rows
+end
+
 function residual_bs(A::Matrix{Float64}, F::BSQRPivoted)
     Q = BSPivotQR._explicit_q(F)
     T = BSPivotQR._packed_to_qt(F)
@@ -226,43 +253,25 @@ end
 run_qr_fair(A::Matrix{Float64}) = qr(copy(A), ColumnNorm())
 
 function bench_pair_basic(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
-    rows = NamedTuple[]
-
-    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
-    bs = _bench_and_quality_basic(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
-    push!(rows, (; method = BSQR_METHOD_LABEL, bs...))
-
-    if lazy_benchmark_enabled()
-        f_lazy() = run_bsqr_lazy_blas_fair(A, k, norm_recomp_tol)
-        lazy = _bench_and_quality_basic(f_lazy, F -> residual_bs(A, F); warmup = warmup, samples = samples)
-        push!(rows, (; method = BSQR_LAZY_BLAS_METHOD_LABEL, lazy...))
-    end
-
-    f_qr() = run_qr_fair(A)
-    dg = _bench_and_quality_basic(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
-    push!(rows, (; method = DGEQP3_METHOD_LABEL, dg...))
-
-    return rows
+    return _bench_pair(
+        A,
+        k,
+        norm_recomp_tol;
+        warmup = warmup,
+        samples = samples,
+        bench_quality = _bench_and_quality_basic,
+    )
 end
 
 function bench_pair_ci(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
-    rows = NamedTuple[]
-
-    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
-    bs = _bench_and_quality_ci(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
-    push!(rows, (; method = BSQR_METHOD_LABEL, bs...))
-
-    if lazy_benchmark_enabled()
-        f_lazy() = run_bsqr_lazy_blas_fair(A, k, norm_recomp_tol)
-        lazy = _bench_and_quality_ci(f_lazy, F -> residual_bs(A, F); warmup = warmup, samples = samples)
-        push!(rows, (; method = BSQR_LAZY_BLAS_METHOD_LABEL, lazy...))
-    end
-
-    f_qr() = run_qr_fair(A)
-    dg = _bench_and_quality_ci(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
-    push!(rows, (; method = DGEQP3_METHOD_LABEL, dg...))
-
-    return rows
+    return _bench_pair(
+        A,
+        k,
+        norm_recomp_tol;
+        warmup = warmup,
+        samples = samples,
+        bench_quality = _bench_and_quality_ci,
+    )
 end
 
 function grouped_rows_with_baseline(rows, keyf::F; sortby::S = identity) where {F<:Function,S<:Function}

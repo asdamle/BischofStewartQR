@@ -244,6 +244,7 @@ function _bsqr_kernel!(
             sj = ws.s[j]
             # Bischof-Stewart pivot criterion: minimize (1 + ||w_j||^2) / ||a_j^(i)||^2.
             cj = sj > 0.0 ? (1.0 + ws.wnorm2[j]) / sj : Inf
+            # Use strict '<' so ties keep the first minimum, matching reference behavior.
             if cj < best_c
                 best_c = cj
                 best_j = j
@@ -359,22 +360,19 @@ function _bsqr_kernel!(
                     d = dots[t]
 
                     wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
-                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
-
-                    recomputed, down_ns = _downdate_with_stats!(
+                    down_ns = _set_wnorm_and_downdate!(
                         A,
                         ws,
                         i,
                         j,
+                        wn,
                         alpha[t],
                         m,
                         norm_recomp_tol,
+                        norm_recomp_count,
                         kernel_stats,
                     )
                     downdate_ns_local += down_ns
-                    if norm_recomp_count !== nothing && recomputed
-                        norm_recomp_count[] += 1
-                    end
                 end
             else
                 @inbounds for t in 1:nrem
@@ -382,22 +380,19 @@ function _bsqr_kernel!(
                     b = beta_vec[t]
 
                     wn = ws.wnorm2[j] + b * b
-                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
-
-                    recomputed, down_ns = _downdate_with_stats!(
+                    down_ns = _set_wnorm_and_downdate!(
                         A,
                         ws,
                         i,
                         j,
+                        wn,
                         alpha[t],
                         m,
                         norm_recomp_tol,
+                        norm_recomp_count,
                         kernel_stats,
                     )
                     downdate_ns_local += down_ns
-                    if norm_recomp_count !== nothing && recomputed
-                        norm_recomp_count[] += 1
-                    end
                 end
             end
             if kernel_stats !== nothing
@@ -423,6 +418,26 @@ const _SHORT_WIDE_FASTPATH_MMAX = 256
 
 @inline _use_short_wide_fastpath(m::Int, n::Int) = (m <= _SHORT_WIDE_FASTPATH_MMAX) && (n >= _SHORT_WIDE_FASTPATH_ASPECT * m)
 @inline _short_wide_fastpath_enabled() = strip(get(ENV, "BS_SHORT_WIDE_FASTPATH", "1")) != "0"
+
+@inline function _set_wnorm_and_downdate!(
+    A::StridedMatrix{Float64},
+    ws::BSWorkspace,
+    i::Int,
+    j::Int,
+    wn::Float64,
+    alpha_ij::Float64,
+    m::Int,
+    norm_recomp_tol::Float64,
+    norm_recomp_count::Union{Nothing,Base.RefValue{Int}},
+    kernel_stats::Union{Nothing,BSKernelStats},
+)
+    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+    recomputed, down_ns = _downdate_with_stats!(A, ws, i, j, alpha_ij, m, norm_recomp_tol, kernel_stats)
+    if norm_recomp_count !== nothing && recomputed
+        norm_recomp_count[] += 1
+    end
+    return down_ns
+end
 
 @inline function _downdate_with_stats!(
     A::StridedMatrix{Float64},
