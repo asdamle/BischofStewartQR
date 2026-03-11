@@ -223,6 +223,10 @@ vmax = np.nanmax(all_speed) if all_speed else 1.5
 if vmin == vmax:
     vmin = min(vmin, 0.95)
     vmax = max(vmax, 1.05)
+if vmax <= 1.0:
+    vmax = 1.01
+if vmin >= 1.0:
+    vmin = 0.99
 norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=1.0, vmax=vmax)
 for i, fam in enumerate(families):
     for j, th in enumerate(threads):

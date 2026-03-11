@@ -1,0 +1,20 @@
+run_id = 20260310_213519
+timestamp = 2026-03-10T21:40:46.244
+julia_version = 1.11.6
+cpu_model = Apple M3
+cpu_threads = 4
+blas_threads_at_end = 4
+blas_config = LBTConfig([ILP64] libopenblas64_.dylib, [LP64] Accelerate, [ILP64] Accelerate)
+
+[publication_knobs]
+BS_PUB_THREADS = 1,8
+BS_PUB_SEEDS = 20260310,20260311
+BS_PUB_FAMILIES = gaussian,ill_conditioned,orthonormal_rows
+BS_PUB_SQUARE_MS = 64,128,256,384,512
+BS_PUB_SHORT_MS = 32,64,128,256,512
+BS_PUB_SHORT_ASPECTS = 2.0,4.0,8.0,10.0
+BS_PUB_WARMUP = 1
+BS_PUB_SAMPLES = 12
+BS_NORM_RECOMP_TOL = 1.4901161193847656e-8
+
+[environment]
