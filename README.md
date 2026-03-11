@@ -46,139 +46,46 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 julia --project=. benchmark/setup_accelerate.jl
 ```
 
-## Benchmarks
+## Publication benchmark workflow
+
+Primary benchmark script:
 
 ```bash
-BS_USE_ACCELERATE=1 BS_REQUIRE_ACCELERATE=0 julia --project=. benchmark/bench_cpqr.jl
+julia --project=. benchmark/bench_cpqr_publication.jl
 ```
 
-Set BLAS threads explicitly (recommended for reproducible timing):
+Generate publication figures and caption-ready tables:
 
 ```bash
-BS_BLAS_THREADS=8 BS_USE_ACCELERATE=1 BS_REQUIRE_ACCELERATE=0 julia --project=. benchmark/bench_cpqr.jl
+julia --project=. benchmark/plot_publication_results.jl
 ```
 
-Benchmark fairness note: benchmark scripts compare `bsqr!` and `qr(..., ColumnNorm())` on equal footing using fresh `copy(A)` per trial, disable bsqr-only extras (`workspace` reuse, `track_inverse_frob`, `return_rinv_r12`), and force full-step runs (`k=min(m,n)`, `rank_stop=false`).
-Use `BS_NORM_RECOMP_TOL` to tune the partial-norm recomputation threshold when exploring robustness/performance tradeoffs.
-Set `BS_BENCH_INCLUDE_LAZY=1` to add the internal `bsqr_lazy_blas` prototype to benchmark output.
-Tune the prototype with `BS_LAZY_BATCH_SIZE` or with `BS_LAZY_BATCH_FRACTION`, `BS_LAZY_BATCH_MIN`, and `BS_LAZY_BATCH_MAX`.
+Useful knobs:
 
-Quick smoke run:
+- `BS_PUB_OUTDIR` (default: `benchmark/results/publication`)
+- `BS_PUB_THREADS` (default: `1,4`)
+- `BS_PUB_SEEDS` (default: `20260310,20260311`)
+- `BS_PUB_FAMILIES` (default: `gaussian,ill_conditioned,orthonormal_rows`)
+- `BS_PUB_SQUARE_MS` (default: `64,128,256,384,512`)
+- `BS_PUB_SHORT_MS` (default: `32,64,128,256,512`)
+- `BS_PUB_SHORT_ASPECTS` (default: `2.0,4.0,8.0,10.0`)
+- `BS_PUB_WARMUP` (default: `1`)
+- `BS_PUB_SAMPLES` (default: `30`)
+- `BS_NORM_RECOMP_TOL` (default: `sqrt(eps(Float64))`)
+- `BS_HOUSEHOLDER_LAPACK_LARF` (`1` by default; set `0` to force the manual BLAS path)
+
+Example run with explicit knobs:
 
 ```bash
-BS_QUICK=1 BS_USE_ACCELERATE=1 BS_REQUIRE_ACCELERATE=0 julia --project=. benchmark/bench_cpqr.jl
+BS_PUB_THREADS=1,4 BS_PUB_SEEDS=20260310,20260311 BS_PUB_WARMUP=1 BS_PUB_SAMPLES=30 julia --project=. benchmark/bench_cpqr_publication.jl
+julia --project=. benchmark/plot_publication_results.jl benchmark/results/publication/publication_timings.csv benchmark/results/publication/plots benchmark/results/publication/tables
 ```
 
-Systematic size/aspect sweep benchmark:
+Outputs:
 
-```bash
-BS_SWEEP_QUICK=1 julia --project=. benchmark/bench_cpqr_sweep.jl
-```
-
-Regime scaling benchmark (fixed `n` with increasing `m`, and fixed `m` with increasing `n`):
-
-```bash
-BS_REGIME_QUICK=1 julia --project=. benchmark/bench_cpqr_regimes.jl
-```
-
-Note: for the orthonormal-row family, regime benchmark only evaluates fixed-`m`/increasing-`n` (short-wide growth).
-Set `BS_REGIME_FAMILIES` to restrict regime benchmarking to a subset of families.
-Set `BS_SHORT_WIDE_FASTPATH=0` to disable the BSQR short-wide kernel fast path for diagnostics.
-
-Kernel breakdown profile (pinpoint bsqr runtime origin by phase):
-
-```bash
-BS_PROFILE_QUICK=1 julia --project=. benchmark/profile_bsqr_breakdown.jl
-```
-
-## Validation workflow
-
-Tier 1 (quick gate):
-
-```bash
-julia --project=. benchmark/run_validation_tier1.jl
-```
-
-Tier 2 (full gate):
-
-```bash
-julia --project=. benchmark/run_validation_tier2.jl
-```
-
-Note: validation runners execute plotting scripts and require matplotlib (`python3 -m pip install matplotlib`).
-
-Baseline snapshot (for candidate-vs-baseline comparisons):
-
-```bash
-julia --project=. benchmark/freeze_baseline.jl
-```
-
-Compare current outputs against a baseline snapshot:
-
-```bash
-julia --project=. benchmark/compare_results.jl benchmark/results/baseline_YYYYMMDD_HHMMSS
-```
-
-Comprehensive status + deep assessment workflow:
-
-```bash
-julia --project=. benchmark/assess_status.jl
-julia --project=. benchmark/analyze_assessment.jl
-```
-
-Run only deep assessment phase (skip stage-1 triage reruns):
-
-```bash
-BS_ASSESS_RUN_STAGE1=0 julia --project=. benchmark/assess_status.jl
-```
-
-Run deep assessment in expanded mode:
-
-```bash
-BS_ASSESS_DEEP_QUICK=0 julia --project=. benchmark/assess_status.jl
-```
-
-Outputs are written to:
-
-- `benchmark/results/timings.csv`
-- `benchmark/results/summary.md`
-- `benchmark/results/sweep_timings.csv`
-- `benchmark/results/sweep_summary.md`
-- `benchmark/results/regime_timings.csv`
-- `benchmark/results/regime_summary.md`
-- `benchmark/results/profile_breakdown.csv`
-- `benchmark/results/profile_breakdown_summary.md`
-- `benchmark/results/validation_report.md`
-- `benchmark/results/guardrail_failures.csv`
-- `benchmark/results/status_triage_YYYYMMDD_HHMMSS.md`
-- `benchmark/results/profile_hotspots_YYYYMMDD_HHMMSS.csv`
-- `benchmark/results/assessment_raw.csv`
-- `benchmark/results/assessment_summary.md`
-- `benchmark/results/optimization_candidates.md`
-- `benchmark/results/perf_assessment_conclusion.md`
-
-## Plotting benchmark results
-
-Install plotting dependency:
-
-```bash
-python3 -m pip install matplotlib
-```
-
-Generate plots from benchmark CSV:
-
-```bash
-julia --project=. benchmark/plot_results.jl
-```
-
-Optional input/output override:
-
-```bash
-julia --project=. benchmark/plot_results.jl benchmark/results/timings.csv benchmark/results/plots
-```
-
-Generate regime scaling plots:
-
-```bash
-julia --project=. benchmark/plot_regime_results.jl
-```
+- `benchmark/results/publication/publication_timings.csv`
+- `benchmark/results/publication/publication_summary.md`
+- `benchmark/results/publication/metadata.txt`
+- `benchmark/results/publication/plots/*.png`
+- `benchmark/results/publication/plots/*.pdf`
+- `benchmark/results/publication/tables/*.csv`
