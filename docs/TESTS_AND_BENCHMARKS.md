@@ -166,6 +166,29 @@ This is the single source of truth for benchmark behavior:
 26. `BS_LAZY_BATCH_MIN`, `BS_LAZY_BATCH_MAX`
    - lower/upper caps for lazy refresh batch size.
    - defaults: `min(8, n)` and no upper cap.
+27. `BS_PUB_OUTDIR`
+   - output directory for publication benchmark artifacts.
+   - default: `benchmark/results/publication`.
+28. `BS_PUB_THREADS`
+   - comma-separated BLAS thread settings used inside publication benchmark runs.
+   - default: `1,8`.
+29. `BS_PUB_SEEDS`
+   - comma-separated RNG seeds for publication benchmark runs.
+   - default: `20260310,20260311`.
+30. `BS_PUB_FAMILIES`
+   - comma-separated family subset for publication benchmark (`gaussian`, `ill_conditioned`, `orthonormal_rows`).
+31. `BS_PUB_WARMUP`, `BS_PUB_SAMPLES`
+   - warmup and sample counts for publication benchmark timing loops.
+   - defaults: `1` and `12`.
+32. `BS_PUB_SQUARE_MS`
+   - square-case row/column sizes for publication benchmark.
+   - default: `64,128,256,384,512`.
+33. `BS_PUB_SHORT_MS`
+   - short-wide row sizes for publication benchmark.
+   - default: `32,64,128,256,512`.
+34. `BS_PUB_SHORT_ASPECTS`
+   - short-wide aspect ratios (`n/m`) for publication benchmark.
+   - default: `2,4,8,10`.
 
 Example reproducible run:
 
@@ -221,6 +244,27 @@ Kernel breakdown profiling:
 
 ```bash
 BS_PROFILE_QUICK=1 julia --project=. benchmark/profile_bsqr_breakdown.jl
+```
+
+Publication benchmark workflow (square + short-wide up to `m=512`, `n=10m`):
+
+```bash
+julia --project=. benchmark/bench_cpqr_publication.jl
+julia --project=. benchmark/plot_publication_results.jl
+```
+
+Publication workflow with explicit knobs:
+
+```bash
+BS_PUB_THREADS=1,8 BS_PUB_SEEDS=20260310,20260311 BS_PUB_WARMUP=1 BS_PUB_SAMPLES=12 julia --project=. benchmark/bench_cpqr_publication.jl
+julia --project=. benchmark/plot_publication_results.jl benchmark/results/publication/publication_timings.csv benchmark/results/publication/plots benchmark/results/publication/tables
+```
+
+Publication smoke run (reduced mini-grid):
+
+```bash
+BS_PUB_OUTDIR=/tmp/bs_pub_smoke BS_PUB_FAMILIES=gaussian BS_PUB_THREADS=1 BS_PUB_SEEDS=20260310 BS_PUB_SQUARE_MS=64 BS_PUB_SHORT_MS=32 BS_PUB_SHORT_ASPECTS=2 BS_PUB_WARMUP=0 BS_PUB_SAMPLES=2 julia --project=. benchmark/bench_cpqr_publication.jl
+julia --project=. benchmark/plot_publication_results.jl /tmp/bs_pub_smoke/publication_timings.csv /tmp/bs_pub_smoke/plots /tmp/bs_pub_smoke/tables
 ```
 
 Validation runners:
@@ -304,6 +348,25 @@ Files:
    - ranked K1-K5 optimization backlog with go/no-go guidance.
 16. `perf_assessment_conclusion.md`
    - concise executive conclusion: status, bottlenecks, top opportunities, and stability no-go areas.
+17. `publication/publication_timings.csv`
+   - publication benchmark raw rows including run id, seed, regime, aspect, and BLAS thread count.
+18. `publication/publication_summary.md`
+   - publication benchmark speedup summary by family/regime/thread.
+19. `publication/metadata.txt`
+   - reproducibility metadata (hardware, BLAS config, publication env knobs, timestamp).
+20. `publication/plots/*.png` and `publication/plots/*.pdf`
+   - publication figure set:
+     - `figure1_square_runtime`
+     - `figure2_shortwide_runtime`
+     - `figure3_shortwide_speedup_heatmap`
+     - `figure4_quality`
+     - `figure5_aggregate_speedup`
+21. `publication/tables/table_square_speedup.csv`
+   - caption-ready square-case speedup table.
+22. `publication/tables/table_shortwide_speedup.csv`
+   - caption-ready short-wide speedup table.
+23. `publication/tables/table_quality.csv`
+   - caption-ready quality summary table.
 
 Baseline freeze outputs:
 
@@ -327,6 +390,8 @@ Plot script:
   - `benchmark/plot_sweep_results.jl`
 - regime plot script:
   - `benchmark/plot_regime_results.jl`
+- publication plot script:
+  - `benchmark/plot_publication_results.jl`
 
 Run:
 
@@ -364,6 +429,12 @@ Regime plotting with explicit paths:
 julia --project=. benchmark/plot_regime_results.jl benchmark/results/regime_timings.csv benchmark/results/regime_plots
 ```
 
+Publication plotting with explicit paths:
+
+```bash
+julia --project=. benchmark/plot_publication_results.jl benchmark/results/publication/publication_timings.csv benchmark/results/publication/plots benchmark/results/publication/tables
+```
+
 Sweep timing-line plots include shaded 95% timing intervals when CI columns are present. Legacy sweep CSV files without CI columns are still supported (no shaded interval in that case).
 Sweep timing-line plots are rendered on log-log axes and include an `n^3` reference trend line.
 Regime timing plots are log-log, include shaded 95% timing intervals, and include a linear reference trend to highlight fixed-dimension linear scaling.
@@ -373,6 +444,7 @@ Output plots (PNG) are written to:
 - `benchmark/results/plots`
 - `benchmark/results/sweep_plots`
 - `benchmark/results/regime_plots`
+- `benchmark/results/publication/plots` (also writes matching PDF files and table CSVs under `benchmark/results/publication/tables`)
 
 Notes:
 
