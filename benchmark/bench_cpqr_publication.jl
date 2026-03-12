@@ -12,7 +12,9 @@ include("bench_common.jl")
 using .BenchCommon
 
 const DEFAULT_PUB_OUTDIR = joinpath(@__DIR__, "results", "publication")
-const ALLOWED_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
+const SQUARE_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
+const SHORT_WIDE_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL])
+const ALLOWED_METHODS = Set(vcat(collect(SQUARE_METHODS), collect(SHORT_WIDE_METHODS)))
 
 _parse_families() = parse_symbol_list(
     "BS_PUB_FAMILIES",
@@ -116,7 +118,11 @@ function _write_metadata(
     end
 end
 
-function _speedup_rows(rows::Vector{NamedTuple})
+function _speedup_rows(
+    rows::Vector{NamedTuple},
+    baseline_method::String;
+    regime::Union{Nothing,String} = nothing,
+)
     idx = Dict{Tuple{Symbol,String,Int,Int,Int,Int,String},Float64}()
     for r in rows
         key = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, r.method)
@@ -126,10 +132,11 @@ function _speedup_rows(rows::Vector{NamedTuple})
     speed = NamedTuple[]
     for r in rows
         r.method == BSQR_METHOD_LABEL || continue
-        key_dg = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, DGEQP3_METHOD_LABEL)
-        haskey(idx, key_dg) || continue
-        dg_t = idx[key_dg]
-        sp = r.tmed == 0.0 ? NaN : (dg_t / r.tmed)
+        regime !== nothing && r.regime != regime && continue
+        key_baseline = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, baseline_method)
+        haskey(idx, key_baseline) || continue
+        baseline_t = idx[key_baseline]
+        sp = r.tmed == 0.0 ? NaN : (baseline_t / r.tmed)
         push!(speed, (
             family = r.family,
             regime = r.regime,
@@ -139,8 +146,9 @@ function _speedup_rows(rows::Vector{NamedTuple})
             seed = r.seed,
             blas_threads = r.blas_threads,
             speedup = sp,
+            baseline_method = baseline_method,
             bsqr_tmed_s = r.tmed,
-            dgeqp3_tmed_s = dg_t,
+            baseline_tmed_s = baseline_t,
         ))
     end
     return speed
@@ -153,13 +161,20 @@ function _geomean(vals::Vector{Float64})
 end
 
 function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::String, threads::Vector{Int}, seeds::Vector{Int})
-    speeds = _speedup_rows(rows)
+    speeds = _speedup_rows(rows, DGEQP3_METHOD_LABEL)
+    rinv_speeds = _speedup_rows(rows, DGEQP3_TRSM_METHOD_LABEL; regime = "short_wide")
 
     grouped = Dict{Tuple{Symbol,String,Int},Vector{Float64}}()
     for s in speeds
         key = (s.family, s.regime, s.blas_threads)
         get!(grouped, key, Float64[])
         push!(grouped[key], s.speedup)
+    end
+    grouped_rinv = Dict{Tuple{Symbol,Int},Vector{Float64}}()
+    for s in rinv_speeds
+        key = (s.family, s.blas_threads)
+        get!(grouped_rinv, key, Float64[])
+        push!(grouped_rinv[key], s.speedup)
     end
 
     open(md_path, "w") do md
@@ -177,6 +192,13 @@ function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::Strin
             g = _geomean(grouped[key])
             println(md, "| $(key[1]) | $(key[2]) | $(key[3]) | $(round(g, sigdigits=5)) |")
         end
+        println(md, "")
+        println(md, "| family | blas_threads | geomean speedup (dgeqp3_trsm/bsqr) [short_wide] |")
+        println(md, "|---|---:|---:|")
+        for key in sort!(collect(keys(grouped_rinv)), by = x -> (string(x[1]), x[2]))
+            g = _geomean(grouped_rinv[key])
+            println(md, "| $(key[1]) | $(key[2]) | $(round(g, sigdigits=5)) |")
+        end
     end
 end
 
@@ -188,7 +210,8 @@ function _validate_pairs(rows::Vector{NamedTuple})
         push!(keyset[key], r.method)
     end
     for (k, methods) in keyset
-        methods == ALLOWED_METHODS || error("Missing benchmark pair for key=$k; methods present=$(collect(methods))")
+        expected = k[2] == "short_wide" ? SHORT_WIDE_METHODS : SQUARE_METHODS
+        methods == expected || error("Missing benchmark rows for key=$k; expected=$(collect(expected)), present=$(collect(methods))")
     end
 end
 
@@ -240,7 +263,16 @@ function run_publication_benchmarks()
 
                         A = make_matrix(family, c.m, c.n, rng)
                         kfull = min(c.m, c.n)
-                        rowset = bench_pair_ci(A, kfull, norm_recomp_tol; warmup = warmup, samples = samples)
+                        is_short_wide = c.regime == "short_wide"
+                        rowset = bench_pair_ci(
+                            A,
+                            kfull,
+                            norm_recomp_tol;
+                            warmup = warmup,
+                            samples = samples,
+                            bsqr_return_rinv_r12 = is_short_wide,
+                            include_dgeqp3_trsm = is_short_wide,
+                        )
 
                         for row in rowset
                             row.method in ALLOWED_METHODS || continue

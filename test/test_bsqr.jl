@@ -39,7 +39,7 @@ end
     end
 end
 
-@testset "Early stop and edge cases" begin
+@testset "Default full factorization and edge cases" begin
     rng = MersenneTwister(17)
     A = randn(rng, 9, 6)
 
@@ -55,8 +55,11 @@ end
 
     B = [ones(6) ones(6) randn(rng, 6, 4)]
     Fr = bsqr(B)
-    @test Fr.ksteps < min(size(B)...)
+    @test Fr.ksteps == min(size(B)...)
     @test all(isfinite, Fr.factors)
+
+    Frstop = bsqr(B; rank_stop = true)
+    @test Frstop.ksteps < min(size(B)...)
 
     C = [ones(5) ones(5) ones(5) ones(5)]
     Ftie = bsqr(C)
@@ -72,7 +75,7 @@ end
 
     B = [ones(20) ones(20) randn(rng, 20, 10)]
     Fauto = bsqr(B)
-    @test Fauto.ksteps < min(size(B)...)
+    @test Fauto.ksteps == min(size(B)...)
 
     Ffixed = bsqr(B; k = 5, rank_stop = false)
     @test Ffixed.ksteps == 5

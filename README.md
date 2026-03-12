@@ -1,6 +1,6 @@
 # BSPivotQR
 
-Julia implementation of Bischof-Stewart column-pivoted QR with an optional early-stop parameter `k`.
+Julia implementation of Bischof-Stewart column-pivoted QR with optional early stopping (`rank_stop=true`).
 
 Detailed validation/performance documentation:
 
@@ -26,13 +26,15 @@ python3 -m pip install matplotlib
 
 ## API
 
-- `bsqr(A; k=min(size(A)...), check=true, track_inverse_frob=false, return_rinv_r12=false, rank_stop=true, norm_recomp_tol=sqrt(eps(Float64)), blas_threads=nothing)`
-- `bsqr!(A::StridedMatrix{Float64}; k=min(size(A)...), check=true, track_inverse_frob=false, return_rinv_r12=false, rank_stop=true, norm_recomp_tol=sqrt(eps(Float64)), blas_threads=nothing, workspace=nothing)`
-- `bsqr!(A, tau, jpvt, workspace; k=min(size(A)...), check=true, reset_pivots=true, frob_inv_trace=nothing, rank_stop=true, norm_recomp_tol=sqrt(eps(Float64)), blas_threads=nothing) -> ksteps`
+- `bsqr(A; k=min(size(A)...), check=true, track_inverse_frob=false, return_rinv_r12=false, rank_stop=false, norm_recomp_tol=sqrt(eps(Float64)), blas_threads=nothing)`
+- `bsqr!(A::StridedMatrix{Float64}; k=min(size(A)...), check=true, track_inverse_frob=false, return_rinv_r12=false, rank_stop=false, norm_recomp_tol=sqrt(eps(Float64)), blas_threads=nothing, workspace=nothing)`
+- `bsqr!(A, tau, jpvt, workspace; k=min(size(A)...), check=true, reset_pivots=true, frob_inv_trace=nothing, rank_stop=false, norm_recomp_tol=sqrt(eps(Float64)), blas_threads=nothing) -> ksteps`
 - `R(F::BSQRPivoted)`
 - `perm(F::BSQRPivoted)`
 - `rinv_r12(F::BSQRPivoted)`
 - `reconstruct(F, Aorig)`
+
+`rank_stop=false` is the default so `bsqr` performs full CPQR by default (QR drop-in behavior). Set `rank_stop=true` to enable early stopping.
 
 ## Tests
 

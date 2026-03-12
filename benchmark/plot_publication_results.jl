@@ -54,11 +54,19 @@ if not rows:
 
 families = sorted({r["family"] for r in rows})
 threads = sorted({r["blas_threads"] for r in rows})
-methods = ("bsqr_full", "dgeqp3")
+methods = ("bsqr_full", "dgeqp3", "dgeqp3_trsm")
+square_methods = ("bsqr_full", "dgeqp3")
+shortwide_methods = ("bsqr_full", "dgeqp3", "dgeqp3_trsm")
 regimes = ("square", "short_wide")
 
 if set(r["method"] for r in rows) - set(methods):
-    raise RuntimeError("Unexpected methods in publication CSV; expected only bsqr_full and dgeqp3")
+    raise RuntimeError("Unexpected methods in publication CSV; expected only bsqr_full, dgeqp3, and dgeqp3_trsm")
+
+METHOD_STYLE = {
+    "bsqr_full": {"marker": "o", "ls": "-", "label": "BSQR"},
+    "dgeqp3": {"marker": "D", "ls": "--", "label": "DGEQP3"},
+    "dgeqp3_trsm": {"marker": "s", "ls": ":", "label": "DGEQP3+TRSM"},
+}
 
 plt.rcParams.update({
     "font.size": 10,
@@ -99,7 +107,7 @@ def median_min_max(vals):
     arr = np.asarray(v, dtype=float)
     return float(np.median(arr)), float(np.min(arr)), float(np.max(arr))
 
-def paired_speedup_rows(rows_in):
+def paired_speedup_rows(rows_in, baseline_method, regime_filter=None):
     idx = {}
     for r in rows_in:
         key = (
@@ -112,9 +120,11 @@ def paired_speedup_rows(rows_in):
     for r in rows_in:
         if r["method"] != "bsqr_full":
             continue
+        if regime_filter is not None and r["regime"] not in regime_filter:
+            continue
         key_dg = (
             r["family"], r["regime"], r["m"], r["n"], r["aspect"],
-            r["seed"], r["blas_threads"], "dgeqp3"
+            r["seed"], r["blas_threads"], baseline_method
         )
         d = idx.get(key_dg)
         if d is None or r["tmed"] == 0.0:
@@ -128,12 +138,14 @@ def paired_speedup_rows(rows_in):
             "seed": r["seed"],
             "blas_threads": r["blas_threads"],
             "speedup": d["tmed"] / r["tmed"],
+            "baseline_method": baseline_method,
             "bsqr_tmed": r["tmed"],
-            "dgeqp3_tmed": d["tmed"],
+            "baseline_tmed": d["tmed"],
         })
     return out
 
-speed_rows = paired_speedup_rows(rows)
+speed_rows = paired_speedup_rows(rows, "dgeqp3")
+speed_rows_trsm = paired_speedup_rows(rows, "dgeqp3_trsm", regime_filter={"short_wide"})
 
 def save_fig(fig, stem):
     fig.savefig(os.path.join(outdir, f"{stem}.png"), dpi=300)
@@ -202,7 +214,10 @@ for idx, (fam, th) in enumerate(panel_keys):
         if r["family"] == fam and r["regime"] == "square" and r["blas_threads"] == th
     ]
     ms = sorted({r["m"] for r in sub})
-    for method, marker, ls in [("bsqr_full", "o", "-"), ("dgeqp3", "D", "--")]:
+    for method in square_methods:
+        style = METHOD_STYLE[method]
+        marker = style["marker"]
+        ls = style["ls"]
         ymed = []
         ylow = []
         yhigh = []
@@ -212,7 +227,7 @@ for idx, (fam, th) in enumerate(panel_keys):
             ymed.append(med)
             ylow.append(lo)
             yhigh.append(hi)
-        ax.plot(ms, ymed, marker=marker, linestyle=ls, label=method)
+        ax.plot(ms, ymed, marker=marker, linestyle=ls, label=style["label"])
         ax.fill_between(ms, ylow, yhigh, alpha=0.18)
     ax.set_xscale("log", base=2)
     ax.set_yscale("log")
@@ -241,8 +256,13 @@ for idx, (fam, th) in enumerate(panel_keys):
     ms = sorted({r["m"] for r in sub})
     for midx, m in enumerate(ms):
         color = cmap(midx % 10)
-        for method, marker, ls in [("bsqr_full", "o", "-"), ("dgeqp3", "D", "--")]:
+        for method in shortwide_methods:
+            style = METHOD_STYLE[method]
+            marker = style["marker"]
+            ls = style["ls"]
             rn = [r for r in sub if r["m"] == m and r["method"] == method]
+            if not rn:
+                continue
             ns = sorted({r["n"] for r in rn})
             ymed = []
             ylow = []
@@ -264,10 +284,17 @@ for idx, (fam, th) in enumerate(panel_keys):
     ax.grid(True, alpha=0.25)
 for ax in axes2_flat[len(panel_keys):]:
     ax.set_visible(False)
-fig2.subplots_adjust(bottom=0.22, top=0.96, left=0.1, right=0.99, hspace=0.35, wspace=0.25)
+fig2.subplots_adjust(bottom=0.29, top=0.96, left=0.1, right=0.99, hspace=0.35, wspace=0.25)
 method_handles = [
-    Line2D([0], [0], color="black", marker="o", linestyle="-", label="BSQR"),
-    Line2D([0], [0], color="black", marker="D", linestyle="--", label="DGEQP3"),
+    Line2D(
+        [0],
+        [0],
+        color="black",
+        marker=METHOD_STYLE[m]["marker"],
+        linestyle=METHOD_STYLE[m]["ls"],
+        label=METHOD_STYLE[m]["label"],
+    )
+    for m in shortwide_methods
 ]
 m_handles = [
     Line2D([0], [0], color=cmap(i % 10), linestyle="-", marker=None, label=str(m))
@@ -276,15 +303,15 @@ m_handles = [
 leg_method = fig2.legend(
     handles=method_handles,
     loc="lower center",
-    bbox_to_anchor=(0.5, 0.105),
-    ncol=2,
+    bbox_to_anchor=(0.5, 0.145),
+    ncol=3,
     frameon=True,
     title="Method",
 )
 leg_m = fig2.legend(
     handles=m_handles,
     loc="lower center",
-    bbox_to_anchor=(0.5, 0.02),
+    bbox_to_anchor=(0.5, 0.03),
     ncol=max(1, min(5, len(m_handles))),
     frameon=True,
     title="m (rows)",
@@ -292,50 +319,59 @@ leg_m = fig2.legend(
 fig2.add_artist(leg_method)
 save_fig(fig2, "figure2_shortwide_runtime")
 
-# Figure 3: short-wide speedup heatmaps over (m, n/m) per family/thread
-fig3_nr, fig3_nc = _panel_grid(len(panel_keys))
-fig3, axes3 = mk_axes_grid(fig3_nr, fig3_nc, "heatmap_panels")
-axes3_flat = axes3.ravel()
-all_speed = [s["speedup"] for s in speed_rows if s["regime"] == "short_wide" and math.isfinite(s["speedup"])]
-vmin = np.nanmin(all_speed) if all_speed else 0.5
-vmax = np.nanmax(all_speed) if all_speed else 1.5
-if vmin == vmax:
-    vmin = min(vmin, 0.95)
-    vmax = max(vmax, 1.05)
-if vmax <= 1.0:
-    vmax = 1.01
-if vmin >= 1.0:
-    vmin = 0.99
-norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=1.0, vmax=vmax)
-imh = None
-for idx, (fam, th) in enumerate(panel_keys):
-    ax = axes3_flat[idx]
-    sub = [
-        s for s in speed_rows
-        if s["family"] == fam and s["blas_threads"] == th and s["regime"] == "short_wide"
-    ]
-    ms = sorted({s["m"] for s in sub})
-    aspects = sorted({s["aspect"] for s in sub})
-    Z = np.full((len(ms), len(aspects)), np.nan)
-    for im, m in enumerate(ms):
-        for ia, aspect in enumerate(aspects):
-            vals = [s["speedup"] for s in sub if s["m"] == m and abs(s["aspect"] - aspect) < 1e-12]
-            Z[im, ia] = geomean(vals)
-    imh = ax.imshow(Z, origin="lower", aspect="auto", cmap="RdYlGn", norm=norm)
-    ax.set_title(f"{fam} | BLAS={th}")
-    ax.set_xticks(range(len(aspects)))
-    ax.set_xticklabels([f"{a:.1f}" for a in aspects], rotation=45, ha="right")
-    ax.set_yticks(range(len(ms)))
-    ax.set_yticklabels([str(m) for m in ms])
-    if idx // fig3_nc == fig3_nr - 1:
-        ax.set_xlabel("aspect (n/m)")
-    ax.set_ylabel("m")
-for ax in axes3_flat[len(panel_keys):]:
-    ax.set_visible(False)
-if imh is not None:
-    cbar = fig3.colorbar(imh, ax=list(axes3_flat[:len(panel_keys)]), shrink=0.8, pad=0.01)
-    cbar.set_label("speedup dgeqp3/bsqr")
-save_fig(fig3, "figure3_shortwide_speedup_heatmap")
+def plot_shortwide_speedup_heatmap(speed_rows_in, cbar_label, stem):
+    fig_nr, fig_nc = _panel_grid(len(panel_keys))
+    fig, axes = mk_axes_grid(fig_nr, fig_nc, "heatmap_panels")
+    axes_flat = axes.ravel()
+    all_speed = [s["speedup"] for s in speed_rows_in if s["regime"] == "short_wide" and math.isfinite(s["speedup"])]
+    vmin = np.nanmin(all_speed) if all_speed else 0.5
+    vmax = np.nanmax(all_speed) if all_speed else 1.5
+    if vmin == vmax:
+        vmin = min(vmin, 0.95)
+        vmax = max(vmax, 1.05)
+    if vmax <= 1.0:
+        vmax = 1.01
+    if vmin >= 1.0:
+        vmin = 0.99
+    norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=1.0, vmax=vmax)
+    imh = None
+    for idx, (fam, th) in enumerate(panel_keys):
+        ax = axes_flat[idx]
+        sub = [
+            s for s in speed_rows_in
+            if s["family"] == fam and s["blas_threads"] == th and s["regime"] == "short_wide"
+        ]
+        if not sub:
+            ax.set_title(f"{fam} | BLAS={th}")
+            ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            continue
+        ms = sorted({s["m"] for s in sub})
+        aspects = sorted({s["aspect"] for s in sub})
+        Z = np.full((len(ms), len(aspects)), np.nan)
+        for im, m in enumerate(ms):
+            for ia, aspect in enumerate(aspects):
+                vals = [s["speedup"] for s in sub if s["m"] == m and abs(s["aspect"] - aspect) < 1e-12]
+                Z[im, ia] = geomean(vals)
+        imh = ax.imshow(Z, origin="lower", aspect="auto", cmap="RdYlGn", norm=norm)
+        ax.set_title(f"{fam} | BLAS={th}")
+        ax.set_xticks(range(len(aspects)))
+        ax.set_xticklabels([f"{a:.1f}" for a in aspects], rotation=45, ha="right")
+        ax.set_yticks(range(len(ms)))
+        ax.set_yticklabels([str(m) for m in ms])
+        if idx // fig_nc == fig_nr - 1:
+            ax.set_xlabel("aspect (n/m)")
+        ax.set_ylabel("m")
+    for ax in axes_flat[len(panel_keys):]:
+        ax.set_visible(False)
+    if imh is not None:
+        cbar = fig.colorbar(imh, ax=list(axes_flat[:len(panel_keys)]), shrink=0.8, pad=0.01)
+        cbar.set_label(cbar_label)
+    save_fig(fig, stem)
+
+# Figure 3: short-wide speedup heatmap for dgeqp3/bsqr
+plot_shortwide_speedup_heatmap(speed_rows, "speedup dgeqp3/bsqr", "figure3_shortwide_speedup_heatmap")
 
 # Figure 4: quality plot (residual and orthogonality, log-scale) across regimes
 def grouped_quality(metric, regime, method):
@@ -437,6 +473,14 @@ ax5.set_title("Aggregate speedup by family/regime/thread")
 ax5.grid(True, axis="x", alpha=0.25)
 save_fig(fig5, "figure5_aggregate_speedup")
 
+# Figure 6: short-wide speedup heatmap for dgeqp3_trsm/bsqr
+if speed_rows_trsm:
+    plot_shortwide_speedup_heatmap(
+        speed_rows_trsm,
+        "speedup dgeqp3_trsm/bsqr",
+        "figure6_shortwide_rinv_speedup_heatmap",
+    )
+
 # Caption-ready tables
 def write_csv(path, columns, rows_out):
     with open(path, "w", newline="") as f:
@@ -451,7 +495,7 @@ for key in sorted(sq_groups.keys()):
     vals = sq_groups[key]
     speedups = [v["speedup"] for v in vals]
     bs = [v["bsqr_tmed"] for v in vals]
-    dg = [v["dgeqp3_tmed"] for v in vals]
+    dg = [v["baseline_tmed"] for v in vals]
     square_table.append({
         "family": key[0],
         "blas_threads": key[1],
@@ -470,7 +514,7 @@ for key in sorted(sw_groups.keys()):
     vals = sw_groups[key]
     speedups = [v["speedup"] for v in vals]
     bs = [v["bsqr_tmed"] for v in vals]
-    dg = [v["dgeqp3_tmed"] for v in vals]
+    dg = [v["baseline_tmed"] for v in vals]
     short_table.append({
         "family": key[0],
         "blas_threads": key[1],
@@ -484,8 +528,32 @@ for key in sorted(sw_groups.keys()):
         "dgeqp3_tmed_geomean_s": geomean(dg),
     })
 
+short_rinv_table = []
+sw_rinv_groups = grouped_rows(
+    [s for s in speed_rows_trsm if s["regime"] == "short_wide"],
+    ["family", "blas_threads", "m", "n", "aspect"],
+)
+for key in sorted(sw_rinv_groups.keys()):
+    vals = sw_rinv_groups[key]
+    speedups = [v["speedup"] for v in vals]
+    bs = [v["bsqr_tmed"] for v in vals]
+    dgtrsm = [v["baseline_tmed"] for v in vals]
+    short_rinv_table.append({
+        "family": key[0],
+        "blas_threads": key[1],
+        "m": key[2],
+        "n": key[3],
+        "aspect": key[4],
+        "speedup_geomean": geomean(speedups),
+        "speedup_seed_min": min(finite(speedups)) if finite(speedups) else float("nan"),
+        "speedup_seed_max": max(finite(speedups)) if finite(speedups) else float("nan"),
+        "bsqr_tmed_geomean_s": geomean(bs),
+        "dgeqp3_trsm_tmed_geomean_s": geomean(dgtrsm),
+    })
+
 quality_table = []
-q_groups = grouped_rows(rows, ["family", "blas_threads", "regime", "method"])
+quality_rows = [r for r in rows if r["method"] in ("bsqr_full", "dgeqp3")]
+q_groups = grouped_rows(quality_rows, ["family", "blas_threads", "regime", "method"])
 for key in sorted(q_groups.keys()):
     vals = q_groups[key]
     residuals = np.asarray([v["residual"] for v in vals], dtype=float)
@@ -518,6 +586,15 @@ write_csv(
         "bsqr_tmed_geomean_s", "dgeqp3_tmed_geomean_s",
     ],
     short_table,
+)
+write_csv(
+    os.path.join(tabledir, "table_shortwide_rinv_speedup.csv"),
+    [
+        "family", "blas_threads", "m", "n", "aspect",
+        "speedup_geomean", "speedup_seed_min", "speedup_seed_max",
+        "bsqr_tmed_geomean_s", "dgeqp3_trsm_tmed_geomean_s",
+    ],
+    short_rinv_table,
 )
 write_csv(
     os.path.join(tabledir, "table_quality.csv"),

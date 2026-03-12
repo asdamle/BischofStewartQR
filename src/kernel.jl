@@ -103,7 +103,7 @@ function bsqr(
     check::Bool = true,
     track_inverse_frob::Bool = false,
     return_rinv_r12::Bool = false,
-    rank_stop::Bool = true,
+    rank_stop::Bool = false,
     norm_recomp_tol::Float64 = _DEFAULT_NORM_RECOMP_TOL,
     blas_threads::Union{Nothing,Integer} = nothing,
 )
@@ -136,7 +136,7 @@ function bsqr!(
     check::Bool = true,
     reset_pivots::Bool = true,
     frob_inv_trace::Union{Nothing,Vector{Float64}} = nothing,
-    rank_stop::Bool = true,
+    rank_stop::Bool = false,
     norm_recomp_tol::Float64 = _DEFAULT_NORM_RECOMP_TOL,
     blas_threads::Union{Nothing,Integer} = nothing,
 )
@@ -178,7 +178,7 @@ function bsqr!(
     check::Bool = true,
     track_inverse_frob::Bool = false,
     return_rinv_r12::Bool = false,
-    rank_stop::Bool = true,
+    rank_stop::Bool = false,
     norm_recomp_tol::Float64 = _DEFAULT_NORM_RECOMP_TOL,
     blas_threads::Union{Nothing,Integer} = nothing,
     workspace::Union{Nothing,BSWorkspace} = nothing,

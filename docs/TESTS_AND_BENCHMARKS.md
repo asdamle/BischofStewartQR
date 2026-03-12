@@ -31,6 +31,10 @@ Plot + table generation:
 julia --project=. benchmark/plot_publication_results.jl
 ```
 
+Publication timing compares:
+- `bsqr_full` and `dgeqp3` for square and short-wide cases.
+- `dgeqp3_trsm` (DGEQP3 + triangular solve for `R11^{-1}R12`) for short-wide cases.
+
 ### Important Environment Knobs
 
 - `BS_PUB_OUTDIR`
@@ -103,6 +107,8 @@ Publication plotting writes:
 - `benchmark/results/publication/plots/figure3_shortwide_speedup_heatmap.{png,pdf}`
 - `benchmark/results/publication/plots/figure4_quality.{png,pdf}`
 - `benchmark/results/publication/plots/figure5_aggregate_speedup.{png,pdf}`
+- `benchmark/results/publication/plots/figure6_shortwide_rinv_speedup_heatmap.{png,pdf}`
 - `benchmark/results/publication/tables/table_square_speedup.csv`
 - `benchmark/results/publication/tables/table_shortwide_speedup.csv`
+- `benchmark/results/publication/tables/table_shortwide_rinv_speedup.csv`
 - `benchmark/results/publication/tables/table_quality.csv`

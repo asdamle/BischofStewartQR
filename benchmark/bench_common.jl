@@ -22,6 +22,7 @@ const DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
 const BSQR_METHOD_LABEL = "bsqr_full"
 const BSQR_LAZY_BLAS_METHOD_LABEL = "bsqr_lazy_blas"
 const DGEQP3_METHOD_LABEL = "dgeqp3"
+const DGEQP3_TRSM_METHOD_LABEL = "dgeqp3_trsm"
 
 function backend_string()
     return sprint(show, BLAS.get_config())
@@ -185,10 +186,12 @@ function _bench_pair(
     warmup::Int,
     samples::Int,
     bench_quality::B,
+    bsqr_return_rinv_r12::Bool = false,
+    include_dgeqp3_trsm::Bool = false,
 ) where {B<:Function}
     rows = NamedTuple[]
 
-    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol)
+    f_bs() = run_bsqr_fair(A, k, norm_recomp_tol; return_rinv_r12 = bsqr_return_rinv_r12)
     bs = bench_quality(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
     push!(rows, (; method = BSQR_METHOD_LABEL, bs...))
 
@@ -201,6 +204,12 @@ function _bench_pair(
     f_qr() = run_qr_fair(A)
     dg = bench_quality(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
     push!(rows, (; method = DGEQP3_METHOD_LABEL, dg...))
+
+    if include_dgeqp3_trsm
+        f_qr_trsm() = run_qr_trsm_fair(A)
+        dg_trsm = bench_quality(f_qr_trsm, F -> residual_qr(A, F); warmup = warmup, samples = samples)
+        push!(rows, (; method = DGEQP3_TRSM_METHOD_LABEL, dg_trsm...))
+    end
 
     return rows
 end
@@ -223,13 +232,18 @@ function residual_qr(A::Matrix{Float64}, F)
     return resid, orth
 end
 
-function run_bsqr_fair(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64)
+function run_bsqr_fair(
+    A::Matrix{Float64},
+    k::Int,
+    norm_recomp_tol::Float64;
+    return_rinv_r12::Bool = false,
+)
     return bsqr!(
         copy(A);
         k = k,
         check = false,
         track_inverse_frob = false,
-        return_rinv_r12 = false,
+        return_rinv_r12 = return_rinv_r12,
         rank_stop = false,
         norm_recomp_tol = norm_recomp_tol,
         workspace = nothing,
@@ -252,7 +266,28 @@ end
 
 run_qr_fair(A::Matrix{Float64}) = qr(copy(A), ColumnNorm())
 
-function bench_pair_basic(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
+function run_qr_trsm_fair(A::Matrix{Float64})
+    F = run_qr_fair(A)
+    m, n = size(A)
+    k = min(m, n)
+    if n > k
+        Rf = Matrix(F.R)
+        R11 = Matrix(view(Rf, 1:k, 1:k))
+        R12 = Matrix(view(Rf, 1:k, (k + 1):n))
+        BLAS.trsm!('L', 'U', 'N', 'N', 1.0, R11, R12)
+    end
+    return F
+end
+
+function bench_pair_basic(
+    A::Matrix{Float64},
+    k::Int,
+    norm_recomp_tol::Float64;
+    warmup::Int,
+    samples::Int,
+    bsqr_return_rinv_r12::Bool = false,
+    include_dgeqp3_trsm::Bool = false,
+)
     return _bench_pair(
         A,
         k,
@@ -260,10 +295,20 @@ function bench_pair_basic(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; 
         warmup = warmup,
         samples = samples,
         bench_quality = _bench_and_quality_basic,
+        bsqr_return_rinv_r12 = bsqr_return_rinv_r12,
+        include_dgeqp3_trsm = include_dgeqp3_trsm,
     )
 end
 
-function bench_pair_ci(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; warmup::Int, samples::Int)
+function bench_pair_ci(
+    A::Matrix{Float64},
+    k::Int,
+    norm_recomp_tol::Float64;
+    warmup::Int,
+    samples::Int,
+    bsqr_return_rinv_r12::Bool = false,
+    include_dgeqp3_trsm::Bool = false,
+)
     return _bench_pair(
         A,
         k,
@@ -271,6 +316,8 @@ function bench_pair_ci(A::Matrix{Float64}, k::Int, norm_recomp_tol::Float64; war
         warmup = warmup,
         samples = samples,
         bench_quality = _bench_and_quality_ci,
+        bsqr_return_rinv_r12 = bsqr_return_rinv_r12,
+        include_dgeqp3_trsm = include_dgeqp3_trsm,
     )
 end
 
@@ -300,12 +347,12 @@ function make_matrix(family::Symbol, m::Int, n::Int, rng::AbstractRNG)
 end
 
 export DEFAULT_NORM_RECOMP_TOL
-export BSQR_METHOD_LABEL, BSQR_LAZY_BLAS_METHOD_LABEL, DGEQP3_METHOD_LABEL
+export BSQR_METHOD_LABEL, BSQR_LAZY_BLAS_METHOD_LABEL, DGEQP3_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL
 export accelerate_active, backend_string, bench_pair_basic, bench_pair_ci
 export bench_trial_basic, bench_trial_ci, grouped_rows_with_baseline
 export check_backend, configure_blas_threads, make_matrix
 export lazy_batch_kwargs, lazy_benchmark_enabled
 export parse_env_float, parse_env_int, parse_float_list, parse_int_list, parse_symbol_list
-export residual_bs, residual_qr, run_bsqr_fair, run_bsqr_lazy_blas_fair, run_qr_fair
+export residual_bs, residual_qr, run_bsqr_fair, run_bsqr_lazy_blas_fair, run_qr_fair, run_qr_trsm_fair
 
 end
