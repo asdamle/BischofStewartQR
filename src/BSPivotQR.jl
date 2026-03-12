@@ -8,7 +8,6 @@ export bsqr, bsqr!, BSQRPivoted, R, perm, rinv_r12, reconstruct
 
 include("workspace.jl")
 include("kernel.jl")
-include("kernel_lazy_blas.jl")
 include("interface.jl")
 
 end
