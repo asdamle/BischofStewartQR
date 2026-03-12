@@ -56,7 +56,10 @@ Primary benchmark script:
 julia --project=. benchmark/bench_cpqr_publication.jl
 ```
 
-Generate publication figures and caption-ready tables:
+Generate publication figures and caption-ready tables for both comparison sets:
+
+- `plain`: `bsqr_full` vs `dgeqp3`
+- `rinv`: `bsqr_rinv` vs `dgeqp3_trsm`
 
 ```bash
 julia --project=. benchmark/plot_publication_results.jl
@@ -87,6 +90,9 @@ Outputs:
 - `benchmark/results/publication/publication_timings.csv`
 - `benchmark/results/publication/publication_summary.md`
 - `benchmark/results/publication/metadata.txt`
-- `benchmark/results/publication/plots/*.png`
-- `benchmark/results/publication/plots/*.pdf`
-- `benchmark/results/publication/tables/*.csv`
+- `benchmark/results/publication/plots/plain/*.png`
+- `benchmark/results/publication/plots/plain/*.pdf`
+- `benchmark/results/publication/plots/rinv/*.png`
+- `benchmark/results/publication/plots/rinv/*.pdf`
+- `benchmark/results/publication/tables/plain/*.csv`
+- `benchmark/results/publication/tables/rinv/*.csv`
