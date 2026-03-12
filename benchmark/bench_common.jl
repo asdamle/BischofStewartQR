@@ -20,6 +20,7 @@ using .MatrixGenerators
 
 const DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
 const BSQR_METHOD_LABEL = "bsqr_full"
+const BSQR_RINV_METHOD_LABEL = "bsqr_rinv"
 const BSQR_LAZY_BLAS_METHOD_LABEL = "bsqr_lazy_blas"
 const DGEQP3_METHOD_LABEL = "dgeqp3"
 const DGEQP3_TRSM_METHOD_LABEL = "dgeqp3_trsm"
@@ -347,7 +348,7 @@ function make_matrix(family::Symbol, m::Int, n::Int, rng::AbstractRNG)
 end
 
 export DEFAULT_NORM_RECOMP_TOL
-export BSQR_METHOD_LABEL, BSQR_LAZY_BLAS_METHOD_LABEL, DGEQP3_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL
+export BSQR_METHOD_LABEL, BSQR_RINV_METHOD_LABEL, BSQR_LAZY_BLAS_METHOD_LABEL, DGEQP3_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL
 export accelerate_active, backend_string, bench_pair_basic, bench_pair_ci
 export bench_trial_basic, bench_trial_ci, grouped_rows_with_baseline
 export check_backend, configure_blas_threads, make_matrix

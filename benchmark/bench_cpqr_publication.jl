@@ -12,8 +12,10 @@ include("bench_common.jl")
 using .BenchCommon
 
 const DEFAULT_PUB_OUTDIR = joinpath(@__DIR__, "results", "publication")
-const SQUARE_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
-const SHORT_WIDE_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL])
+const PLAIN_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
+const RINV_METHODS = Set([BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL])
+const SQUARE_METHODS = Set(vcat(collect(PLAIN_METHODS), collect(RINV_METHODS)))
+const SHORT_WIDE_METHODS = Set(vcat(collect(PLAIN_METHODS), collect(RINV_METHODS)))
 const ALLOWED_METHODS = Set(vcat(collect(SQUARE_METHODS), collect(SHORT_WIDE_METHODS)))
 
 _parse_families() = parse_symbol_list(
@@ -120,6 +122,7 @@ end
 
 function _speedup_rows(
     rows::Vector{NamedTuple},
+    bsqr_method::String,
     baseline_method::String;
     regime::Union{Nothing,String} = nothing,
 )
@@ -131,7 +134,7 @@ function _speedup_rows(
 
     speed = NamedTuple[]
     for r in rows
-        r.method == BSQR_METHOD_LABEL || continue
+        r.method == bsqr_method || continue
         regime !== nothing && r.regime != regime && continue
         key_baseline = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, baseline_method)
         haskey(idx, key_baseline) || continue
@@ -146,6 +149,7 @@ function _speedup_rows(
             seed = r.seed,
             blas_threads = r.blas_threads,
             speedup = sp,
+            bsqr_method = bsqr_method,
             baseline_method = baseline_method,
             bsqr_tmed_s = r.tmed,
             baseline_tmed_s = baseline_t,
@@ -161,18 +165,18 @@ function _geomean(vals::Vector{Float64})
 end
 
 function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::String, threads::Vector{Int}, seeds::Vector{Int})
-    speeds = _speedup_rows(rows, DGEQP3_METHOD_LABEL)
-    rinv_speeds = _speedup_rows(rows, DGEQP3_TRSM_METHOD_LABEL; regime = "short_wide")
+    plain_speeds = _speedup_rows(rows, BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL)
+    rinv_speeds = _speedup_rows(rows, BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL)
 
-    grouped = Dict{Tuple{Symbol,String,Int},Vector{Float64}}()
-    for s in speeds
+    grouped_plain = Dict{Tuple{Symbol,String,Int},Vector{Float64}}()
+    for s in plain_speeds
         key = (s.family, s.regime, s.blas_threads)
-        get!(grouped, key, Float64[])
-        push!(grouped[key], s.speedup)
+        get!(grouped_plain, key, Float64[])
+        push!(grouped_plain[key], s.speedup)
     end
-    grouped_rinv = Dict{Tuple{Symbol,Int},Vector{Float64}}()
+    grouped_rinv = Dict{Tuple{Symbol,String,Int},Vector{Float64}}()
     for s in rinv_speeds
-        key = (s.family, s.blas_threads)
+        key = (s.family, s.regime, s.blas_threads)
         get!(grouped_rinv, key, Float64[])
         push!(grouped_rinv[key], s.speedup)
     end
@@ -186,18 +190,18 @@ function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::Strin
         println(md, "- Threads: ", join(threads, ", "))
         println(md, "- Seeds: ", join(seeds, ", "))
         println(md, "")
-        println(md, "| family | regime | blas_threads | geomean speedup (dgeqp3/bsqr) |")
+        println(md, "| family | regime | blas_threads | geomean speedup (dgeqp3/bsqr_full) |")
         println(md, "|---|---|---:|---:|")
-        for key in sort!(collect(keys(grouped)), by = x -> (string(x[1]), x[2], x[3]))
-            g = _geomean(grouped[key])
+        for key in sort!(collect(keys(grouped_plain)), by = x -> (string(x[1]), x[2], x[3]))
+            g = _geomean(grouped_plain[key])
             println(md, "| $(key[1]) | $(key[2]) | $(key[3]) | $(round(g, sigdigits=5)) |")
         end
         println(md, "")
-        println(md, "| family | blas_threads | geomean speedup (dgeqp3_trsm/bsqr) [short_wide] |")
-        println(md, "|---|---:|---:|")
-        for key in sort!(collect(keys(grouped_rinv)), by = x -> (string(x[1]), x[2]))
+        println(md, "| family | regime | blas_threads | geomean speedup (dgeqp3_trsm/bsqr_rinv) |")
+        println(md, "|---|---|---:|---:|")
+        for key in sort!(collect(keys(grouped_rinv)), by = x -> (string(x[1]), x[2], x[3]))
             g = _geomean(grouped_rinv[key])
-            println(md, "| $(key[1]) | $(key[2]) | $(round(g, sigdigits=5)) |")
+            println(md, "| $(key[1]) | $(key[2]) | $(key[3]) | $(round(g, sigdigits=5)) |")
         end
     end
 end
@@ -263,16 +267,42 @@ function run_publication_benchmarks()
 
                         A = make_matrix(family, c.m, c.n, rng)
                         kfull = min(c.m, c.n)
-                        is_short_wide = c.regime == "short_wide"
-                        rowset = bench_pair_ci(
+                        plain_rows = bench_pair_ci(
                             A,
                             kfull,
                             norm_recomp_tol;
                             warmup = warmup,
                             samples = samples,
-                            bsqr_return_rinv_r12 = is_short_wide,
-                            include_dgeqp3_trsm = is_short_wide,
+                            bsqr_return_rinv_r12 = false,
+                            include_dgeqp3_trsm = false,
                         )
+                        rinv_rows_raw = bench_pair_ci(
+                            A,
+                            kfull,
+                            norm_recomp_tol;
+                            warmup = warmup,
+                            samples = samples,
+                            bsqr_return_rinv_r12 = true,
+                            include_dgeqp3_trsm = true,
+                        )
+                        rinv_rows = NamedTuple[]
+                        for row in rinv_rows_raw
+                            if row.method == BSQR_METHOD_LABEL
+                                push!(rinv_rows, (
+                                    method = BSQR_RINV_METHOD_LABEL,
+                                    tmin = row.tmin,
+                                    tmed = row.tmed,
+                                    tci_low = row.tci_low,
+                                    tci_high = row.tci_high,
+                                    alloc = row.alloc,
+                                    resid = row.resid,
+                                    orth = row.orth,
+                                ))
+                            elseif row.method == DGEQP3_TRSM_METHOD_LABEL
+                                push!(rinv_rows, row)
+                            end
+                        end
+                        rowset = vcat(plain_rows, rinv_rows)
 
                         for row in rowset
                             row.method in ALLOWED_METHODS || continue

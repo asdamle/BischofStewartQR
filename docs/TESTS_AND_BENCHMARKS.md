@@ -32,8 +32,8 @@ julia --project=. benchmark/plot_publication_results.jl
 ```
 
 Publication timing compares:
-- `bsqr_full` and `dgeqp3` for square and short-wide cases.
-- `dgeqp3_trsm` (DGEQP3 + triangular solve for `R11^{-1}R12`) for short-wide cases.
+- Plain pair: `bsqr_full` vs `dgeqp3`.
+- `R11^{-1}R12` pair: `bsqr_rinv` vs `dgeqp3_trsm` (DGEQP3 + triangular solve).
 
 ### Important Environment Knobs
 
@@ -102,13 +102,19 @@ Publication benchmark runner writes:
 
 Publication plotting writes:
 
-- `benchmark/results/publication/plots/figure1_square_runtime.{png,pdf}`
-- `benchmark/results/publication/plots/figure2_shortwide_runtime.{png,pdf}`
-- `benchmark/results/publication/plots/figure3_shortwide_speedup_heatmap.{png,pdf}`
-- `benchmark/results/publication/plots/figure4_quality.{png,pdf}`
-- `benchmark/results/publication/plots/figure5_aggregate_speedup.{png,pdf}`
-- `benchmark/results/publication/plots/figure6_shortwide_rinv_speedup_heatmap.{png,pdf}`
-- `benchmark/results/publication/tables/table_square_speedup.csv`
-- `benchmark/results/publication/tables/table_shortwide_speedup.csv`
-- `benchmark/results/publication/tables/table_shortwide_rinv_speedup.csv`
-- `benchmark/results/publication/tables/table_quality.csv`
+- `benchmark/results/publication/plots/plain/figure1_square_runtime.{png,pdf}`
+- `benchmark/results/publication/plots/plain/figure2_shortwide_runtime.{png,pdf}`
+- `benchmark/results/publication/plots/plain/figure3_shortwide_speedup_heatmap.{png,pdf}`
+- `benchmark/results/publication/plots/plain/figure4_quality.{png,pdf}`
+- `benchmark/results/publication/plots/plain/figure5_aggregate_speedup.{png,pdf}`
+- `benchmark/results/publication/plots/rinv/figure1_square_runtime.{png,pdf}`
+- `benchmark/results/publication/plots/rinv/figure2_shortwide_runtime.{png,pdf}`
+- `benchmark/results/publication/plots/rinv/figure3_shortwide_speedup_heatmap.{png,pdf}`
+- `benchmark/results/publication/plots/rinv/figure4_quality.{png,pdf}`
+- `benchmark/results/publication/plots/rinv/figure5_aggregate_speedup.{png,pdf}`
+- `benchmark/results/publication/tables/plain/table_square_speedup.csv`
+- `benchmark/results/publication/tables/plain/table_shortwide_speedup.csv`
+- `benchmark/results/publication/tables/plain/table_quality.csv`
+- `benchmark/results/publication/tables/rinv/table_square_speedup.csv`
+- `benchmark/results/publication/tables/rinv/table_shortwide_speedup.csv`
+- `benchmark/results/publication/tables/rinv/table_quality.csv`

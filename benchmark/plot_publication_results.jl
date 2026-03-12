@@ -4,7 +4,14 @@ const DEFAULT_INPUT = joinpath(@__DIR__, "results", "publication", "publication_
 const DEFAULT_OUTDIR = joinpath(@__DIR__, "results", "publication", "plots")
 const DEFAULT_TABLEDIR = joinpath(@__DIR__, "results", "publication", "tables")
 
-function _python_plot(input::AbstractString, outdir::AbstractString, tabledir::AbstractString)
+function _python_plot(
+    input::AbstractString,
+    outdir::AbstractString,
+    tabledir::AbstractString,
+    bsqr_method::AbstractString,
+    baseline_method::AbstractString,
+    comparison_name::AbstractString,
+)
     py = raw"""
 import csv
 import math
@@ -22,6 +29,9 @@ import numpy as np
 input_path = sys.argv[1]
 outdir = sys.argv[2]
 tabledir = sys.argv[3]
+bsqr_method = sys.argv[4]
+baseline_method = sys.argv[5]
+comparison_name = sys.argv[6]
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(tabledir, exist_ok=True)
 
@@ -52,18 +62,25 @@ with open(input_path, newline="") as f:
 if not rows:
     raise RuntimeError(f"No rows found in {input_path}")
 
-families = sorted({r["family"] for r in rows})
-threads = sorted({r["blas_threads"] for r in rows})
-methods = ("bsqr_full", "dgeqp3", "dgeqp3_trsm")
-square_methods = ("bsqr_full", "dgeqp3")
-shortwide_methods = ("bsqr_full", "dgeqp3", "dgeqp3_trsm")
-regimes = ("square", "short_wide")
+methods = ("bsqr_full", "bsqr_rinv", "dgeqp3", "dgeqp3_trsm")
 
 if set(r["method"] for r in rows) - set(methods):
-    raise RuntimeError("Unexpected methods in publication CSV; expected only bsqr_full, dgeqp3, and dgeqp3_trsm")
+    raise RuntimeError("Unexpected methods in publication CSV; expected only bsqr_full, bsqr_rinv, dgeqp3, and dgeqp3_trsm")
+
+comparison_methods = (bsqr_method, baseline_method)
+comparison_rows = [r for r in rows if r["method"] in set(comparison_methods)]
+if not comparison_rows:
+    raise RuntimeError(f"No rows found for comparison {comparison_name}: {bsqr_method} vs {baseline_method}")
+
+families = sorted({r["family"] for r in comparison_rows})
+threads = sorted({r["blas_threads"] for r in comparison_rows})
+square_methods = comparison_methods
+shortwide_methods = comparison_methods
+regimes = ("square", "short_wide")
 
 METHOD_STYLE = {
     "bsqr_full": {"marker": "o", "ls": "-", "label": "BSQR"},
+    "bsqr_rinv": {"marker": "o", "ls": "-", "label": "BSQR+RINV"},
     "dgeqp3": {"marker": "D", "ls": "--", "label": "DGEQP3"},
     "dgeqp3_trsm": {"marker": "s", "ls": ":", "label": "DGEQP3+TRSM"},
 }
@@ -107,7 +124,7 @@ def median_min_max(vals):
     arr = np.asarray(v, dtype=float)
     return float(np.median(arr)), float(np.min(arr)), float(np.max(arr))
 
-def paired_speedup_rows(rows_in, baseline_method, regime_filter=None):
+def paired_speedup_rows(rows_in, bsqr_method, baseline_method, regime_filter=None):
     idx = {}
     for r in rows_in:
         key = (
@@ -118,7 +135,7 @@ def paired_speedup_rows(rows_in, baseline_method, regime_filter=None):
 
     out = []
     for r in rows_in:
-        if r["method"] != "bsqr_full":
+        if r["method"] != bsqr_method:
             continue
         if regime_filter is not None and r["regime"] not in regime_filter:
             continue
@@ -144,8 +161,7 @@ def paired_speedup_rows(rows_in, baseline_method, regime_filter=None):
         })
     return out
 
-speed_rows = paired_speedup_rows(rows, "dgeqp3")
-speed_rows_trsm = paired_speedup_rows(rows, "dgeqp3_trsm", regime_filter={"short_wide"})
+speed_rows = paired_speedup_rows(comparison_rows, bsqr_method, baseline_method)
 
 def save_fig(fig, stem):
     fig.savefig(os.path.join(outdir, f"{stem}.png"), dpi=300)
@@ -210,7 +226,7 @@ axes1_flat = axes1.ravel()
 for idx, (fam, th) in enumerate(panel_keys):
     ax = axes1_flat[idx]
     sub = [
-        r for r in rows
+        r for r in comparison_rows
         if r["family"] == fam and r["regime"] == "square" and r["blas_threads"] == th
     ]
     ms = sorted({r["m"] for r in sub})
@@ -245,12 +261,12 @@ save_fig(fig1, "figure1_square_runtime")
 fig2_nr, fig2_nc = _panel_grid(len(panel_keys))
 fig2, axes2 = mk_axes_grid(fig2_nr, fig2_nc, "line_panels", constrained=False)
 axes2_flat = axes2.ravel()
-global_short_ms = sorted({r["m"] for r in rows if r["regime"] == "short_wide"})
+global_short_ms = sorted({r["m"] for r in comparison_rows if r["regime"] == "short_wide"})
 cmap = plt.get_cmap("tab10")
 for idx, (fam, th) in enumerate(panel_keys):
     ax = axes2_flat[idx]
     sub = [
-        r for r in rows
+        r for r in comparison_rows
         if r["family"] == fam and r["regime"] == "short_wide" and r["blas_threads"] == th
     ]
     ms = sorted({r["m"] for r in sub})
@@ -370,12 +386,16 @@ def plot_shortwide_speedup_heatmap(speed_rows_in, cbar_label, stem):
         cbar.set_label(cbar_label)
     save_fig(fig, stem)
 
-# Figure 3: short-wide speedup heatmap for dgeqp3/bsqr
-plot_shortwide_speedup_heatmap(speed_rows, "speedup dgeqp3/bsqr", "figure3_shortwide_speedup_heatmap")
+# Figure 3: short-wide speedup heatmap
+plot_shortwide_speedup_heatmap(
+    speed_rows,
+    f"speedup {baseline_method}/{bsqr_method}",
+    "figure3_shortwide_speedup_heatmap",
+)
 
 # Figure 4: quality plot (residual and orthogonality, log-scale) across regimes
 def grouped_quality(metric, regime, method):
-    vals = [r[metric] for r in rows if r["regime"] == regime and r["method"] == method]
+    vals = [r[metric] for r in comparison_rows if r["regime"] == regime and r["method"] == method]
     if not vals:
         return float("nan"), float("nan"), float("nan")
     arr = np.asarray(vals, dtype=float)
@@ -399,18 +419,18 @@ for ax, metric, title in zip(quality_axes, ["residual", "orthogonality"], ["Resi
     y_dg_lo = []
     y_dg_hi = []
     for regime in regime_labels:
-        med, lo, hi = grouped_quality(metric, regime, "bsqr_full")
+        med, lo, hi = grouped_quality(metric, regime, bsqr_method)
         y_bs.append(med)
         y_bs_lo.append(lo)
         y_bs_hi.append(hi)
-        med, lo, hi = grouped_quality(metric, regime, "dgeqp3")
+        med, lo, hi = grouped_quality(metric, regime, baseline_method)
         y_dg.append(med)
         y_dg_lo.append(lo)
         y_dg_hi.append(hi)
     yerr_bs = np.vstack([np.asarray(y_bs) - np.asarray(y_bs_lo), np.asarray(y_bs_hi) - np.asarray(y_bs)])
     yerr_dg = np.vstack([np.asarray(y_dg) - np.asarray(y_dg_lo), np.asarray(y_dg_hi) - np.asarray(y_dg)])
-    ax.bar(x - barw / 2, y_bs, width=barw, color="#4C78A8", label="bsqr_full")
-    ax.bar(x + barw / 2, y_dg, width=barw, color="#F58518", label="dgeqp3")
+    ax.bar(x - barw / 2, y_bs, width=barw, color="#4C78A8", label=METHOD_STYLE[bsqr_method]["label"])
+    ax.bar(x + barw / 2, y_dg, width=barw, color="#F58518", label=METHOD_STYLE[baseline_method]["label"])
     ax.errorbar(x - barw / 2, y_bs, yerr=yerr_bs, fmt="none", ecolor="black", capsize=3, linewidth=0.8)
     ax.errorbar(x + barw / 2, y_dg, yerr=yerr_dg, fmt="none", ecolor="black", capsize=3, linewidth=0.8)
     ax.set_yscale("log")
@@ -468,18 +488,10 @@ ax5.errorbar(centers, y, xerr=xerr, fmt="none", ecolor="black", capsize=3, linew
 ax5.axvline(1.0, color="black", linestyle="--", linewidth=1.0)
 ax5.set_yticks(y)
 ax5.set_yticklabels(labels)
-ax5.set_xlabel("geomean speedup (dgeqp3/bsqr)")
+ax5.set_xlabel(f"geomean speedup ({baseline_method}/{bsqr_method})")
 ax5.set_title("Aggregate speedup by family/regime/thread")
 ax5.grid(True, axis="x", alpha=0.25)
 save_fig(fig5, "figure5_aggregate_speedup")
-
-# Figure 6: short-wide speedup heatmap for dgeqp3_trsm/bsqr
-if speed_rows_trsm:
-    plot_shortwide_speedup_heatmap(
-        speed_rows_trsm,
-        "speedup dgeqp3_trsm/bsqr",
-        "figure6_shortwide_rinv_speedup_heatmap",
-    )
 
 # Caption-ready tables
 def write_csv(path, columns, rows_out):
@@ -505,7 +517,7 @@ for key in sorted(sq_groups.keys()):
         "speedup_seed_min": min(finite(speedups)) if finite(speedups) else float("nan"),
         "speedup_seed_max": max(finite(speedups)) if finite(speedups) else float("nan"),
         "bsqr_tmed_geomean_s": geomean(bs),
-        "dgeqp3_tmed_geomean_s": geomean(dg),
+        "baseline_tmed_geomean_s": geomean(dg),
     })
 
 short_table = []
@@ -525,34 +537,11 @@ for key in sorted(sw_groups.keys()):
         "speedup_seed_min": min(finite(speedups)) if finite(speedups) else float("nan"),
         "speedup_seed_max": max(finite(speedups)) if finite(speedups) else float("nan"),
         "bsqr_tmed_geomean_s": geomean(bs),
-        "dgeqp3_tmed_geomean_s": geomean(dg),
-    })
-
-short_rinv_table = []
-sw_rinv_groups = grouped_rows(
-    [s for s in speed_rows_trsm if s["regime"] == "short_wide"],
-    ["family", "blas_threads", "m", "n", "aspect"],
-)
-for key in sorted(sw_rinv_groups.keys()):
-    vals = sw_rinv_groups[key]
-    speedups = [v["speedup"] for v in vals]
-    bs = [v["bsqr_tmed"] for v in vals]
-    dgtrsm = [v["baseline_tmed"] for v in vals]
-    short_rinv_table.append({
-        "family": key[0],
-        "blas_threads": key[1],
-        "m": key[2],
-        "n": key[3],
-        "aspect": key[4],
-        "speedup_geomean": geomean(speedups),
-        "speedup_seed_min": min(finite(speedups)) if finite(speedups) else float("nan"),
-        "speedup_seed_max": max(finite(speedups)) if finite(speedups) else float("nan"),
-        "bsqr_tmed_geomean_s": geomean(bs),
-        "dgeqp3_trsm_tmed_geomean_s": geomean(dgtrsm),
+        "baseline_tmed_geomean_s": geomean(dg),
     })
 
 quality_table = []
-quality_rows = [r for r in rows if r["method"] in ("bsqr_full", "dgeqp3")]
+quality_rows = [r for r in comparison_rows if r["method"] in comparison_methods]
 q_groups = grouped_rows(quality_rows, ["family", "blas_threads", "regime", "method"])
 for key in sorted(q_groups.keys()):
     vals = q_groups[key]
@@ -574,7 +563,7 @@ write_csv(
     [
         "family", "blas_threads", "m", "n",
         "speedup_geomean", "speedup_seed_min", "speedup_seed_max",
-        "bsqr_tmed_geomean_s", "dgeqp3_tmed_geomean_s",
+        "bsqr_tmed_geomean_s", "baseline_tmed_geomean_s",
     ],
     square_table,
 )
@@ -583,18 +572,9 @@ write_csv(
     [
         "family", "blas_threads", "m", "n", "aspect",
         "speedup_geomean", "speedup_seed_min", "speedup_seed_max",
-        "bsqr_tmed_geomean_s", "dgeqp3_tmed_geomean_s",
+        "bsqr_tmed_geomean_s", "baseline_tmed_geomean_s",
     ],
     short_table,
-)
-write_csv(
-    os.path.join(tabledir, "table_shortwide_rinv_speedup.csv"),
-    [
-        "family", "blas_threads", "m", "n", "aspect",
-        "speedup_geomean", "speedup_seed_min", "speedup_seed_max",
-        "bsqr_tmed_geomean_s", "dgeqp3_trsm_tmed_geomean_s",
-    ],
-    short_rinv_table,
 )
 write_csv(
     os.path.join(tabledir, "table_quality.csv"),
@@ -609,7 +589,7 @@ print(f"Wrote publication figures to {outdir}")
 print(f"Wrote publication tables to {tabledir}")
 """
 
-    run(`python3 -c $py $input $outdir $tabledir`)
+    run(`python3 -c $py $input $outdir $tabledir $bsqr_method $baseline_method $comparison_name`)
 end
 
 function main()
@@ -618,7 +598,17 @@ function main()
     tabledir = length(ARGS) >= 3 ? ARGS[3] : DEFAULT_TABLEDIR
     mkpath(outdir)
     mkpath(tabledir)
-    _python_plot(input, outdir, tabledir)
+    comparisons = [
+        ("plain", "bsqr_full", "dgeqp3"),
+        ("rinv", "bsqr_rinv", "dgeqp3_trsm"),
+    ]
+    for (name, bsqr_method, baseline_method) in comparisons
+        comp_outdir = joinpath(outdir, name)
+        comp_tabledir = joinpath(tabledir, name)
+        mkpath(comp_outdir)
+        mkpath(comp_tabledir)
+        _python_plot(input, comp_outdir, comp_tabledir, bsqr_method, baseline_method, name)
+    end
 end
 
 main()
