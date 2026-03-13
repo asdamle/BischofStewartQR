@@ -12,6 +12,8 @@ include("bench_common.jl")
 using .BenchCommon
 
 const DEFAULT_PUB_OUTDIR = joinpath(@__DIR__, "results", "publication")
+const PUBLICATION_SCHEMA_VERSION = "2026-03-12.v1"
+const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 const PLAIN_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
 const RINV_METHODS = Set([BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL])
 const SQUARE_METHODS = Set(vcat(collect(PLAIN_METHODS), collect(RINV_METHODS)))
@@ -73,6 +75,105 @@ function _case_grid(square_ms::Vector{Int}, short_ms::Vector{Int}, short_aspects
     return cases
 end
 
+@inline function _family_code(family::Symbol)
+    family === :gaussian && return UInt(1)
+    family === :ill_conditioned && return UInt(2)
+    family === :orthonormal_rows && return UInt(3)
+    error("Unknown family: $family")
+end
+
+@inline function _case_seed(seed::Int, family::Symbol, m::Int, n::Int, aspect::Float64)
+    # Deterministic per-case seed that does not depend on loop traversal order.
+    aspect_key = UInt(round(Int, aspect * 1_000_000))
+    x = reinterpret(UInt, seed)
+    x ⊻= (_family_code(family) << 48)
+    x ⊻= (UInt(m) << 24)
+    x ⊻= UInt(n)
+    x ⊻= (aspect_key << 8)
+    return Int(mod(x, UInt(typemax(Int) - 1))) + 1
+end
+
+function _git_string(args...)
+    try
+        cmd = Cmd(["git", "-C", REPO_ROOT, String.(args)...])
+        return strip(read(cmd, String))
+    catch
+        return "unknown"
+    end
+end
+
+function _git_dirty_state()
+    try
+        wd_clean = success(`git -C $REPO_ROOT diff --quiet --ignore-submodules=all`)
+        ix_clean = success(`git -C $REPO_ROOT diff --cached --quiet --ignore-submodules=all`)
+        return !(wd_clean && ix_clean)
+    catch
+        return "unknown"
+    end
+end
+
+function _expected_row_count(
+    threads::Vector{Int},
+    seeds::Vector{Int},
+    families::Vector{Symbol},
+    cases::Vector{<:NamedTuple},
+)
+    methods_per_case = length(ALLOWED_METHODS)
+    return length(threads) * length(seeds) * length(families) * length(cases) * methods_per_case
+end
+
+function _validate_ci_and_quality(rows::Vector{NamedTuple})
+    ci_enforce = strip(get(ENV, "BS_PUB_CI_ENFORCE", "0")) == "1"
+    ci_warn_frac = parse_env_float("BS_PUB_CI_WARN_FRAC", 0.5; minval = 0.0, maxval = 100.0)
+    ci_fail_frac = parse_env_float("BS_PUB_CI_FAIL_FRAC", 10.0; minval = 0.0, maxval = 1000.0)
+    ci_min_tmed = parse_env_float("BS_PUB_CI_MIN_TMED", 1.0e-4; minval = 0.0, maxval = 1.0e6)
+    resid_factor = parse_env_float("BS_PUB_RESID_FACTOR", 2.5e3; minval = 1.0, maxval = 1.0e12)
+    orth_factor = parse_env_float("BS_PUB_ORTH_FACTOR", 2.5e3; minval = 1.0, maxval = 1.0e12)
+
+    warn_keys = Tuple{Symbol,String,Int,Int,Int,Int,String,Float64}[]
+    for r in rows
+        tmin = r.tmin
+        tmed = r.tmed
+        tci_low = r.tci_low
+        tci_high = r.tci_high
+        alloc = r.alloc
+        all(isfinite, (tmin, tmed, tci_low, tci_high, r.resid, r.orth)) ||
+            error("Non-finite benchmark row encountered: $r")
+        (tmin >= 0.0 && tmed > 0.0 && tci_low >= 0.0 && tci_high >= 0.0) ||
+            error("Negative timing encountered: $r")
+        (tci_low <= tmed <= tci_high) ||
+            error("Invalid CI bounds (must satisfy tci_low <= tmed <= tci_high): $r")
+        alloc >= 0 || error("Negative allocation count encountered: $r")
+
+        ci_frac = (tci_high - tci_low) / max(tmed, eps(Float64))
+        if tmed >= ci_min_tmed && ci_frac > ci_fail_frac
+            if ci_enforce
+                error("CI spread too wide for publication stability (frac=$(round(ci_frac, sigdigits=4)) > $ci_fail_frac): $r")
+            else
+                push!(warn_keys, (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, r.method, ci_frac))
+            end
+        end
+        if tmed >= ci_min_tmed && ci_frac > ci_warn_frac
+            push!(warn_keys, (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, r.method, ci_frac))
+        end
+
+        tol_resid = resid_factor * eps(Float64) * max(r.m, r.n)
+        tol_orth = orth_factor * eps(Float64) * max(r.m, 1)
+        r.resid <= tol_resid || error("Residual exceeds tolerance ($tol_resid): $r")
+        r.orth <= tol_orth || error("Orthogonality exceeds tolerance ($tol_orth): $r")
+    end
+
+    if !isempty(warn_keys)
+        uniq = unique(warn_keys)
+        worst = maximum(x -> x[8], uniq)
+        println(
+            "Warning: high CI spread in $(length(uniq)) benchmark groups " *
+            "(warn>$(ci_warn_frac), fail>$(ci_fail_frac), enforce=$(ci_enforce), worst=$(round(worst, sigdigits=4))).",
+        )
+    end
+    return nothing
+end
+
 function _write_metadata(
     metadata_path::String,
     run_id::String,
@@ -84,6 +185,8 @@ function _write_metadata(
     short_aspects::Vector{Float64},
     warmup::Int,
     samples::Int,
+    expected_rows::Int,
+    observed_rows::Int,
 )
     cpu_model = try
         cpu = first(Sys.cpu_info())
@@ -91,15 +194,25 @@ function _write_metadata(
     catch
         "unknown"
     end
+    git_sha = _git_string("rev-parse", "HEAD")
+    git_branch = _git_string("rev-parse", "--abbrev-ref", "HEAD")
+    git_dirty = _git_dirty_state()
 
     open(metadata_path, "w") do io
+        println(io, "schema_version = ", PUBLICATION_SCHEMA_VERSION)
         println(io, "run_id = ", run_id)
         println(io, "timestamp = ", Dates.now())
         println(io, "julia_version = ", VERSION)
+        println(io, "git_sha = ", git_sha)
+        println(io, "git_branch = ", git_branch)
+        println(io, "git_dirty = ", git_dirty)
+        println(io, "repo_root = ", REPO_ROOT)
         println(io, "cpu_model = ", cpu_model)
         println(io, "cpu_threads = ", Sys.CPU_THREADS)
         println(io, "blas_threads_at_end = ", BLAS.get_num_threads())
         println(io, "blas_config = ", backend_string())
+        println(io, "expected_rows = ", expected_rows)
+        println(io, "observed_rows = ", observed_rows)
         println(io, "")
         println(io, "[publication_knobs]")
         println(io, "BS_PUB_THREADS = ", join(threads, ","))
@@ -111,6 +224,12 @@ function _write_metadata(
         println(io, "BS_PUB_WARMUP = ", warmup)
         println(io, "BS_PUB_SAMPLES = ", samples)
         println(io, "BS_NORM_RECOMP_TOL = ", get(ENV, "BS_NORM_RECOMP_TOL", string(DEFAULT_NORM_RECOMP_TOL)))
+        println(io, "BS_PUB_CI_WARN_FRAC = ", get(ENV, "BS_PUB_CI_WARN_FRAC", "0.5"))
+        println(io, "BS_PUB_CI_FAIL_FRAC = ", get(ENV, "BS_PUB_CI_FAIL_FRAC", "10.0"))
+        println(io, "BS_PUB_CI_MIN_TMED = ", get(ENV, "BS_PUB_CI_MIN_TMED", "1.0e-4"))
+        println(io, "BS_PUB_CI_ENFORCE = ", get(ENV, "BS_PUB_CI_ENFORCE", "0"))
+        println(io, "BS_PUB_RESID_FACTOR = ", get(ENV, "BS_PUB_RESID_FACTOR", "2500.0"))
+        println(io, "BS_PUB_ORTH_FACTOR = ", get(ENV, "BS_PUB_ORTH_FACTOR", "2500.0"))
         println(io, "")
         println(io, "[environment]")
         for key in sort!(collect(keys(ENV)))
@@ -209,6 +328,7 @@ end
 function _validate_pairs(rows::Vector{NamedTuple})
     keyset = Dict{Tuple{Symbol,String,Int,Int,Int,Int},Set{String}}()
     for r in rows
+        r.method in ALLOWED_METHODS || error("Unexpected method in benchmark rows: $(r.method)")
         key = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads)
         get!(keyset, key, Set{String}())
         push!(keyset[key], r.method)
@@ -250,6 +370,7 @@ function run_publication_benchmarks()
 
     rows = NamedTuple[]
     cases = _case_grid(square_ms, short_ms, short_aspects)
+    expected_rows = _expected_row_count(threads, seeds, families, cases)
     old_threads = BLAS.get_num_threads()
 
     try
@@ -258,14 +379,14 @@ function run_publication_benchmarks()
             println("Configured BLAS threads: ", BLAS.get_num_threads())
 
             for seed in seeds
-                rng = MersenneTwister(seed)
                 for family in families
                     for c in cases
                         if family === :orthonormal_rows && c.m > c.n
                             continue
                         end
 
-                        A = make_matrix(family, c.m, c.n, rng)
+                        case_rng = MersenneTwister(_case_seed(seed, family, c.m, c.n, c.aspect))
+                        A = make_matrix(family, c.m, c.n, case_rng)
                         kfull = min(c.m, c.n)
                         plain_rows = bench_pair_ci(
                             A,
@@ -340,7 +461,10 @@ function run_publication_benchmarks()
         BLAS.set_num_threads(old_threads)
     end
 
+    length(rows) == expected_rows ||
+        error("Row-count mismatch: expected $expected_rows rows, observed $(length(rows))")
     _validate_pairs(rows)
+    _validate_ci_and_quality(rows)
     _write_summary(summary_path, rows, run_id, threads, seeds)
     _write_metadata(
         metadata_path,
@@ -353,6 +477,8 @@ function run_publication_benchmarks()
         short_aspects,
         warmup,
         samples,
+        expected_rows,
+        length(rows),
     )
 
     println("Wrote publication benchmark CSV to: $csv_path")

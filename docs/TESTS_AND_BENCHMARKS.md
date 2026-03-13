@@ -31,6 +31,12 @@ Plot + table generation:
 julia --project=. benchmark/plot_publication_results.jl
 ```
 
+Internal performance headroom gate (stage timings + variant comparison):
+
+```bash
+julia --project=. benchmark/perf_headroom_gate.jl
+```
+
 Publication timing compares:
 - Plain pair: `bsqr_full` vs `dgeqp3`.
 - `R11^{-1}R12` pair: `bsqr_rinv` vs `dgeqp3_trsm` (DGEQP3 + triangular solve).
@@ -68,6 +74,31 @@ Publication timing compares:
 - `BS_NORM_RECOMP_TOL`
   - partial-norm recomputation tolerance.
   - default: `sqrt(eps(Float64))`.
+- `BS_PUB_CI_WARN_FRAC`
+  - warning threshold for CI spread `(tci_high - tci_low) / tmed`.
+  - default: `0.5`.
+- `BS_PUB_CI_FAIL_FRAC`
+  - hard-fail threshold for CI spread.
+  - default: `10.0`.
+- `BS_PUB_CI_MIN_TMED`
+  - CI warn/fail checks apply only when `tmed >= BS_PUB_CI_MIN_TMED`.
+  - default: `1.0e-4`.
+- `BS_PUB_CI_ENFORCE`
+  - set to `1` to hard-fail when CI spread exceeds `BS_PUB_CI_FAIL_FRAC`.
+  - default: `0` (warn-only).
+- `BS_PUB_RESID_FACTOR`
+  - residual tolerance factor in `factor * eps(Float64) * max(m,n)`.
+  - default: `2500`.
+- `BS_PUB_ORTH_FACTOR`
+  - orthogonality tolerance factor in `factor * eps(Float64) * m`.
+  - default: `2500`.
+
+Kernel fastpath tuning knobs (used by `bsqr` and perf gate):
+
+- `BS_SHORT_WIDE_FASTPATH` (`1`/`0`, default `1`)
+- `BS_SHORT_WIDE_FASTPATH_ASPECT` (default `4`)
+- `BS_SHORT_WIDE_FASTPATH_MMAX` (default `256`)
+- `BS_SHORT_WIDE_FASTPATH_NMIN` (default `0`)
 
 ### Example Commands
 
@@ -91,6 +122,20 @@ Smoke run:
 BS_PUB_OUTDIR=/tmp/bs_pub_smoke BS_PUB_FAMILIES=gaussian BS_PUB_THREADS=1 BS_PUB_SEEDS=20260310 BS_PUB_SQUARE_MS=64 BS_PUB_SHORT_MS=32 BS_PUB_SHORT_ASPECTS=2 BS_PUB_WARMUP=0 BS_PUB_SAMPLES=2 julia --project=. benchmark/bench_cpqr_publication.jl
 julia --project=. benchmark/plot_publication_results.jl /tmp/bs_pub_smoke/publication_timings.csv /tmp/bs_pub_smoke/plots /tmp/bs_pub_smoke/tables
 ```
+
+## Publication Checklist
+
+- Run tests: `julia --project=. test/runtests.jl`.
+- Run publication benchmark with fixed seeds/threads.
+- Confirm `publication_timings.csv` row count equals:
+  - `|threads| * |seeds| * |families| * |cases| * 4 methods`.
+- Confirm no CI/quality gate failures in benchmark runner output.
+- Check `metadata.txt` contains:
+  - `schema_version`, `git_sha`, `git_branch`, `git_dirty`, `blas_config`, `expected_rows`, `observed_rows`.
+- Run plot pipeline and ensure CSV validation succeeds before figure generation.
+- Verify expected artifact tree exists:
+  - plots and tables for both `plain` and `rinv`.
+- (Optional) Run `benchmark/perf_headroom_gate.jl` to decide whether performance tuning changes are substantial enough to keep.
 
 ## Output Artifacts
 

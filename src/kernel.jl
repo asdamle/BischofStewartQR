@@ -208,6 +208,240 @@ function bsqr!(
     return BSQRPivoted(factors, tau, jpvt, ksteps, frob_trace, rinv_r12_data)
 end
 
+@inline function _init_running_colnorms!(A::StridedMatrix{Float64}, ws::BSWorkspace, n::Int)
+    @inbounds for j in 1:n
+        nj = BLAS.nrm2(view(A, :, j))
+        sj = nj * nj
+        ws.s[j] = sj
+        ws.s_ref[j] = sj
+        ws.wnorm2[j] = 0.0
+    end
+    return nothing
+end
+
+@inline function _select_pivot_column!(
+    ws::BSWorkspace,
+    i::Int,
+    n::Int,
+    kernel_stats::Union{Nothing,BSKernelStats},
+)
+    best_j = i
+    best_c = Inf
+    t_pivot = kernel_stats === nothing ? 0 : time_ns()
+
+    @inbounds for j in i:n
+        sj = ws.s[j]
+        # Bischof-Stewart pivot criterion: minimize (1 + ||w_j||^2) / ||a_j^(i)||^2.
+        cj = sj > 0.0 ? (1.0 + ws.wnorm2[j]) / sj : Inf
+        # Use strict '<' so ties keep the first minimum, matching reference behavior.
+        if cj < best_c
+            best_c = cj
+            best_j = j
+        end
+    end
+    if kernel_stats !== nothing
+        kernel_stats.pivot_select_ns += time_ns() - t_pivot
+    end
+    return best_j, best_c
+end
+
+@inline function _swap_pivot_state!(
+    A::StridedMatrix{Float64},
+    ws::BSWorkspace,
+    jpvt::Vector{Int},
+    i::Int,
+    best_j::Int,
+)
+    best_j == i && return nothing
+    _swap_columns!(A, i, best_j)
+    if i > 1
+        _swap_columns_prefix!(ws.W, i, best_j, i - 1)
+    end
+    _swap_entries!(ws.s, i, best_j)
+    _swap_entries!(ws.s_ref, i, best_j)
+    _swap_entries!(ws.wnorm2, i, best_j)
+    _swap_entries!(jpvt, i, best_j)
+    return nothing
+end
+
+@inline function _rank_stop_triggered(
+    ws::BSWorkspace,
+    i::Int,
+    tol_scale::Float64,
+)
+    pivot_norm2 = ws.s[i]
+    atol = tol_scale * max(ws.s_ref[i], 1.0)
+    # Rank-stop tolerance scales with matrix size/reference norm to avoid
+    # stopping on benign floating-point noise.
+    return !(pivot_norm2 > atol)
+end
+
+@inline function _householder_stage!(
+    A::StridedMatrix{Float64},
+    tau::Vector{Float64},
+    i::Int,
+    m::Int,
+    n::Int,
+    ws::BSWorkspace,
+    kernel_stats::Union{Nothing,BSKernelStats},
+)
+    t_hh = kernel_stats === nothing ? 0 : time_ns()
+    tau_i, beta_i = _householder!(view(A, i:m, i))
+    if kernel_stats !== nothing
+        kernel_stats.householder_ns += time_ns() - t_hh
+    end
+    tau[i] = tau_i
+
+    if tau_i != 0.0 && i < n
+        A[i, i] = 1.0
+        t_apply = kernel_stats === nothing ? 0 : time_ns()
+        _apply_householder_left!(A, i, tau_i, ws.work)
+        if kernel_stats !== nothing
+            kernel_stats.apply_reflector_ns += time_ns() - t_apply
+        end
+    end
+
+    A[i, i] = beta_i
+    ws.s[i] = beta_i * beta_i
+    ws.s_ref[i] = ws.s[i]
+    return beta_i
+end
+
+@inline function _materialize_beta_row!(
+    A::StridedMatrix{Float64},
+    ws::BSWorkspace,
+    i::Int,
+    n::Int,
+    invdiag::Float64,
+    short_wide_fastpath::Bool,
+)
+    nrem = n - i
+    alpha = view(A, i, (i + 1):n)
+    beta_vec = view(ws.beta, 1:nrem)
+
+    if short_wide_fastpath
+        # Materialize the W row while forming beta to avoid an extra strided copy.
+        @inbounds for t in 1:nrem
+            j = i + t
+            b = alpha[t] * invdiag
+            beta_vec[t] = b
+            ws.W[i, j] = b
+        end
+    else
+        @inbounds for t in 1:nrem
+            beta_vec[t] = alpha[t] * invdiag
+        end
+    end
+    return alpha, beta_vec
+end
+
+@inline function _update_trailing_state!(
+    A::StridedMatrix{Float64},
+    ws::BSWorkspace,
+    i::Int,
+    m::Int,
+    n::Int,
+    beta_i::Float64,
+    short_wide_fastpath::Bool,
+    norm_recomp_tol::Float64,
+    norm_recomp_count::Union{Nothing,Base.RefValue{Int}},
+    kernel_stats::Union{Nothing,BSKernelStats},
+)
+    nrem = n - i
+    nrem > 0 || return nothing
+
+    t_update = kernel_stats === nothing ? 0 : time_ns()
+    invdiag = beta_i != 0.0 ? (1.0 / beta_i) : 0.0
+    alpha, beta_vec = _materialize_beta_row!(A, ws, i, n, invdiag, short_wide_fastpath)
+
+    dots = view(ws.dots, 1:nrem)
+    has_prefix = i > 1
+    if has_prefix
+        Wprefix = view(ws.W, 1:(i - 1), (i + 1):n)
+        wpivot = view(ws.W, 1:(i - 1), i)
+        BLAS.gemv!('T', 1.0, Wprefix, wpivot, 0.0, dots)
+        BLAS.ger!(-1.0, wpivot, beta_vec, Wprefix)
+    end
+
+    if !short_wide_fastpath
+        copyto!(view(ws.W, i, (i + 1):n), beta_vec)
+    end
+
+    # ws.W stores rows of R11^{-1}R12 built so far. ws.wnorm2 tracks ||w_j||^2,
+    # which appears directly in the pivot criterion.
+    wcoeff = ws.wnorm2[i] + 1.0
+    recompute_slots = view(ws.recompute_idx, 1:nrem)
+    nrecompute = 0
+    if has_prefix
+        @inbounds for t in 1:nrem
+            j = i + t
+            b = beta_vec[t]
+            d = dots[t]
+
+            wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
+            ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+
+            old_s = ws.s[j]
+            if !(old_s > 0.0)
+                ws.s[j] = 0.0
+                continue
+            end
+
+            sj = old_s - alpha[t] * alpha[t]
+            sj = sj > 0.0 ? sj : 0.0
+            ws.s[j] = sj
+
+            # LAPACK-style safeguard: refresh only when the running norm estimate
+            # has decayed enough relative to the last exact reference norm.
+            if sj <= ws.s_ref[j] * norm_recomp_tol
+                nrecompute += 1
+                recompute_slots[nrecompute] = t
+            end
+        end
+    else
+        @inbounds for t in 1:nrem
+            j = i + t
+            b = beta_vec[t]
+
+            wn = ws.wnorm2[j] + b * b
+            ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
+
+            old_s = ws.s[j]
+            if !(old_s > 0.0)
+                ws.s[j] = 0.0
+                continue
+            end
+
+            sj = old_s - alpha[t] * alpha[t]
+            sj = sj > 0.0 ? sj : 0.0
+            ws.s[j] = sj
+
+            if sj <= ws.s_ref[j] * norm_recomp_tol
+                nrecompute += 1
+                recompute_slots[nrecompute] = t
+            end
+        end
+    end
+
+    downdate_ns = _refresh_recompute_colnorms!(
+        A,
+        ws,
+        i,
+        m,
+        recompute_slots,
+        nrecompute,
+        norm_recomp_count,
+        kernel_stats,
+    )
+    if kernel_stats !== nothing
+        elapsed = time_ns() - t_update
+        kernel_stats.norm_downdate_ns += downdate_ns
+        wns = elapsed - downdate_ns
+        kernel_stats.w_update_ns += wns > 0 ? wns : 0
+    end
+    return nothing
+end
+
 function _bsqr_kernel!(
     A::StridedMatrix{Float64},
     tau::Vector{Float64},
@@ -225,203 +459,34 @@ function _bsqr_kernel!(
     short_wide_fastpath = _use_short_wide_fastpath(m, n) && _short_wide_fastpath_enabled()
     k == 0 && return 0
     tol_scale = eps(Float64) * max(m, n)
-
-    @inbounds for j in 1:n
-        nj = BLAS.nrm2(view(A, :, j))
-        sj = nj * nj
-        ws.s[j] = sj
-        ws.s_ref[j] = sj
-        ws.wnorm2[j] = 0.0
-    end
+    _init_running_colnorms!(A, ws, n)
 
     ksteps = 0
     for i in 1:k
-        best_j = i
-        best_c = Inf
-        t_pivot = kernel_stats === nothing ? 0 : time_ns()
-
-        @inbounds for j in i:n
-            sj = ws.s[j]
-            # Bischof-Stewart pivot criterion: minimize (1 + ||w_j||^2) / ||a_j^(i)||^2.
-            cj = sj > 0.0 ? (1.0 + ws.wnorm2[j]) / sj : Inf
-            # Use strict '<' so ties keep the first minimum, matching reference behavior.
-            if cj < best_c
-                best_c = cj
-                best_j = j
-            end
-        end
-        if kernel_stats !== nothing
-            kernel_stats.pivot_select_ns += time_ns() - t_pivot
-        end
-
-        if best_j != i
-            _swap_columns!(A, i, best_j)
-            if i > 1
-                _swap_columns_prefix!(ws.W, i, best_j, i - 1)
-            end
-            _swap_entries!(ws.s, i, best_j)
-            _swap_entries!(ws.s_ref, i, best_j)
-            _swap_entries!(ws.wnorm2, i, best_j)
-            _swap_entries!(jpvt, i, best_j)
-        end
-
+        best_j, best_c = _select_pivot_column!(ws, i, n, kernel_stats)
+        _swap_pivot_state!(A, ws, jpvt, i, best_j)
         if pivot_history !== nothing
             push!(pivot_history, jpvt[i])
         end
 
-        pivot_norm2 = ws.s[i]
-        atol = tol_scale * max(ws.s_ref[i], 1.0)
-        # Rank-stop tolerance is scaled to matrix size/reference norm to avoid
-        # stopping on benign floating-point noise.
-        if !(pivot_norm2 > atol)
-            if rank_stop
-                tau[i] = 0.0
-                break
-            end
+        if _rank_stop_triggered(ws, i, tol_scale) && rank_stop
+            tau[i] = 0.0
+            break
         end
 
-        t_hh = kernel_stats === nothing ? 0 : time_ns()
-        tau_i, beta_i = _householder!(view(A, i:m, i))
-        if kernel_stats !== nothing
-            kernel_stats.householder_ns += time_ns() - t_hh
-        end
-        tau[i] = tau_i
-
-        if tau_i != 0.0 && i < n
-            A[i, i] = 1.0
-            t_apply = kernel_stats === nothing ? 0 : time_ns()
-            _apply_householder_left!(A, i, tau_i, ws.work)
-            if kernel_stats !== nothing
-                kernel_stats.apply_reflector_ns += time_ns() - t_apply
-            end
-        end
-
-        A[i, i] = beta_i
-
-        ws.s[i] = beta_i * beta_i
-        ws.s_ref[i] = ws.s[i]
-
-        nrem = n - i
-        if nrem > 0
-            t_update = kernel_stats === nothing ? 0 : time_ns()
-            downdate_ns_local = 0
-            alpha = view(A, i, (i + 1):n)
-            beta_vec = view(ws.beta, 1:nrem)
-            invdiag = beta_i != 0.0 ? (1.0 / beta_i) : 0.0
-
-            if short_wide_fastpath
-                # Short-wide fast path: materialize W-row and beta in one pass to avoid
-                # an extra strided copy over the full trailing width.
-                @inbounds for t in 1:nrem
-                    j = i + t
-                    b = alpha[t] * invdiag
-                    beta_vec[t] = b
-                    ws.W[i, j] = b
-                end
-            else
-                @inbounds for t in 1:nrem
-                    beta_vec[t] = alpha[t] * invdiag
-                end
-            end
-
-            wnorm2_pivot = ws.wnorm2[i]
-            dots = view(ws.dots, 1:nrem)
-            # ws.W stores R11^{-1}R12 rows built so far; ws.wnorm2 tracks per-column
-            # ||w_j||^2 used directly by the pivot criterion.
-            has_prefix = i > 1
-            if has_prefix
-                Wprefix = view(ws.W, 1:(i - 1), (i + 1):n)
-                wpivot = view(ws.W, 1:(i - 1), i)
-                BLAS.gemv!(
-                    'T',
-                    1.0,
-                    Wprefix,
-                    wpivot,
-                    0.0,
-                    dots,
-                )
-                BLAS.ger!(
-                    -1.0,
-                    wpivot,
-                    beta_vec,
-                    Wprefix,
-                )
-            end
-
-            if !short_wide_fastpath
-                copyto!(view(ws.W, i, (i + 1):n), beta_vec)
-            end
-
-            wcoeff = wnorm2_pivot + 1.0
-            recompute_slots = view(ws.recompute_idx, 1:nrem)
-            nrecompute = 0
-            if has_prefix
-                @inbounds for t in 1:nrem
-                    j = i + t
-                    b = beta_vec[t]
-                    d = dots[t]
-
-                    wn = ws.wnorm2[j] - 2.0 * b * d + b * b * wcoeff
-                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
-
-                    old_s = ws.s[j]
-                    if !(old_s > 0.0)
-                        ws.s[j] = 0.0
-                        continue
-                    end
-
-                    sj = old_s - alpha[t] * alpha[t]
-                    sj = sj > 0.0 ? sj : 0.0
-                    ws.s[j] = sj
-
-                    # LAPACK-style safeguard: refresh only when the running norm
-                    # estimate has decayed enough relative to the last exact reference norm.
-                    if sj <= ws.s_ref[j] * norm_recomp_tol
-                        nrecompute += 1
-                        recompute_slots[nrecompute] = t
-                    end
-                end
-            else
-                @inbounds for t in 1:nrem
-                    j = i + t
-                    b = beta_vec[t]
-
-                    wn = ws.wnorm2[j] + b * b
-                    ws.wnorm2[j] = wn > 0.0 ? wn : 0.0
-
-                    old_s = ws.s[j]
-                    if !(old_s > 0.0)
-                        ws.s[j] = 0.0
-                        continue
-                    end
-
-                    sj = old_s - alpha[t] * alpha[t]
-                    sj = sj > 0.0 ? sj : 0.0
-                    ws.s[j] = sj
-
-                    if sj <= ws.s_ref[j] * norm_recomp_tol
-                        nrecompute += 1
-                        recompute_slots[nrecompute] = t
-                    end
-                end
-            end
-            downdate_ns_local += _refresh_recompute_colnorms!(
-                A,
-                ws,
-                i,
-                m,
-                recompute_slots,
-                nrecompute,
-                norm_recomp_count,
-                kernel_stats,
-            )
-            if kernel_stats !== nothing
-                elapsed = time_ns() - t_update
-                kernel_stats.norm_downdate_ns += downdate_ns_local
-                wns = elapsed - downdate_ns_local
-                kernel_stats.w_update_ns += wns > 0 ? wns : 0
-            end
-        end
+        beta_i = _householder_stage!(A, tau, i, m, n, ws, kernel_stats)
+        _update_trailing_state!(
+            A,
+            ws,
+            i,
+            m,
+            n,
+            beta_i,
+            short_wide_fastpath,
+            norm_recomp_tol,
+            norm_recomp_count,
+            kernel_stats,
+        )
 
         ksteps = i
         if frob_inv_trace !== nothing
@@ -435,9 +500,43 @@ end
 const _DEFAULT_NORM_RECOMP_TOL = sqrt(eps(Float64))
 const _SHORT_WIDE_FASTPATH_ASPECT = 4
 const _SHORT_WIDE_FASTPATH_MMAX = 256
+const _SHORT_WIDE_FASTPATH_NMIN = 0
 const _RECOMP_NORM2_LOOP_THRESHOLD = 256
 
-@inline _use_short_wide_fastpath(m::Int, n::Int) = (m <= _SHORT_WIDE_FASTPATH_MMAX) && (n >= _SHORT_WIDE_FASTPATH_ASPECT * m)
+@inline function _env_or_default_int(key::String, default::Int; minval::Int = 0)
+    raw = strip(get(ENV, key, ""))
+    isempty(raw) && return default
+    v = tryparse(Int, raw)
+    v === nothing && throw(ArgumentError("$key must be an integer"))
+    v >= minval || throw(ArgumentError("$key must be >= $minval"))
+    return v
+end
+
+@inline function _short_wide_fastpath_params()
+    aspect = _env_or_default_int(
+        "BS_SHORT_WIDE_FASTPATH_ASPECT",
+        _SHORT_WIDE_FASTPATH_ASPECT;
+        minval = 1,
+    )
+    mmax = _env_or_default_int(
+        "BS_SHORT_WIDE_FASTPATH_MMAX",
+        _SHORT_WIDE_FASTPATH_MMAX;
+        minval = 1,
+    )
+    nmin = _env_or_default_int(
+        "BS_SHORT_WIDE_FASTPATH_NMIN",
+        _SHORT_WIDE_FASTPATH_NMIN;
+        minval = 0,
+    )
+    return aspect, mmax, nmin
+end
+
+@inline function _use_short_wide_fastpath(m::Int, n::Int)
+    aspect, mmax, nmin = _short_wide_fastpath_params()
+    nbound = max(nmin, aspect * m)
+    return (m <= mmax) && (n >= nbound)
+end
+
 @inline _short_wide_fastpath_enabled() = strip(get(ENV, "BS_SHORT_WIDE_FASTPATH", "1")) != "0"
 
 @inline function _tail_colnorm2(

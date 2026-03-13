@@ -65,6 +65,12 @@ Generate publication figures and caption-ready tables for both comparison sets:
 julia --project=. benchmark/plot_publication_results.jl
 ```
 
+Internal performance headroom gate (stage breakdown + variant geomean speedups):
+
+```bash
+julia --project=. benchmark/perf_headroom_gate.jl
+```
+
 Useful knobs:
 
 - `BS_PUB_OUTDIR` (default: `benchmark/results/publication`)
@@ -77,6 +83,13 @@ Useful knobs:
 - `BS_PUB_WARMUP` (default: `1`)
 - `BS_PUB_SAMPLES` (default: `30`)
 - `BS_NORM_RECOMP_TOL` (default: `sqrt(eps(Float64))`)
+- `BS_PUB_CI_WARN_FRAC` (default: `0.5`)
+- `BS_PUB_CI_FAIL_FRAC` (default: `10.0`)
+- `BS_PUB_CI_MIN_TMED` (default: `1.0e-4`)
+- `BS_PUB_CI_ENFORCE` (`1` to hard-fail high-CI rows, default: `0`)
+- `BS_PUB_RESID_FACTOR` (default: `2500`)
+- `BS_PUB_ORTH_FACTOR` (default: `2500`)
+- `BS_SHORT_WIDE_FASTPATH` / `BS_SHORT_WIDE_FASTPATH_ASPECT` / `BS_SHORT_WIDE_FASTPATH_MMAX` / `BS_SHORT_WIDE_FASTPATH_NMIN`
 
 Example run with explicit knobs:
 

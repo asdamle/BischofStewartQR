@@ -295,3 +295,61 @@ end
     Ffrom_prealloc = BSQRPivoted(copy(Awork), copy(tau), copy(jpvt), ksteps, copy(trace), Matrix(view(ws.W, 1:ksteps, (ksteps + 1):n)))
     @test rinv_r12(Ffrom_prealloc) ≈ Fref.rinv_r12
 end
+
+@testset "Kernel helper invariants and fastpath knobs" begin
+    ws = BSPivotQR.BSWorkspace(8, 5, 5)
+    ws.s .= [4.0, 4.0, 1.0, 1.0, 0.0]
+    ws.wnorm2 .= [0.0, 0.0, 0.0, 0.0, 0.0]
+
+    j1, c1 = BSPivotQR._select_pivot_column!(ws, 1, 5, nothing)
+    @test j1 == 1
+    @test c1 == 0.25
+
+    # Tie must keep first minimum index because the kernel uses strict '<'.
+    j2, _ = BSPivotQR._select_pivot_column!(ws, 3, 5, nothing)
+    @test j2 == 3
+
+    tol_scale = eps(Float64) * 10.0
+    ws.s[1] = 0.0
+    ws.s_ref[1] = 1.0
+    @test BSPivotQR._rank_stop_triggered(ws, 1, tol_scale)
+    ws.s[1] = 10.0 * tol_scale
+    @test !BSPivotQR._rank_stop_triggered(ws, 1, tol_scale)
+
+    keys = [
+        "BS_SHORT_WIDE_FASTPATH_ASPECT",
+        "BS_SHORT_WIDE_FASTPATH_MMAX",
+        "BS_SHORT_WIDE_FASTPATH_NMIN",
+    ]
+    old = Dict{String,Union{Nothing,String}}()
+    for key in keys
+        old[key] = haskey(ENV, key) ? ENV[key] : nothing
+    end
+
+    try
+        haskey(ENV, "BS_SHORT_WIDE_FASTPATH_ASPECT") && delete!(ENV, "BS_SHORT_WIDE_FASTPATH_ASPECT")
+        haskey(ENV, "BS_SHORT_WIDE_FASTPATH_MMAX") && delete!(ENV, "BS_SHORT_WIDE_FASTPATH_MMAX")
+        haskey(ENV, "BS_SHORT_WIDE_FASTPATH_NMIN") && delete!(ENV, "BS_SHORT_WIDE_FASTPATH_NMIN")
+        aspect, mmax, nmin = BSPivotQR._short_wide_fastpath_params()
+        @test aspect == BSPivotQR._SHORT_WIDE_FASTPATH_ASPECT
+        @test mmax == BSPivotQR._SHORT_WIDE_FASTPATH_MMAX
+        @test nmin == BSPivotQR._SHORT_WIDE_FASTPATH_NMIN
+
+        ENV["BS_SHORT_WIDE_FASTPATH_ASPECT"] = "6"
+        ENV["BS_SHORT_WIDE_FASTPATH_MMAX"] = "300"
+        ENV["BS_SHORT_WIDE_FASTPATH_NMIN"] = "700"
+        @test BSPivotQR._use_short_wide_fastpath(128, 1024)
+        @test !BSPivotQR._use_short_wide_fastpath(128, 640)
+
+        ENV["BS_SHORT_WIDE_FASTPATH_ASPECT"] = "0"
+        @test_throws ArgumentError BSPivotQR._short_wide_fastpath_params()
+    finally
+        for (key, val) in old
+            if val === nothing
+                haskey(ENV, key) && delete!(ENV, key)
+            else
+                ENV[key] = val
+            end
+        end
+    end
+end

@@ -1,8 +1,88 @@
 #!/usr/bin/env julia
 
+using DelimitedFiles
+
 const DEFAULT_INPUT = joinpath(@__DIR__, "results", "publication", "publication_timings.csv")
 const DEFAULT_OUTDIR = joinpath(@__DIR__, "results", "publication", "plots")
 const DEFAULT_TABLEDIR = joinpath(@__DIR__, "results", "publication", "tables")
+const REQUIRED_COLUMNS = [
+    "run_id",
+    "timestamp",
+    "family",
+    "regime",
+    "m",
+    "n",
+    "aspect",
+    "seed",
+    "blas_threads",
+    "method",
+    "tmin_s",
+    "tmed_s",
+    "tci_low_s",
+    "tci_high_s",
+    "alloc_bytes",
+    "residual",
+    "orthogonality",
+]
+const EXPECTED_METHODS = Set(["bsqr_full", "bsqr_rinv", "dgeqp3", "dgeqp3_trsm"])
+
+_as_string(x) = String(x)
+_as_int(x) = x isa Int ? x : parse(Int, _as_string(x))
+_as_float(x) = x isa AbstractFloat ? Float64(x) : parse(Float64, _as_string(x))
+
+function _validate_publication_csv(input::AbstractString)
+    isfile(input) || error("Input CSV does not exist: $input")
+    data, raw_header = readdlm(input, ',', header = true)
+    header = _as_string.(vec(raw_header))
+    isempty(header) && error("CSV header is empty: $input")
+
+    hset = Set(header)
+    for col in REQUIRED_COLUMNS
+        col in hset || error("Missing required CSV column '$col' in $input")
+    end
+    nrows = size(data, 1)
+    nrows > 0 || error("No benchmark rows found in $input")
+
+    colidx = Dict{String,Int}(name => findfirst(==(name), header) for name in REQUIRED_COLUMNS)
+    key_methods = Dict{Tuple{String,String,Int,Int,Int,Int},Set{String}}()
+    methods_seen = Set{String}()
+    for i in 1:nrows
+        row = view(data, i, :)
+        family = _as_string(row[colidx["family"]])
+        regime = _as_string(row[colidx["regime"]])
+        m = _as_int(row[colidx["m"]])
+        n = _as_int(row[colidx["n"]])
+        seed = _as_int(row[colidx["seed"]])
+        nth = _as_int(row[colidx["blas_threads"]])
+        method = _as_string(row[colidx["method"]])
+        tmin = _as_float(row[colidx["tmin_s"]])
+        tmed = _as_float(row[colidx["tmed_s"]])
+        tci_low = _as_float(row[colidx["tci_low_s"]])
+        tci_high = _as_float(row[colidx["tci_high_s"]])
+        resid = _as_float(row[colidx["residual"]])
+        orth = _as_float(row[colidx["orthogonality"]])
+
+        all(isfinite, (tmin, tmed, tci_low, tci_high, resid, orth)) ||
+            error("Non-finite numeric entry in row $i")
+        tmin >= 0.0 || error("Negative tmin_s in row $i")
+        tmed > 0.0 || error("Non-positive tmed_s in row $i")
+        (tci_low <= tmed <= tci_high) ||
+            error("Invalid CI ordering in row $i (tci_low <= tmed <= tci_high required)")
+
+        push!(methods_seen, method)
+        key = (family, regime, m, n, seed, nth)
+        get!(key_methods, key, Set{String}())
+        push!(key_methods[key], method)
+    end
+
+    methods_seen == EXPECTED_METHODS ||
+        error("CSV methods mismatch: expected $(collect(EXPECTED_METHODS)), got $(collect(methods_seen))")
+    for (key, got) in key_methods
+        got == EXPECTED_METHODS ||
+            error("Missing method rows for key=$key: expected $(collect(EXPECTED_METHODS)), got $(collect(got))")
+    end
+    return nrows
+end
 
 function _python_plot(
     input::AbstractString,
@@ -67,10 +147,42 @@ methods = ("bsqr_full", "bsqr_rinv", "dgeqp3", "dgeqp3_trsm")
 if set(r["method"] for r in rows) - set(methods):
     raise RuntimeError("Unexpected methods in publication CSV; expected only bsqr_full, bsqr_rinv, dgeqp3, and dgeqp3_trsm")
 
+for idx, row in enumerate(rows):
+    vals = (row["tmin"], row["tmed"], row["tci_low"], row["tci_high"], row["residual"], row["orthogonality"])
+    if not all(math.isfinite(v) for v in vals):
+        raise RuntimeError(f"Non-finite numeric value at row index {idx}")
+    if row["tmin"] < 0.0 or row["tmed"] <= 0.0:
+        raise RuntimeError(f"Invalid timing value at row index {idx}")
+    if not (row["tci_low"] <= row["tmed"] <= row["tci_high"]):
+        raise RuntimeError(f"Invalid confidence interval ordering at row index {idx}")
+
 comparison_methods = (bsqr_method, baseline_method)
 comparison_rows = [r for r in rows if r["method"] in set(comparison_methods)]
 if not comparison_rows:
     raise RuntimeError(f"No rows found for comparison {comparison_name}: {bsqr_method} vs {baseline_method}")
+
+def require_complete_pairs(rows_in, methods_pair):
+    keys = sorted({
+        (r["family"], r["regime"], r["m"], r["n"], r["aspect"], r["seed"], r["blas_threads"])
+        for r in rows_in
+    })
+    missing = []
+    needed = set(methods_pair)
+    for key in keys:
+        present = {
+            r["method"] for r in rows_in
+            if (r["family"], r["regime"], r["m"], r["n"], r["aspect"], r["seed"], r["blas_threads"]) == key
+        }
+        if present != needed:
+            missing.append((key, sorted(needed - present)))
+    if missing:
+        first = missing[0]
+        raise RuntimeError(
+            f"Missing method rows for comparison {comparison_name}. "
+            f"First missing key={first[0]} missing={first[1]} total_missing={len(missing)}"
+        )
+
+require_complete_pairs(comparison_rows, comparison_methods)
 
 families = sorted({r["family"] for r in comparison_rows})
 threads = sorted({r["blas_threads"] for r in comparison_rows})
@@ -162,6 +274,8 @@ def paired_speedup_rows(rows_in, bsqr_method, baseline_method, regime_filter=Non
     return out
 
 speed_rows = paired_speedup_rows(comparison_rows, bsqr_method, baseline_method)
+if not speed_rows:
+    raise RuntimeError(f"No paired speedup rows for comparison {comparison_name}")
 
 def save_fig(fig, stem):
     fig.savefig(os.path.join(outdir, f"{stem}.png"), dpi=300)
@@ -596,6 +710,8 @@ function main()
     input = length(ARGS) >= 1 ? ARGS[1] : DEFAULT_INPUT
     outdir = length(ARGS) >= 2 ? ARGS[2] : DEFAULT_OUTDIR
     tabledir = length(ARGS) >= 3 ? ARGS[3] : DEFAULT_TABLEDIR
+    nrows = _validate_publication_csv(input)
+    println("Validated publication CSV ($nrows rows): $input")
     mkpath(outdir)
     mkpath(tabledir)
     comparisons = [
