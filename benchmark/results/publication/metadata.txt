@@ -1,5 +1,5 @@
-run_id = 20260310_235245
-timestamp = 2026-03-11T00:00:33.696
+run_id = 20260312_122004
+timestamp = 2026-03-12T12:38:08.154
 julia_version = 1.11.6
 cpu_model = Apple M3
 cpu_threads = 4
@@ -18,3 +18,6 @@ BS_PUB_SAMPLES = 30
 BS_NORM_RECOMP_TOL = 1.4901161193847656e-8
 
 [environment]
+BS_PUB_OUTDIR = benchmark/results/publication
+BS_PUB_SAMPLES = 30
+BS_PUB_THREADS = 1,4

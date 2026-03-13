@@ -71,6 +71,17 @@ Internal performance headroom gate (stage breakdown + variant geomean speedups):
 julia --project=. benchmark/perf_headroom_gate.jl
 ```
 
+Headroom gate knobs:
+
+- `BS_HEADROOM_BLAS_THREADS` (default: `1`)
+- `BS_HEADROOM_WARMUP` (default: `1`)
+- `BS_HEADROOM_SAMPLES` (default: `8`)
+- `BS_HEADROOM_SEED` (default: `20260312`)
+- `BS_HEADROOM_VARIANTS` (default: `baseline,fastpath_off,aspect6`)
+- `BS_HEADROOM_FAMILIES` (default: `gaussian,ill_conditioned,orthonormal_rows`)
+- `BS_HEADROOM_GATE` (default: `1.15`)
+- `BS_HEADROOM_ENFORCE` (`1` to hard-fail if no variant reaches the gate, default: `0`)
+
 Useful knobs:
 
 - `BS_PUB_OUTDIR` (default: `benchmark/results/publication`)
@@ -109,3 +120,4 @@ Outputs:
 - `benchmark/results/publication/plots/rinv/*.pdf`
 - `benchmark/results/publication/tables/plain/*.csv`
 - `benchmark/results/publication/tables/rinv/*.csv`
+- `benchmark/perf_headroom_gate.jl` prints a markdown report to stdout (no files written)

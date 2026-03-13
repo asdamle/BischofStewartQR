@@ -100,6 +100,17 @@ Kernel fastpath tuning knobs (used by `bsqr` and perf gate):
 - `BS_SHORT_WIDE_FASTPATH_MMAX` (default `256`)
 - `BS_SHORT_WIDE_FASTPATH_NMIN` (default `0`)
 
+Headroom gate knobs (`benchmark/perf_headroom_gate.jl`):
+
+- `BS_HEADROOM_BLAS_THREADS` (default `1`)
+- `BS_HEADROOM_WARMUP` (default `1`)
+- `BS_HEADROOM_SAMPLES` (default `8`)
+- `BS_HEADROOM_SEED` (default `20260312`)
+- `BS_HEADROOM_VARIANTS` (default `baseline,fastpath_off,aspect6`)
+- `BS_HEADROOM_FAMILIES` (default `gaussian,ill_conditioned,orthonormal_rows`)
+- `BS_HEADROOM_GATE` (default `1.15`)
+- `BS_HEADROOM_ENFORCE` (`1` to hard-fail when no variant reaches the gate; default `0`)
+
 ### Example Commands
 
 Standard publication run:
@@ -163,3 +174,7 @@ Publication plotting writes:
 - `benchmark/results/publication/tables/rinv/table_square_speedup.csv`
 - `benchmark/results/publication/tables/rinv/table_shortwide_speedup.csv`
 - `benchmark/results/publication/tables/rinv/table_quality.csv`
+
+Headroom gate writes:
+
+- no files; prints markdown tables + gate decision to stdout.
