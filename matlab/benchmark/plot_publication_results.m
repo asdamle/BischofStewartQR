@@ -279,16 +279,22 @@ if allow_shared
     return;
 end
 
-julia_results_root = fullfile(repo_root, 'benchmark', 'results');
+julia_results_roots = { ...
+    fullfile(repo_root, 'benchmark', 'results'), ...
+    fullfile(repo_root, 'julia', 'benchmark', 'results') ...
+};
 targets = {plots_dir, tables_dir};
 for i = 1:numel(targets)
     tgt_abs = bsqr_bench_canonical_path(targets{i});
-    julia_abs = bsqr_bench_canonical_path(julia_results_root);
-    if startsWith(tgt_abs, julia_abs)
-        error('plot_publication_results:SharedOutdirBlocked', ...
-            ['MATLAB plot/table outputs cannot be written into Julia results (%s). ', ...
-             'Use matlab/benchmark/results/... or set BS_MATLAB_ALLOW_SHARED_OUTDIR=1 explicitly.'], ...
-            julia_results_root);
+    for j = 1:numel(julia_results_roots)
+        jr = julia_results_roots{j};
+        julia_abs = bsqr_bench_canonical_path(jr);
+        if startsWith(tgt_abs, julia_abs)
+            error('plot_publication_results:SharedOutdirBlocked', ...
+                ['MATLAB plot/table outputs cannot be written into Julia results (%s). ', ...
+                 'Use matlab/benchmark/results/... or set BS_MATLAB_ALLOW_SHARED_OUTDIR=1 explicitly.'], ...
+                jr);
+        end
     end
 end
 end

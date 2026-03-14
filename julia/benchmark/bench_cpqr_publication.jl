@@ -13,7 +13,7 @@ using .BenchCommon
 
 const DEFAULT_PUB_OUTDIR = joinpath(@__DIR__, "results", "publication")
 const PUBLICATION_SCHEMA_VERSION = "2026-03-12.v1"
-const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
+const REPO_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 const PLAIN_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
 const RINV_METHODS = Set([BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL])
 const SQUARE_METHODS = Set(vcat(collect(PLAIN_METHODS), collect(RINV_METHODS)))

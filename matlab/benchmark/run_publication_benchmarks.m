@@ -445,18 +445,24 @@ if allow_shared
     return;
 end
 
-julia_results_root = fullfile(repo_root, 'benchmark', 'results');
+julia_results_roots = { ...
+    fullfile(repo_root, 'benchmark', 'results'), ...
+    fullfile(repo_root, 'julia', 'benchmark', 'results') ...
+};
 matlab_results_root = fullfile(repo_root, 'matlab', 'benchmark', 'results');
 
 out_abs = bsqr_bench_canonical_path(outdir);
-julia_abs = bsqr_bench_canonical_path(julia_results_root);
 matlab_abs = bsqr_bench_canonical_path(matlab_results_root);
 
-if startsWith(out_abs, julia_abs)
-    error('run_publication_benchmarks:SharedOutdirBlocked', ...
-        ['MATLAB benchmarks cannot write into Julia results (%s). ', ...
-         'Use matlab/benchmark/results/... or set allow_shared_outdir=true explicitly.'], ...
-        julia_results_root);
+for i = 1:numel(julia_results_roots)
+    jr = julia_results_roots{i};
+    julia_abs = bsqr_bench_canonical_path(jr);
+    if startsWith(out_abs, julia_abs)
+        error('run_publication_benchmarks:SharedOutdirBlocked', ...
+            ['MATLAB benchmarks cannot write into Julia results (%s). ', ...
+             'Use matlab/benchmark/results/... or set allow_shared_outdir=true explicitly.'], ...
+            jr);
+    end
 end
 
 if ~startsWith(out_abs, matlab_abs)

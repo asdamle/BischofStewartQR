@@ -1,0 +1,10 @@
+# MATLAB compiled MEX artifacts (local build outputs)
+mex/*.mex*
+
+# MATLAB benchmark local outputs
+benchmark/results/publication_mex_smoke/
+benchmark/results/perf_compare/
+benchmark/results/diagnostic_*/
+
+# macOS Finder metadata
+.DS_Store

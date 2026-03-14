@@ -168,6 +168,7 @@ end
 function testBenchmarkOutdirSeparationGuard(testCase)
 repo_root = testCase.TestData.repo_root;
 julia_out = fullfile(repo_root, 'benchmark', 'results', 'publication');
+julia_out_new = fullfile(repo_root, 'julia', 'benchmark', 'results', 'publication');
 
 cfg = struct();
 cfg.outdir = julia_out;
@@ -182,6 +183,11 @@ cfg.norm_recomp_tol = sqrt(eps('double'));
 
 verifyError(testCase, @() run_publication_benchmarks(cfg), 'run_publication_benchmarks:SharedOutdirBlocked');
 verifyError(testCase, @() plot_publication_results(fullfile(tempdir, 'dummy.csv'), julia_out, julia_out), ...
+    'plot_publication_results:SharedOutdirBlocked');
+
+cfg.outdir = julia_out_new;
+verifyError(testCase, @() run_publication_benchmarks(cfg), 'run_publication_benchmarks:SharedOutdirBlocked');
+verifyError(testCase, @() plot_publication_results(fullfile(tempdir, 'dummy.csv'), julia_out_new, julia_out_new), ...
     'plot_publication_results:SharedOutdirBlocked');
 end
 
