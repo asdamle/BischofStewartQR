@@ -3,6 +3,8 @@
 This repository now maintains a single benchmark workflow focused on publication artifacts.
 Legacy benchmark/validation pipelines and their generated outputs were removed.
 
+MATLAB BSQR has an analogous benchmark/test workflow under `matlab/`.
+
 ## Test Suite
 
 Run all tests:
@@ -178,3 +180,36 @@ Publication plotting writes:
 Headroom gate writes:
 
 - no files; prints markdown tables + gate decision to stdout.
+
+## MATLAB Tests And Benchmarks
+
+MATLAB tests:
+
+```bash
+matlab -batch "addpath('matlab'); run_tests"
+```
+
+MATLAB publication benchmark runner:
+
+```bash
+matlab -batch "addpath('matlab'); addpath('matlab/benchmark'); run_publication_benchmarks"
+```
+
+MATLAB plot/table generation from CSV:
+
+```bash
+matlab -batch "addpath('matlab/benchmark'); plot_publication_results"
+```
+
+MATLAB benchmark output defaults to:
+
+- `matlab/benchmark/results/publication/publication_timings.csv`
+- `matlab/benchmark/results/publication/publication_summary.md`
+- `matlab/benchmark/results/publication/metadata.txt`
+- `matlab/benchmark/results/publication/plots/plain/*`
+- `matlab/benchmark/results/publication/plots/rinv/*`
+- `matlab/benchmark/results/publication/tables/plain/*`
+- `matlab/benchmark/results/publication/tables/rinv/*`
+
+By default MATLAB scripts refuse to write into Julia's `benchmark/results/*`.
+Set `BS_MATLAB_ALLOW_SHARED_OUTDIR=1` only if you explicitly want shared output paths.

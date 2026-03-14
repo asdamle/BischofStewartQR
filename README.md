@@ -5,6 +5,7 @@ Julia implementation of Bischof-Stewart column-pivoted QR with optional early st
 Detailed validation/performance documentation:
 
 - `docs/TESTS_AND_BENCHMARKS.md`
+- `matlab/README.md` (MATLAB BSQR API/tests/benchmarks)
 
 ## Requirements
 
@@ -40,6 +41,12 @@ python3 -m pip install matplotlib
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.test()'
+```
+
+MATLAB tests:
+
+```bash
+matlab -batch "addpath('matlab'); run_tests"
 ```
 
 ## Apple Accelerate setup check
@@ -121,3 +128,19 @@ Outputs:
 - `benchmark/results/publication/tables/plain/*.csv`
 - `benchmark/results/publication/tables/rinv/*.csv`
 - `benchmark/perf_headroom_gate.jl` prints a markdown report to stdout (no files written)
+
+## MATLAB Implementation
+
+MATLAB BSQR implementation (QR-compatible outputs with optional `R11^{-1}R12`) lives under `matlab/`.
+
+Run MATLAB publication benchmark workflow:
+
+```bash
+matlab -batch "addpath('matlab'); addpath('matlab/benchmark'); run_publication_benchmarks"
+```
+
+Regenerate MATLAB plots/tables from a CSV:
+
+```bash
+matlab -batch "addpath('matlab/benchmark'); plot_publication_results"
+```
