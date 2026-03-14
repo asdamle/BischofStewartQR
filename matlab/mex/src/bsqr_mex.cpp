@@ -1,9 +1,11 @@
 #include "mex.h"
+#include "blas.h"
+#include "lapack.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -11,7 +13,6 @@ namespace {
 
 struct Options {
     mwSize k = 0;
-    bool k_set = false;
     bool return_rinv_r12 = false;
     bool pivot_vector = false;  // false => matrix
     double norm_recomp_tol = std::sqrt(std::numeric_limits<double>::epsilon());
@@ -22,7 +23,7 @@ inline double &Aat(std::vector<double> &A, mwSize m, mwSize r, mwSize c) {
     return A[r + c * m];
 }
 
-inline double AatConst(const std::vector<double> &A, mwSize m, mwSize r, mwSize c) {
+inline const double &AatConst(const std::vector<double> &A, mwSize m, mwSize r, mwSize c) {
     return A[r + c * m];
 }
 
@@ -30,7 +31,7 @@ inline double &Wat(std::vector<double> &W, mwSize k, mwSize r, mwSize c) {
     return W[r + c * k];
 }
 
-inline double WatConst(const std::vector<double> &W, mwSize k, mwSize r, mwSize c) {
+inline const double &WatConst(const std::vector<double> &W, mwSize k, mwSize r, mwSize c) {
     return W[r + c * k];
 }
 
@@ -42,7 +43,7 @@ bool scalar_to_bool(const mxArray *a, const char *id) {
     if (!(mxIsLogicalScalar(a) || (mxIsNumeric(a) && mxIsScalar(a)))) {
         mexErrMsgIdAndTxt(id, "Expected a logical/numeric scalar.");
     }
-    double v = mxIsLogical(a) ? (mxIsLogicalScalarTrue(a) ? 1.0 : 0.0) : mxGetScalar(a);
+    const double v = mxIsLogical(a) ? (mxIsLogicalScalarTrue(a) ? 1.0 : 0.0) : mxGetScalar(a);
     return v != 0.0;
 }
 
@@ -78,7 +79,7 @@ void parse_options(const mxArray *A, int nrhs, const mxArray *prhs[], Options &o
     }
 
     for (int i = 1; i < nrhs; i += 2) {
-        std::string name = to_lower(get_string(prhs[i], "bsqr:InvalidOptionName"));
+        const std::string name = to_lower(get_string(prhs[i], "bsqr:InvalidOptionName"));
         const mxArray *val = prhs[i + 1];
 
         if (name == "k") {
@@ -93,11 +94,10 @@ void parse_options(const mxArray *A, int nrhs, const mxArray *prhs[], Options &o
                 fail("bsqr:InvalidK", "k must satisfy 0 <= k <= min(size(A)).");
             }
             opt.k = static_cast<mwSize>(kd);
-            opt.k_set = true;
         } else if (name == "return_rinv_r12") {
             opt.return_rinv_r12 = scalar_to_bool(val, "bsqr:InvalidReturnRinvR12");
         } else if (name == "pivot_format") {
-            std::string pf = to_lower(get_string(val, "bsqr:InvalidPivotFormat"));
+            const std::string pf = to_lower(get_string(val, "bsqr:InvalidPivotFormat"));
             if (pf == "vector") {
                 opt.pivot_vector = true;
             } else if (pf == "matrix") {
@@ -107,7 +107,7 @@ void parse_options(const mxArray *A, int nrhs, const mxArray *prhs[], Options &o
             }
         } else if (name == "backend") {
             // Accepted for API compatibility; ignored inside MEX.
-            std::string b = to_lower(get_string(val, "bsqr:InvalidBackend"));
+            const std::string b = to_lower(get_string(val, "bsqr:InvalidBackend"));
             if (!(b == "auto" || b == "mfile" || b == "mex")) {
                 fail("bsqr:InvalidBackend", "backend must be \"auto\", \"mfile\", or \"mex\".");
             }
@@ -129,77 +129,78 @@ void parse_options(const mxArray *A, int nrhs, const mxArray *prhs[], Options &o
 }
 
 void householder_column(std::vector<double> &A, mwSize m, mwSize i, double &tau, double &beta) {
-    const mwSize n = m - i;
-    const double alpha = AatConst(A, m, i, i);
-    if (n == 1) {
+    const ptrdiff_t n = static_cast<ptrdiff_t>(m - i);
+    if (n <= 1) {
         tau = 0.0;
-        beta = alpha;
+        beta = AatConst(A, m, i, i);
         return;
     }
-
-    double xnorm2 = 0.0;
-    for (mwSize r = i + 1; r < m; ++r) {
-        const double v = AatConst(A, m, r, i);
-        xnorm2 += v * v;
-    }
-    const double xnorm = std::sqrt(xnorm2);
-    if (xnorm == 0.0) {
-        tau = 0.0;
-        beta = alpha;
-        return;
-    }
-
-    const double sgn = (alpha >= 0.0) ? 1.0 : -1.0;
-    beta = -sgn * std::hypot(alpha, xnorm);
-    tau = (beta - alpha) / beta;
-    const double scale = 1.0 / (alpha - beta);
-    for (mwSize r = i + 1; r < m; ++r) {
-        Aat(A, m, r, i) *= scale;
-    }
-    Aat(A, m, i, i) = beta;
+    ptrdiff_t inc1 = 1;
+    double *alpha = &Aat(A, m, i, i);
+    double *x = &Aat(A, m, i + 1, i);
+    dlarfg(&n, alpha, x, &inc1, &tau);
+    beta = *alpha;
 }
 
-void apply_householder_left(std::vector<double> &A, mwSize m, mwSize n, mwSize i, double tau) {
-    if (tau == 0.0 || i + 1 >= n) {
+void apply_householder_left(
+    std::vector<double> &A,
+    mwSize m,
+    mwSize n,
+    mwSize i,
+    double tau,
+    std::vector<double> &workbuf
+) {
+    const ptrdiff_t rows = static_cast<ptrdiff_t>(m - i);
+    const ptrdiff_t cols = static_cast<ptrdiff_t>(n - i - 1);
+    if (tau == 0.0 || cols <= 0) {
         return;
     }
 
-    for (mwSize j = i + 1; j < n; ++j) {
-        double dot = AatConst(A, m, i, j);
-        for (mwSize r = i + 1; r < m; ++r) {
-            dot += AatConst(A, m, r, i) * AatConst(A, m, r, j);
-        }
-        const double coeff = tau * dot;
-        Aat(A, m, i, j) -= coeff;
-        for (mwSize r = i + 1; r < m; ++r) {
-            Aat(A, m, r, j) -= coeff * AatConst(A, m, r, i);
-        }
+    const char side = 'L';
+    ptrdiff_t inc1 = 1;
+    ptrdiff_t ldc = static_cast<ptrdiff_t>(m);
+    const size_t need = static_cast<size_t>(cols);
+    if (workbuf.size() < need) {
+        workbuf.resize(need);
     }
+    std::fill(workbuf.begin(), workbuf.begin() + static_cast<std::vector<double>::difference_type>(need), 0.0);
+
+    double *v = &Aat(A, m, i, i);
+    double *C = &Aat(A, m, i, i + 1);
+    dlarf(&side, &rows, &cols, v, &inc1, &tau, C, &ldc, workbuf.data());
 }
 
 void build_q(const std::vector<double> &A, mwSize m, mwSize k, const std::vector<double> &tau, std::vector<double> &Q) {
-    Q.assign(m * k, 0.0);
+    Q.assign(static_cast<size_t>(m) * static_cast<size_t>(k), 0.0);
     for (mwSize c = 0; c < k; ++c) {
         Q[c + c * m] = 1.0;
     }
 
-    for (mwSignedIndex ii = static_cast<mwSignedIndex>(k) - 1; ii >= 0; --ii) {
-        const mwSize i = static_cast<mwSize>(ii);
-        const double tau_i = tau[i];
-        if (tau_i == 0.0) {
-            continue;
-        }
-        for (mwSize col = 0; col < k; ++col) {
-            double dot = Q[i + col * m];
-            for (mwSize r = i + 1; r < m; ++r) {
-                dot += AatConst(A, m, r, i) * Q[r + col * m];
-            }
-            const double coeff = tau_i * dot;
-            Q[i + col * m] -= coeff;
-            for (mwSize r = i + 1; r < m; ++r) {
-                Q[r + col * m] -= coeff * AatConst(A, m, r, i);
-            }
-        }
+    if (k == 0) {
+        return;
+    }
+
+    const char side = 'L';
+    const char trans = 'N';
+    const ptrdiff_t mm = static_cast<ptrdiff_t>(m);
+    const ptrdiff_t nn = static_cast<ptrdiff_t>(k);
+    const ptrdiff_t kk = static_cast<ptrdiff_t>(k);
+    const ptrdiff_t lda = static_cast<ptrdiff_t>(m);
+    const ptrdiff_t ldc = static_cast<ptrdiff_t>(m);
+
+    ptrdiff_t info = 0;
+    ptrdiff_t lwork = -1;
+    double work_query = 0.0;
+    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q.data(), &ldc, &work_query, &lwork, &info);
+    if (info != 0) {
+        fail("bsqr:QBuildFailed", "LAPACK dormqr workspace query failed.");
+    }
+
+    lwork = std::max<ptrdiff_t>(1, static_cast<ptrdiff_t>(work_query));
+    std::vector<double> work(static_cast<size_t>(lwork), 0.0);
+    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q.data(), &ldc, work.data(), &lwork, &info);
+    if (info != 0) {
+        fail("bsqr:QBuildFailed", "LAPACK dormqr failed while forming Q.");
     }
 }
 
@@ -237,10 +238,9 @@ mxArray *make_pivot_matrix(const std::vector<mwSize> &p) {
     const mwSize n = p.size();
     mxArray *E = mxCreateDoubleMatrix(n, n, mxREAL);
     double *eptr = mxGetPr(E);
-    std::fill(eptr, eptr + n * n, 0.0);
+    std::fill(eptr, eptr + static_cast<size_t>(n) * static_cast<size_t>(n), 0.0);
     for (mwSize j = 0; j < n; ++j) {
-        const mwSize r = p[j];
-        eptr[r + j * n] = 1.0;
+        eptr[p[j] + j * n] = 1.0;
     }
     return E;
 }
@@ -300,23 +300,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     const mwSize k = opt.k;
     std::vector<double> tau(k, 0.0);
-    std::vector<double> W(k * n, 0.0);
+    std::vector<double> W(static_cast<size_t>(k) * static_cast<size_t>(n), 0.0);
     std::vector<double> wnorm2(n, 0.0), s(n, 0.0), s_ref(n, 0.0);
     std::vector<mwSize> p(n, 0);
 
+    ptrdiff_t inc1 = 1;
     for (mwSize j = 0; j < n; ++j) {
         p[j] = j;
-        double sj = 0.0;
-        for (mwSize r = 0; r < m; ++r) {
-            const double v = AatConst(A, m, r, j);
-            sj += v * v;
-        }
+        const ptrdiff_t len = static_cast<ptrdiff_t>(m);
+        const double nj = dnrm2(&len, &Aat(A, m, 0, j), &inc1);
+        const double sj = nj * nj;
         s[j] = sj;
         s_ref[j] = sj;
     }
 
-    std::vector<double> beta_vec;
-    std::vector<double> dots;
+    std::vector<double> beta_vec(static_cast<size_t>(n), 0.0);
+    std::vector<double> dots(static_cast<size_t>(n), 0.0);
+    std::vector<double> hh_work(static_cast<size_t>(n), 0.0);
 
     for (mwSize i = 0; i < k; ++i) {
         mwSize best_j = i;
@@ -349,7 +349,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
         if (tau_i != 0.0 && i + 1 < n) {
             Aat(A, m, i, i) = 1.0;
-            apply_householder_left(A, m, n, i, tau_i);
+            apply_householder_left(A, m, n, i, tau_i, hh_work);
         }
 
         Aat(A, m, i, i) = beta_i;
@@ -361,7 +361,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             continue;
         }
 
-        beta_vec.assign(nrem, 0.0);
         const double invdiag = (beta_i != 0.0) ? (1.0 / beta_i) : 0.0;
         for (mwSize t = 0; t < nrem; ++t) {
             const mwSize j = i + 1 + t;
@@ -370,28 +369,26 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             Wat(W, k, i, j) = beta_vec[t];
         }
 
-        dots.assign(nrem, 0.0);
+        std::fill(dots.begin(), dots.begin() + static_cast<std::vector<double>::difference_type>(nrem), 0.0);
         if (i > 0) {
-            for (mwSize t = 0; t < nrem; ++t) {
-                const mwSize j = i + 1 + t;
-                double d = 0.0;
-                for (mwSize r = 0; r < i; ++r) {
-                    d += WatConst(W, k, r, j) * WatConst(W, k, r, i);
-                }
-                dots[t] = d;
-            }
-            for (mwSize t = 0; t < nrem; ++t) {
-                const mwSize j = i + 1 + t;
-                for (mwSize r = 0; r < i; ++r) {
-                    Wat(W, k, r, j) -= WatConst(W, k, r, i) * beta_vec[t];
-                }
-            }
+            const ptrdiff_t mm = static_cast<ptrdiff_t>(i);
+            const ptrdiff_t nn = static_cast<ptrdiff_t>(nrem);
+            const ptrdiff_t lda = static_cast<ptrdiff_t>(k);
+            const double one = 1.0;
+            const double zero = 0.0;
+            const double neg1 = -1.0;
+            char trans = 'T';
+            double *Wprefix = &Wat(W, k, 0, i + 1);
+            double *wpivot = &Wat(W, k, 0, i);
+            dgemv(&trans, &mm, &nn, &one, Wprefix, &lda, wpivot, &inc1, &zero, dots.data(), &inc1);
+            dger(&mm, &nn, &neg1, wpivot, &inc1, beta_vec.data(), &inc1, Wprefix, &lda);
         }
 
         const double wcoeff = wnorm2[i] + 1.0;
         for (mwSize t = 0; t < nrem; ++t) {
             const mwSize j = i + 1 + t;
             const double b = beta_vec[t];
+
             double wn = 0.0;
             if (i > 0) {
                 wn = wnorm2[j] - 2.0 * b * dots[t] + b * b * wcoeff;
@@ -419,10 +416,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             if (sj <= s_ref[j] * opt.norm_recomp_tol) {
                 double exact = 0.0;
                 if (i + 1 < m) {
-                    for (mwSize r = i + 1; r < m; ++r) {
-                        const double v = AatConst(A, m, r, j);
-                        exact += v * v;
-                    }
+                    const ptrdiff_t len = static_cast<ptrdiff_t>(m - i - 1);
+                    const double nrm = dnrm2(&len, &Aat(A, m, i + 1, j), &inc1);
+                    exact = nrm * nrm;
                 }
                 s_ref[j] = exact;
                 s[j] = exact;
@@ -430,19 +426,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         }
     }
 
-    const mxArray *Q = nullptr;
-    const mxArray *R = make_R(A, m, n, k);
-    if (nlhs >= 2) {
-        Q = make_Q(A, m, k, tau);
-    }
-
-    if (nlhs == 1) {
-        plhs[0] = const_cast<mxArray *>(R);
+    if (nlhs == 0) {
         return;
     }
 
-    plhs[0] = const_cast<mxArray *>(Q);
-    plhs[1] = const_cast<mxArray *>(R);
+    mxArray *R = make_R(A, m, n, k);
+    if (nlhs == 1) {
+        plhs[0] = R;
+        return;
+    }
+
+    mxArray *Q = make_Q(A, m, k, tau);
+    plhs[0] = Q;
+    plhs[1] = R;
 
     if (nlhs >= 3) {
         plhs[2] = opt.pivot_vector ? make_pivot_vector(p) : make_pivot_matrix(p);

@@ -22,6 +22,8 @@ if isempty(sources)
 end
 
 src_paths = fullfile({sources.folder}, {sources.name});
-mex('-R2018a', '-outdir', outdir, '-output', 'bsqr_mex', src_paths{:}, varargin{:});
+mex('-R2018a', 'CXXOPTIMFLAGS=$CXXOPTIMFLAGS -O3 -DNDEBUG', ...
+    '-outdir', outdir, '-output', 'bsqr_mex', ...
+    src_paths{:}, '-lmwblas', '-lmwlapack', varargin{:});
 fprintf('Built MEX backend at %s\n', fullfile(outdir, ['bsqr_mex.', mexext]));
 end
