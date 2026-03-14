@@ -32,8 +32,8 @@ for seed = cfg.seeds
             A = make_matrix(family, kase.m, kase.n);
             k = min(kase.m, kase.n);
 
-            plain = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, false);
-            rinv = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, true);
+            plain = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, false, cfg.bsqr_backend);
+            rinv = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, true, cfg.bsqr_backend);
 
             rows = [rows; pack_rows(plain, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
             rows = [rows; pack_rows(rinv, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
@@ -78,12 +78,16 @@ cfg.short_aspects = getfield_default(cfg, 'short_aspects', parse_float_list(gete
 cfg.warmup = getfield_default(cfg, 'warmup', str2double(getenv_default('BS_MATLAB_PUB_WARMUP', '1')));
 cfg.samples = getfield_default(cfg, 'samples', str2double(getenv_default('BS_MATLAB_PUB_SAMPLES', '12')));
 cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', str2double(getenv_default('BS_MATLAB_NORM_RECOMP_TOL', num2str(sqrt(eps('double'))))));
+cfg.bsqr_backend = lower(string(getfield_default(cfg, 'bsqr_backend', getenv_default('BS_MATLAB_BSQR_BACKEND', 'auto'))));
 
 if isempty(cfg.seeds)
     error('run_publication_benchmarks:InvalidConfig', 'At least one seed is required.');
 end
 if isempty(cfg.families)
     error('run_publication_benchmarks:InvalidConfig', 'At least one family is required.');
+end
+if cfg.bsqr_backend ~= "auto" && cfg.bsqr_backend ~= "mfile" && cfg.bsqr_backend ~= "mex"
+    error('run_publication_benchmarks:InvalidConfig', 'bsqr_backend must be auto, mfile, or mex.');
 end
 
 validate_matlab_outdir(cfg.outdir, repo_root, cfg.allow_shared_outdir);
@@ -102,10 +106,10 @@ for i = 1:numel(method_rows)
 end
 end
 
-function rows = bench_pair(A, k, norm_recomp_tol, warmup, samples, include_rinv)
+function rows = bench_pair(A, k, norm_recomp_tol, warmup, samples, include_rinv, bsqr_backend)
 rows = struct('method', {}, 'tmin', {}, 'tmed', {}, 'residual', {}, 'orthogonality', {});
 
-f_bs = @() run_bsqr(A, k, norm_recomp_tol, include_rinv);
+f_bs = @() run_bsqr(A, k, norm_recomp_tol, include_rinv, bsqr_backend);
 [tmin, tmed, out] = bench_function(f_bs, warmup, samples);
 [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
 if include_rinv
@@ -144,15 +148,15 @@ tmin = min(times);
 tmed = median(times);
 end
 
-function out = run_bsqr(A, k, norm_recomp_tol, return_rinv)
+function out = run_bsqr(A, k, norm_recomp_tol, return_rinv, bsqr_backend)
 if return_rinv
     [Q, R, p, rinv] = bsqr(A, 'k', k, 'return_rinv_r12', true, ...
-        'pivot_format', 'vector', 'backend', 'mfile', ...
+        'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
         'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
     out = struct('Q', Q, 'R', R, 'p', p, 'rinv', rinv);
 else
     [Q, R, p] = bsqr(A, 'k', k, 'return_rinv_r12', false, ...
-        'pivot_format', 'vector', 'backend', 'mfile', ...
+        'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
         'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
     out = struct('Q', Q, 'R', R, 'p', p, 'rinv', []);
 end
@@ -318,6 +322,7 @@ fprintf(fid, 'observed_rows = %d\n', height(rows));
 fprintf(fid, 'warmup = %d\n', cfg.warmup);
 fprintf(fid, 'samples = %d\n', cfg.samples);
 fprintf(fid, 'norm_recomp_tol = %.17g\n', cfg.norm_recomp_tol);
+fprintf(fid, 'bsqr_backend = %s\n', cfg.bsqr_backend);
 end
 
 function agg = speedup_table(rows, bs_method, baseline_method)

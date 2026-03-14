@@ -105,6 +105,23 @@ if ~bsqr_mex_available()
 end
 end
 
+function testMexParityWhenAvailable(testCase)
+if ~bsqr_mex_available()
+    return;
+end
+
+rng(123, 'twister');
+A = randn(20, 14);
+k = 9;
+[Qm, Rm, pm, Wm] = bsqr(A, 'backend', 'mfile', 'k', k, 'pivot_format', 'vector', 'return_rinv_r12', true);
+[Qx, Rx, px, Wx] = bsqr(A, 'backend', 'mex', 'k', k, 'pivot_format', 'vector', 'return_rinv_r12', true);
+
+verifyEqual(testCase, px, pm);
+verifyLessThan(testCase, norm(Rx - Rm, 'fro') / max(norm(Rm, 'fro'), eps('double')), 1e-11);
+verifyLessThan(testCase, norm(Qx - Qm, 'fro') / max(norm(Qm, 'fro'), eps('double')), 1e-11);
+verifyLessThan(testCase, norm(Wx - Wm, 'fro') / max(norm(Wm, 'fro'), eps('double')), 1e-11);
+end
+
 function testBenchmarkSmoke(testCase)
 outdir = fullfile(tempdir, ['bsqr_matlab_smoke_', char(string(randi(1e9)))]);
 cfg = struct();

@@ -1,5 +1,13 @@
 family,regime,method,median_residual,median_orthogonality
-gaussian,short_wide,bsqr_rinv,2.54477452244205e-16,9.20481284787106e-16
-gaussian,short_wide,qr_pivoted_trsm,1.35654789294182,1.34030277616119e-15
-gaussian,square,bsqr_rinv,3.38304806565964e-16,1.87607470738197e-15
-gaussian,square,qr_pivoted_trsm,1.45195267441933,1.96001664519661e-15
+gaussian,short_wide,bsqr_rinv,4.93271305577333e-16,2.51982700537623e-15
+gaussian,short_wide,qr_pivoted_trsm,4.96973392715513e-16,2.68481962318029e-15
+gaussian,square,bsqr_rinv,5.16939581092116e-16,4.29375616764987e-15
+gaussian,square,qr_pivoted_trsm,4.80212708908778e-16,4.40741013467646e-15
+ill_conditioned,short_wide,bsqr_rinv,3.44151339564529e-16,2.542909964036e-15
+ill_conditioned,short_wide,qr_pivoted_trsm,3.00191504635768e-16,2.76081478655757e-15
+ill_conditioned,square,bsqr_rinv,4.76005105371741e-16,3.9848132680648e-15
+ill_conditioned,square,qr_pivoted_trsm,4.51788517109344e-16,4.05738424903223e-15
+orthonormal_rows,short_wide,bsqr_rinv,4.8451352355154e-16,2.43103368857973e-15
+orthonormal_rows,short_wide,qr_pivoted_trsm,4.63111608955536e-16,2.312632037733e-15
+orthonormal_rows,square,bsqr_rinv,5.3235461405934e-16,4.33930992164989e-15
+orthonormal_rows,square,qr_pivoted_trsm,5.24938973068571e-16,4.33872195093313e-15

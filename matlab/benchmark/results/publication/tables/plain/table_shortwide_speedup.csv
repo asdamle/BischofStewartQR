@@ -1,2 +1,13 @@
 family,regime,m,n,aspect,geomean_speedup
-gaussian,short_wide,8,16,2,0.635342169317966
+gaussian,short_wide,16,32,2,0.0416780268373664
+gaussian,short_wide,16,64,4,0.0603814000413457
+gaussian,short_wide,32,64,2,0.0501896129942526
+gaussian,short_wide,32,128,4,0.0494711138697233
+ill_conditioned,short_wide,16,32,2,0.0493511391938113
+ill_conditioned,short_wide,16,64,4,0.0506195619721993
+ill_conditioned,short_wide,32,64,2,0.027593489255033
+ill_conditioned,short_wide,32,128,4,0.0378762828883052
+orthonormal_rows,short_wide,16,32,2,0.0472232065834981
+orthonormal_rows,short_wide,16,64,4,0.0346607620611438
+orthonormal_rows,short_wide,32,64,2,0.0299418630087321
+orthonormal_rows,short_wide,32,128,4,0.0301605088225813

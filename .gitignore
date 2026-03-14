@@ -32,3 +32,6 @@ references/
 
 # macOS Finder metadata
 .DS_Store
+
+# MATLAB compiled MEX artifacts (local build outputs)
+matlab/mex/*.mex*
