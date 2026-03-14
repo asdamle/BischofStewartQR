@@ -1,8 +1,8 @@
 function build_bsqr_mex(varargin)
-%BUILD_BSQR_MEX Build optional MEX backend for bsqr.
+%BUILD_BSQR_MEX Build MEX backend for bsqr.
 %
-% v1 ships with m-file BSQR as default. Add C/C++ sources under
-% matlab/mex/src and run this builder to produce bsqr_mex.
+% Add C/C++ sources under matlab/mex/src and run this builder
+% to produce bsqr_mex.
 
 thisdir = fileparts(mfilename('fullpath'));
 srcdir = fullfile(thisdir, 'mex', 'src');
@@ -17,7 +17,7 @@ cpp = dir(fullfile(srcdir, '*.cpp'));
 sources = [cc; cpp];
 if isempty(sources)
     fprintf(2, ['No C/C++ sources found in %s.\n', ...
-        'MEX backend is optional in v1; continuing with m-file backend.\n'], srcdir);
+        'Cannot build bsqr_mex without source files.\n'], srcdir);
     return;
 end
 

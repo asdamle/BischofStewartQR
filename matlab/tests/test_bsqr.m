@@ -135,12 +135,11 @@ cfg.families = {'gaussian'};
 cfg.square_ms = 32;
 cfg.short_ms = 16;
 cfg.short_aspects = 2;
-cfg.warmup = 0;
-cfg.samples = 2;
+cfg.warmup = 1;
+cfg.samples = 3;
 cfg.norm_recomp_tol = sqrt(eps('double'));
-cfg.bsqr_backend = 'mex';
 
-run_publication_benchmarks(cfg);
+run_publication_smoke_benchmark(cfg);
 
 verifyTrue(testCase, isfile(fullfile(outdir, 'publication_timings.csv')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'publication_summary.md')));
@@ -148,6 +147,22 @@ verifyTrue(testCase, isfile(fullfile(outdir, 'metadata.txt')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'plain', 'figure1_square_runtime.png')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'tables', 'plain', 'table_square_speedup.csv')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'figure5_aggregate_speedup.pdf')));
+end
+
+function testBenchmarkRejectsBackendField(testCase)
+cfg = struct();
+cfg.outdir = fullfile(tempdir, ['bsqr_matlab_reject_backend_', char(string(randi(1e9)))]);
+cfg.seeds = 20260310;
+cfg.families = {'gaussian'};
+cfg.square_ms = 8;
+cfg.short_ms = 4;
+cfg.short_aspects = 2;
+cfg.warmup = 0;
+cfg.samples = 1;
+cfg.norm_recomp_tol = sqrt(eps('double'));
+cfg.bsqr_backend = 'mex';
+
+verifyError(testCase, @() run_publication_benchmarks(cfg), 'run_publication_benchmarks:UnsupportedConfigField');
 end
 
 function testBenchmarkOutdirSeparationGuard(testCase)

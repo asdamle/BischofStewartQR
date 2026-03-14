@@ -1,6 +1,4 @@
-# MATLAB MEX Backend (Optional)
-
-The MATLAB BSQR implementation defaults to the pure M-file backend.
+# MATLAB MEX Backend
 
 ## Build
 
@@ -10,6 +8,9 @@ build_bsqr_mex
 ```
 
 `build_bsqr_mex` looks for C/C++ files in `matlab/mex/src/` and builds `bsqr_mex`.
+
+Publication benchmarks require `bsqr_mex`. The pure MATLAB backend remains
+available for correctness checks and development workflows.
 
 ## Promotion Rule
 

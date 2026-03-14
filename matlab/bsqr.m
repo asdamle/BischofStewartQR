@@ -17,17 +17,7 @@ end
 
 opts = bsqr_parse_options(A, varargin{:});
 
-use_mex = false;
-switch opts.backend
-    case "auto"
-        use_mex = bsqr_mex_available();
-    case "mfile"
-        use_mex = false;
-    case "mex"
-        use_mex = true;
-end
-
-if use_mex
+if should_use_mex(opts.backend)
     ensure_bsqr_mex_ready();
     [varargout{1:nargout}] = bsqr_mex(A, varargin{:});
     return;
@@ -38,6 +28,36 @@ end
 if nargout == 1
     varargout{1} = R;
     return;
+end
+
+if nargout >= 2
+    varargout{1} = Q;
+    varargout{2} = R;
+end
+if nargout >= 3
+    varargout{3} = format_pivot_output(p, opts.pivot_format, size(A, 2), class(R));
+end
+if nargout >= 4
+    if opts.return_rinv_r12
+        varargout{4} = rinv_r12;
+    else
+        varargout{4} = [];
+    end
+end
+
+end
+
+function tf = should_use_mex(backend)
+switch backend
+    case "auto"
+        tf = bsqr_mex_available();
+    case "mfile"
+        tf = false;
+    case "mex"
+        tf = true;
+    otherwise
+        error('bsqr:InvalidBackend', 'backend must be "auto", "mfile", or "mex".');
+end
 end
 
 function ensure_bsqr_mex_ready()
@@ -59,26 +79,12 @@ end
 mex_ready = true;
 end
 
-if nargout >= 2
-    varargout{1} = Q;
-    varargout{2} = R;
-end
-if nargout >= 3
-    if opts.pivot_format == "vector"
-        piv = p;
-    else
-        n = size(A, 2);
-        piv = eye(n, class(R));
-        piv = piv(:, p);
-    end
-    varargout{3} = piv;
-end
-if nargout >= 4
-    if opts.return_rinv_r12
-        varargout{4} = rinv_r12;
-    else
-        varargout{4} = [];
-    end
+function piv = format_pivot_output(p, pivot_format, n, out_class)
+if pivot_format == "vector"
+    piv = p;
+    return;
 end
 
+piv = eye(n, out_class);
+piv = piv(:, p);
 end

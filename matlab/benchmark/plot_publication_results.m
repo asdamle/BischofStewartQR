@@ -8,7 +8,8 @@ repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 def_csv = fullfile(repo_root, 'matlab', 'benchmark', 'results', 'publication', 'publication_timings.csv');
 def_plots = fullfile(repo_root, 'matlab', 'benchmark', 'results', 'publication', 'plots');
 def_tables = fullfile(repo_root, 'matlab', 'benchmark', 'results', 'publication', 'tables');
-allow_shared_outdir = parse_bool(getenv_default('BS_MATLAB_ALLOW_SHARED_OUTDIR', '0'));
+allow_shared_outdir = bsqr_bench_parse_bool(bsqr_bench_getenv_default('BS_MATLAB_ALLOW_SHARED_OUTDIR', '0'), ...
+    'plot_publication_results:InvalidBool');
 
 if nargin >= 1
     csv_path = varargin{1};
@@ -281,61 +282,13 @@ end
 julia_results_root = fullfile(repo_root, 'benchmark', 'results');
 targets = {plots_dir, tables_dir};
 for i = 1:numel(targets)
-    tgt_abs = canonical_path(targets{i});
-    julia_abs = canonical_path(julia_results_root);
+    tgt_abs = bsqr_bench_canonical_path(targets{i});
+    julia_abs = bsqr_bench_canonical_path(julia_results_root);
     if startsWith(tgt_abs, julia_abs)
         error('plot_publication_results:SharedOutdirBlocked', ...
             ['MATLAB plot/table outputs cannot be written into Julia results (%s). ', ...
              'Use matlab/benchmark/results/... or set BS_MATLAB_ALLOW_SHARED_OUTDIR=1 explicitly.'], ...
             julia_results_root);
     end
-end
-end
-
-function p = canonical_path(inpath)
-if isempty(inpath)
-    p = '';
-    return;
-end
-
-if isfolder(inpath)
-    p = char(java.io.File(inpath).getCanonicalPath());
-    return;
-end
-
-[parent, name, ext] = fileparts(inpath);
-if isempty(parent)
-    parent = pwd;
-end
-if isfolder(parent)
-    p = fullfile(char(java.io.File(parent).getCanonicalPath()), [name, ext]);
-else
-    p = fullfile(parent, [name, ext]);
-end
-end
-
-function tf = parse_bool(v)
-if islogical(v)
-    tf = logical(v);
-    return;
-end
-if isnumeric(v)
-    tf = logical(v ~= 0);
-    return;
-end
-s = lower(strtrim(string(v)));
-if s == "1" || s == "true" || s == "yes" || s == "on"
-    tf = true;
-elseif s == "0" || s == "false" || s == "no" || s == "off" || s == ""
-    tf = false;
-else
-    error('plot_publication_results:InvalidBool', 'Could not parse boolean value: %s', string(v));
-end
-end
-
-function val = getenv_default(key, default)
-val = getenv(key);
-if isempty(val)
-    val = default;
 end
 end

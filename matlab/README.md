@@ -45,16 +45,32 @@ addpath('matlab/benchmark')
 run_publication_benchmarks
 ```
 
+Run a fast smoke benchmark (small cases, warmup enabled):
+
+```matlab
+addpath('matlab')
+addpath('matlab/benchmark')
+run_publication_smoke_benchmark
+```
+
 Benchmark contract:
 
 - Built-in baseline uses economy pivoted QR with vector permutation (`qr(...,'econ','vector')`, with compatibility fallback to `qr(A,0,'vector')`).
 - BSQR baseline uses the MEX backend directly (`bsqr_mex`) with vector permutation.
+- Publication runner is mex-only and does not accept `cfg.bsqr_backend`.
 
 Regenerate plots/tables from CSV:
 
 ```matlab
 addpath('matlab/benchmark')
 plot_publication_results
+```
+
+Compare candidate timings against a baseline with slowdown gating:
+
+```matlab
+addpath('matlab/benchmark')
+check_publication_perf_gate('baseline.csv', 'candidate.csv', 0.05)
 ```
 
 Environment knobs (optional):

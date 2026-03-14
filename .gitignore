@@ -35,3 +35,8 @@ references/
 
 # MATLAB compiled MEX artifacts (local build outputs)
 matlab/mex/*.mex*
+
+# MATLAB benchmark local outputs
+matlab/benchmark/results/publication_mex_smoke/
+matlab/benchmark/results/perf_compare/
+matlab/benchmark/results/diagnostic_*/

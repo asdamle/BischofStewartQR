@@ -158,6 +158,7 @@ void householder_column(std::vector<double> &A, mwSize m, mwSize i, double &tau,
     ptrdiff_t inc1 = 1;
     double *alpha = &Aat(A, m, i, i);
     double *x = &Aat(A, m, i + 1, i);
+    // Use LAPACK's stable reflector constructor.
     dlarfg(&n, alpha, x, &inc1, &tau);
     beta = *alpha;
 }
@@ -179,6 +180,7 @@ void apply_householder_left(
     const char trans = 'T';
     ptrdiff_t inc1 = 1;
     ptrdiff_t ldc = static_cast<ptrdiff_t>(m);
+    // Moderate block width keeps BLAS work cache-friendly without extra complexity.
     constexpr ptrdiff_t kApplyBlockCols = 256;
     const ptrdiff_t block_cols = std::min(cols_total, kApplyBlockCols);
     const size_t need = static_cast<size_t>(std::max<ptrdiff_t>(1, block_cols));
@@ -312,6 +314,137 @@ mxArray *make_rinv(const std::vector<double> &W, mwSize k, mwSize n, bool want) 
     return out;
 }
 
+mwSize select_pivot_column(
+    const std::vector<double> &s,
+    const std::vector<double> &wnorm2,
+    mwSize i,
+    mwSize n
+) {
+    mwSize best_j = i;
+    double best_c = std::numeric_limits<double>::infinity();
+    for (mwSize j = i; j < n; ++j) {
+        const double sj = s[j];
+        // Bischof-Stewart pivot score: minimize (1 + ||w_j||^2) / ||a_j^(i)||^2.
+        const double cj = (sj > 0.0) ? (1.0 + wnorm2[j]) / sj : std::numeric_limits<double>::infinity();
+        if (cj < best_c) {
+            best_c = cj;
+            best_j = j;
+        }
+    }
+    return best_j;
+}
+
+void swap_pivot_state(
+    std::vector<double> &A,
+    std::vector<double> &W,
+    std::vector<double> &s,
+    std::vector<double> &s_ref,
+    std::vector<double> &wnorm2,
+    std::vector<mwSize> &p,
+    mwSize m,
+    mwSize k,
+    mwSize i,
+    mwSize best_j
+) {
+    if (best_j == i) {
+        return;
+    }
+
+    ptrdiff_t inc1 = 1;
+    const ptrdiff_t mptr = static_cast<ptrdiff_t>(m);
+    dswap(&mptr, &Aat(A, m, 0, i), &inc1, &Aat(A, m, 0, best_j), &inc1);
+    if (i > 0) {
+        const ptrdiff_t iptr = static_cast<ptrdiff_t>(i);
+        dswap(&iptr, &Wat(W, k, 0, i), &inc1, &Wat(W, k, 0, best_j), &inc1);
+    }
+
+    std::swap(s[i], s[best_j]);
+    std::swap(s_ref[i], s_ref[best_j]);
+    std::swap(wnorm2[i], wnorm2[best_j]);
+    std::swap(p[i], p[best_j]);
+}
+
+void update_trailing_state(
+    std::vector<double> &A,
+    std::vector<double> &W,
+    std::vector<double> &wnorm2,
+    std::vector<double> &s,
+    std::vector<double> &s_ref,
+    std::vector<double> &beta_vec,
+    std::vector<double> &dots,
+    mwSize m,
+    mwSize n,
+    mwSize k,
+    mwSize i,
+    double beta_i,
+    double norm_recomp_tol
+) {
+    const mwSize nrem = n - i - 1;
+    if (nrem == 0) {
+        return;
+    }
+
+    const double invdiag = (beta_i != 0.0) ? (1.0 / beta_i) : 0.0;
+    for (mwSize t = 0; t < nrem; ++t) {
+        const mwSize j = i + 1 + t;
+        const double aij = AatConst(A, m, i, j);
+        beta_vec[t] = aij * invdiag;
+        Wat(W, k, i, j) = beta_vec[t];
+    }
+
+    std::fill(dots.begin(), dots.begin() + static_cast<std::vector<double>::difference_type>(nrem), 0.0);
+    ptrdiff_t inc1 = 1;
+    if (i > 0) {
+        const ptrdiff_t mm = static_cast<ptrdiff_t>(i);
+        const ptrdiff_t nn = static_cast<ptrdiff_t>(nrem);
+        const ptrdiff_t lda = static_cast<ptrdiff_t>(k);
+        const double one = 1.0;
+        const double zero = 0.0;
+        const double neg1 = -1.0;
+        char trans = 'T';
+        double *Wprefix = &Wat(W, k, 0, i + 1);
+        double *wpivot = &Wat(W, k, 0, i);
+        dgemv(&trans, &mm, &nn, &one, Wprefix, &lda, wpivot, &inc1, &zero, dots.data(), &inc1);
+        dger(&mm, &nn, &neg1, wpivot, &inc1, beta_vec.data(), &inc1, Wprefix, &lda);
+    }
+
+    const double wcoeff = wnorm2[i] + 1.0;
+    for (mwSize t = 0; t < nrem; ++t) {
+        const mwSize j = i + 1 + t;
+        const double b = beta_vec[t];
+
+        double wn = 0.0;
+        if (i > 0) {
+            wn = wnorm2[j] - 2.0 * b * dots[t] + b * b * wcoeff;
+        } else {
+            wn = wnorm2[j] + b * b;
+        }
+        wnorm2[j] = std::max(wn, 0.0);
+
+        const double old_s = s[j];
+        if (!(old_s > 0.0)) {
+            s[j] = 0.0;
+            continue;
+        }
+
+        const double alpha = AatConst(A, m, i, j);
+        const double sj = std::max(old_s - alpha * alpha, 0.0);
+        s[j] = sj;
+
+        // LAPACK-style guard: refresh exact norm after sufficient decay.
+        if (sj <= s_ref[j] * norm_recomp_tol) {
+            double exact = 0.0;
+            if (i + 1 < m) {
+                const ptrdiff_t len = static_cast<ptrdiff_t>(m - i - 1);
+                const double nrm = dnrm2(&len, &Aat(A, m, i + 1, j), &inc1);
+                exact = nrm * nrm;
+            }
+            s_ref[j] = exact;
+            s[j] = exact;
+        }
+    }
+}
+
 }  // namespace
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -381,29 +514,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     std::vector<double> &hh_work = ws.hh_work;
 
     for (mwSize i = 0; i < k; ++i) {
-        mwSize best_j = i;
-        double best_c = std::numeric_limits<double>::infinity();
-        for (mwSize j = i; j < n; ++j) {
-            const double sj = s[j];
-            const double cj = (sj > 0.0) ? (1.0 + wnorm2[j]) / sj : std::numeric_limits<double>::infinity();
-            if (cj < best_c) {
-                best_c = cj;
-                best_j = j;
-            }
-        }
-
-        if (best_j != i) {
-            const ptrdiff_t mptr = static_cast<ptrdiff_t>(m);
-            dswap(&mptr, &Aat(A, m, 0, i), &inc1, &Aat(A, m, 0, best_j), &inc1);
-            if (i > 0) {
-                const ptrdiff_t iptr = static_cast<ptrdiff_t>(i);
-                dswap(&iptr, &Wat(W, k, 0, i), &inc1, &Wat(W, k, 0, best_j), &inc1);
-            }
-            std::swap(s[i], s[best_j]);
-            std::swap(s_ref[i], s_ref[best_j]);
-            std::swap(wnorm2[i], wnorm2[best_j]);
-            std::swap(p[i], p[best_j]);
-        }
+        const mwSize best_j = select_pivot_column(s, wnorm2, i, n);
+        swap_pivot_state(A, W, s, s_ref, wnorm2, p, m, k, i, best_j);
 
         double tau_i = 0.0, beta_i = 0.0;
         householder_column(A, m, i, tau_i, beta_i);
@@ -418,74 +530,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         s[i] = beta_i * beta_i;
         s_ref[i] = s[i];
 
-        const mwSize nrem = n - i - 1;
-        if (nrem == 0) {
-            continue;
-        }
-
-        const double invdiag = (beta_i != 0.0) ? (1.0 / beta_i) : 0.0;
-        for (mwSize t = 0; t < nrem; ++t) {
-            const mwSize j = i + 1 + t;
-            const double aij = AatConst(A, m, i, j);
-            beta_vec[t] = aij * invdiag;
-            Wat(W, k, i, j) = beta_vec[t];
-        }
-
-        std::fill(dots.begin(), dots.begin() + static_cast<std::vector<double>::difference_type>(nrem), 0.0);
-        if (i > 0) {
-            const ptrdiff_t mm = static_cast<ptrdiff_t>(i);
-            const ptrdiff_t nn = static_cast<ptrdiff_t>(nrem);
-            const ptrdiff_t lda = static_cast<ptrdiff_t>(k);
-            const double one = 1.0;
-            const double zero = 0.0;
-            const double neg1 = -1.0;
-            char trans = 'T';
-            double *Wprefix = &Wat(W, k, 0, i + 1);
-            double *wpivot = &Wat(W, k, 0, i);
-            dgemv(&trans, &mm, &nn, &one, Wprefix, &lda, wpivot, &inc1, &zero, dots.data(), &inc1);
-            dger(&mm, &nn, &neg1, wpivot, &inc1, beta_vec.data(), &inc1, Wprefix, &lda);
-        }
-
-        const double wcoeff = wnorm2[i] + 1.0;
-        for (mwSize t = 0; t < nrem; ++t) {
-            const mwSize j = i + 1 + t;
-            const double b = beta_vec[t];
-
-            double wn = 0.0;
-            if (i > 0) {
-                wn = wnorm2[j] - 2.0 * b * dots[t] + b * b * wcoeff;
-            } else {
-                wn = wnorm2[j] + b * b;
-            }
-            if (wn < 0.0) {
-                wn = 0.0;
-            }
-            wnorm2[j] = wn;
-
-            const double old_s = s[j];
-            if (!(old_s > 0.0)) {
-                s[j] = 0.0;
-                continue;
-            }
-
-            const double alpha = AatConst(A, m, i, j);
-            double sj = old_s - alpha * alpha;
-            if (sj < 0.0) {
-                sj = 0.0;
-            }
-            s[j] = sj;
-
-            if (sj <= s_ref[j] * opt.norm_recomp_tol) {
-                double exact = 0.0;
-                if (i + 1 < m) {
-                    const ptrdiff_t len = static_cast<ptrdiff_t>(m - i - 1);
-                    const double nrm = dnrm2(&len, &Aat(A, m, i + 1, j), &inc1);
-                    exact = nrm * nrm;
-                }
-                s_ref[j] = exact;
-                s[j] = exact;
-            }
-        }
+        update_trailing_state(A, W, wnorm2, s, s_ref, beta_vec, dots, m, n, k, i, beta_i, opt.norm_recomp_tol);
     }
 
     if (nlhs == 0) {

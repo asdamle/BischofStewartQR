@@ -65,22 +65,28 @@ if nargin == 1 && isstruct(varargin{1})
 else
     cfg = struct();
 end
+has_backend_field = isfield(cfg, 'bsqr_backend');
+if has_backend_field
+    requested_backend = lower(string(cfg.bsqr_backend));
+else
+    requested_backend = "mex";
+end
 
 repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 def_outdir = fullfile(repo_root, 'matlab', 'benchmark', 'results', 'publication');
 
-cfg.outdir = getfield_default(cfg, 'outdir', getenv_default('BS_MATLAB_PUB_OUTDIR', def_outdir));
-cfg.allow_shared_outdir = getfield_default(cfg, 'allow_shared_outdir', parse_bool(getenv_default('BS_MATLAB_ALLOW_SHARED_OUTDIR', '0')));
-cfg.seeds = getfield_default(cfg, 'seeds', parse_int_list(getenv_default('BS_MATLAB_PUB_SEEDS', '20260310,20260311')));
-cfg.families = getfield_default(cfg, 'families', parse_str_list(getenv_default('BS_MATLAB_PUB_FAMILIES', 'gaussian,ill_conditioned,orthonormal_rows')));
-cfg.square_ms = getfield_default(cfg, 'square_ms', parse_int_list(getenv_default('BS_MATLAB_PUB_SQUARE_MS', '64,128,256,384,512')));
-cfg.short_ms = getfield_default(cfg, 'short_ms', parse_int_list(getenv_default('BS_MATLAB_PUB_SHORT_MS', '32,64,128,256,512')));
-cfg.short_aspects = getfield_default(cfg, 'short_aspects', parse_float_list(getenv_default('BS_MATLAB_PUB_SHORT_ASPECTS', '2,4,8,10')));
-cfg.warmup = getfield_default(cfg, 'warmup', str2double(getenv_default('BS_MATLAB_PUB_WARMUP', '1')));
-cfg.samples = getfield_default(cfg, 'samples', str2double(getenv_default('BS_MATLAB_PUB_SAMPLES', '12')));
-cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', str2double(getenv_default('BS_MATLAB_NORM_RECOMP_TOL', num2str(sqrt(eps('double'))))));
-requested_backend = lower(string(getfield_default(cfg, 'bsqr_backend', 'mex')));
-cfg.bsqr_backend = "mex";
+cfg.outdir = getfield_default(cfg, 'outdir', bsqr_bench_getenv_default('BS_MATLAB_PUB_OUTDIR', def_outdir));
+cfg.allow_shared_outdir = getfield_default(cfg, 'allow_shared_outdir', ...
+    bsqr_bench_parse_bool(bsqr_bench_getenv_default('BS_MATLAB_ALLOW_SHARED_OUTDIR', '0'), ...
+    'run_publication_benchmarks:InvalidBool'));
+cfg.seeds = getfield_default(cfg, 'seeds', parse_int_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_SEEDS', '20260310,20260311')));
+cfg.families = getfield_default(cfg, 'families', parse_str_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_FAMILIES', 'gaussian,ill_conditioned,orthonormal_rows')));
+cfg.square_ms = getfield_default(cfg, 'square_ms', parse_int_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_SQUARE_MS', '64,128,256,384,512')));
+cfg.short_ms = getfield_default(cfg, 'short_ms', parse_int_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_SHORT_MS', '32,64,128,256,512')));
+cfg.short_aspects = getfield_default(cfg, 'short_aspects', parse_float_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_SHORT_ASPECTS', '2,4,8,10')));
+cfg.warmup = getfield_default(cfg, 'warmup', str2double(bsqr_bench_getenv_default('BS_MATLAB_PUB_WARMUP', '1')));
+cfg.samples = getfield_default(cfg, 'samples', str2double(bsqr_bench_getenv_default('BS_MATLAB_PUB_SAMPLES', '12')));
+cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', str2double(bsqr_bench_getenv_default('BS_MATLAB_NORM_RECOMP_TOL', num2str(sqrt(eps('double'))))));
 
 if isempty(cfg.seeds)
     error('run_publication_benchmarks:InvalidConfig', 'At least one seed is required.');
@@ -88,10 +94,15 @@ end
 if isempty(cfg.families)
     error('run_publication_benchmarks:InvalidConfig', 'At least one family is required.');
 end
-if requested_backend ~= "mex"
-    error('run_publication_benchmarks:MexOnly', ...
-        'Publication benchmarks are mex-only. Set bsqr_backend to ''mex'' or omit it.');
+if has_backend_field
+    if requested_backend ~= "mex"
+        error('run_publication_benchmarks:MexOnly', ...
+            'Publication benchmarks are mex-only.');
+    end
+    error('run_publication_benchmarks:UnsupportedConfigField', ...
+        'Publication benchmarks no longer accept cfg.bsqr_backend. This runner is mex-only.');
 end
+cfg.bsqr_backend = "mex";
 
 validate_matlab_outdir(cfg.outdir, repo_root, cfg.allow_shared_outdir);
 end
@@ -404,13 +415,6 @@ end
 out = unique(out);
 end
 
-function val = getenv_default(key, default)
-val = getenv(key);
-if isempty(val)
-    val = default;
-end
-end
-
 function ensure_mex_path_ready()
 persistent mex_ready
 if ~isempty(mex_ready) && mex_ready
@@ -436,25 +440,6 @@ else
 end
 end
 
-function tf = parse_bool(v)
-if islogical(v)
-    tf = logical(v);
-    return;
-end
-if isnumeric(v)
-    tf = logical(v ~= 0);
-    return;
-end
-s = lower(strtrim(string(v)));
-if s == "1" || s == "true" || s == "yes" || s == "on"
-    tf = true;
-elseif s == "0" || s == "false" || s == "no" || s == "off" || s == ""
-    tf = false;
-else
-    error('run_publication_benchmarks:InvalidBool', 'Could not parse boolean value: %s', string(v));
-end
-end
-
 function validate_matlab_outdir(outdir, repo_root, allow_shared)
 if allow_shared
     return;
@@ -463,9 +448,9 @@ end
 julia_results_root = fullfile(repo_root, 'benchmark', 'results');
 matlab_results_root = fullfile(repo_root, 'matlab', 'benchmark', 'results');
 
-out_abs = canonical_path(outdir);
-julia_abs = canonical_path(julia_results_root);
-matlab_abs = canonical_path(matlab_results_root);
+out_abs = bsqr_bench_canonical_path(outdir);
+julia_abs = bsqr_bench_canonical_path(julia_results_root);
+matlab_abs = bsqr_bench_canonical_path(matlab_results_root);
 
 if startsWith(out_abs, julia_abs)
     error('run_publication_benchmarks:SharedOutdirBlocked', ...
@@ -477,27 +462,5 @@ end
 if ~startsWith(out_abs, matlab_abs)
     warning('run_publication_benchmarks:OutdirOutsideMatlabTree', ...
         'MATLAB benchmark output is outside matlab/benchmark/results: %s', outdir);
-end
-end
-
-function p = canonical_path(inpath)
-if isempty(inpath)
-    p = '';
-    return;
-end
-
-if isfolder(inpath)
-    p = char(java.io.File(inpath).getCanonicalPath());
-    return;
-end
-
-[parent, name, ext] = fileparts(inpath);
-if isempty(parent)
-    parent = pwd;
-end
-if isfolder(parent)
-    p = fullfile(char(java.io.File(parent).getCanonicalPath()), [name, ext]);
-else
-    p = fullfile(parent, [name, ext]);
 end
 end
