@@ -3,6 +3,7 @@
 #include "lapack.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -170,30 +171,36 @@ void apply_householder_left(
     std::vector<double> &workbuf
 ) {
     const ptrdiff_t rows = static_cast<ptrdiff_t>(m - i);
-    const ptrdiff_t cols = static_cast<ptrdiff_t>(n - i - 1);
-    if (tau == 0.0 || cols <= 0) {
+    const ptrdiff_t cols_total = static_cast<ptrdiff_t>(n - i - 1);
+    if (tau == 0.0 || cols_total <= 0) {
         return;
     }
 
     const char trans = 'T';
     ptrdiff_t inc1 = 1;
     ptrdiff_t ldc = static_cast<ptrdiff_t>(m);
-    const size_t need = static_cast<size_t>(cols);
+    constexpr ptrdiff_t kApplyBlockCols = 256;
+    const ptrdiff_t block_cols = std::min(cols_total, kApplyBlockCols);
+    const size_t need = static_cast<size_t>(std::max<ptrdiff_t>(1, block_cols));
     if (workbuf.size() < need) {
         workbuf.resize(need);
     }
-    std::fill(workbuf.begin(), workbuf.begin() + static_cast<std::vector<double>::difference_type>(need), 0.0);
 
     double *v = &Aat(A, m, i, i);
-    double *C = &Aat(A, m, i, i + 1);
     const double one = 1.0;
     const double zero = 0.0;
     const double alpha = -tau;
 
-    // work := C' * v
-    dgemv(&trans, &rows, &cols, &one, C, &ldc, v, &inc1, &zero, workbuf.data(), &inc1);
-    // C := C - tau * v * work'
-    dger(&rows, &cols, &alpha, v, &inc1, workbuf.data(), &inc1, C, &ldc);
+    for (ptrdiff_t off = 0; off < cols_total; off += block_cols) {
+        const ptrdiff_t cols = std::min(block_cols, cols_total - off);
+        double *C = &Aat(A, m, i, i + 1 + static_cast<mwSize>(off));
+        std::fill(workbuf.begin(), workbuf.begin() + static_cast<std::vector<double>::difference_type>(cols), 0.0);
+
+        // work := C' * v
+        dgemv(&trans, &rows, &cols, &one, C, &ldc, v, &inc1, &zero, workbuf.data(), &inc1);
+        // C := C - tau * v * work'
+        dger(&rows, &cols, &alpha, v, &inc1, workbuf.data(), &inc1, C, &ldc);
+    }
 }
 
 void build_q(

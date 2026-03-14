@@ -47,8 +47,8 @@ run_publication_benchmarks
 
 Benchmark contract:
 
-- Built-in baseline uses `qr(A,0,'vector')` (economy mode + vector permutation).
-- BSQR baseline uses `bsqr(...,'pivot_format','vector')`.
+- Built-in baseline uses economy pivoted QR with vector permutation (`qr(...,'econ','vector')`, with compatibility fallback to `qr(A,0,'vector')`).
+- BSQR baseline uses the MEX backend directly (`bsqr_mex`) with vector permutation.
 
 Regenerate plots/tables from CSV:
 
@@ -68,7 +68,6 @@ Environment knobs (optional):
 - `BS_MATLAB_PUB_WARMUP`
 - `BS_MATLAB_PUB_SAMPLES`
 - `BS_MATLAB_NORM_RECOMP_TOL`
-- `BS_MATLAB_BSQR_BACKEND` (`auto` default; `mfile` or `mex`)
 - `BS_MATLAB_ALLOW_SHARED_OUTDIR` (`0` default). Keep at `0` to prevent MATLAB
   benchmark artifacts from writing into Julia's `benchmark/results/*`.
 
@@ -79,4 +78,7 @@ addpath('matlab')
 build_bsqr_mex
 ```
 
-Add C/C++ sources under `matlab/mex/src/`. MEX is optional in v1 and should only be promoted as default if benchmarks show material speedup without quality regression.
+Add C/C++ sources under `matlab/mex/src/`.
+
+- Publication benchmarks require `bsqr_mex`.
+- The pure `.m` implementation remains available for correctness testing and development.

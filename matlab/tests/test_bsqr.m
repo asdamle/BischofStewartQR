@@ -123,6 +123,10 @@ verifyLessThan(testCase, norm(Wx - Wm, 'fro') / max(norm(Wm, 'fro'), eps('double
 end
 
 function testBenchmarkSmoke(testCase)
+if ~bsqr_mex_available()
+    return;
+end
+
 outdir = fullfile(tempdir, ['bsqr_matlab_smoke_', char(string(randi(1e9)))]);
 cfg = struct();
 cfg.outdir = outdir;
@@ -134,6 +138,7 @@ cfg.short_aspects = 2;
 cfg.warmup = 0;
 cfg.samples = 2;
 cfg.norm_recomp_tol = sqrt(eps('double'));
+cfg.bsqr_backend = 'mex';
 
 run_publication_benchmarks(cfg);
 

@@ -1,0 +1,5 @@
+family,regime,m,n,aspect,geomean_speedup
+gaussian,square,64,64,1,0.327166549922498
+gaussian,square,128,128,1,0.474526308806304
+ill_conditioned,square,64,64,1,0.457217879424987
+ill_conditioned,square,128,128,1,0.676849203571661

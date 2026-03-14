@@ -1,0 +1,9 @@
+family,regime,method,median_residual,median_orthogonality
+gaussian,short_wide,bsqr_full,6.25971669161594e-16,4.29090527821872e-15
+gaussian,short_wide,qr_pivoted,6.23300085004253e-16,4.42607344117087e-15
+gaussian,square,bsqr_full,6.1546381396321e-16,7.4137538836406e-15
+gaussian,square,qr_pivoted,6.52848101041219e-16,8.25797238902147e-15
+ill_conditioned,short_wide,bsqr_full,4.35910770026725e-16,4.46477959709349e-15
+ill_conditioned,short_wide,qr_pivoted,4.18433005725473e-16,4.37431846020042e-15
+ill_conditioned,square,bsqr_full,5.18122427263037e-16,7.41988289370576e-15
+ill_conditioned,square,qr_pivoted,5.04401974440706e-16,7.57519563337005e-15

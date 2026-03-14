@@ -1,0 +1,3 @@
+family,regime,method,median_residual,median_orthogonality
+gaussian,square,bsqr_rinv,4.5481752489195e-16,3.58825284814199e-15
+gaussian,square,qr_pivoted_trsm,3.63125178315728e-16,2.89747164669877e-15

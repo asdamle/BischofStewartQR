@@ -1,0 +1,10 @@
+schema_version = 2026-03-14.matlab.v1
+run_id = 20260314_134535
+timestamp = 14-Mar-2026 13:45:36
+matlab_version = 25.2.0.3150157 (R2025b) Update 4
+outdir = /Users/anildamle/Dropbox/Trystuff/BSQR_Codex/matlab/benchmark/results/perf_compare/mfile_final
+observed_rows = 60
+warmup = 0
+samples = 3
+norm_recomp_tol = 1.4901161193847656e-08
+bsqr_backend = mfile

@@ -8,6 +8,7 @@ function run_publication_benchmarks(varargin)
 addpath(fileparts(fileparts(mfilename('fullpath'))));
 
 cfg = parse_config(varargin{:});
+ensure_mex_path_ready();
 if ~isfolder(cfg.outdir)
     mkdir(cfg.outdir);
 end
@@ -32,8 +33,8 @@ for seed = cfg.seeds
             A = make_matrix(family, kase.m, kase.n);
             k = min(kase.m, kase.n);
 
-            plain = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, false, cfg.bsqr_backend);
-            rinv = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, true, cfg.bsqr_backend);
+            plain = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, false);
+            rinv = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, true);
 
             rows = [rows; pack_rows(plain, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
             rows = [rows; pack_rows(rinv, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
@@ -78,7 +79,8 @@ cfg.short_aspects = getfield_default(cfg, 'short_aspects', parse_float_list(gete
 cfg.warmup = getfield_default(cfg, 'warmup', str2double(getenv_default('BS_MATLAB_PUB_WARMUP', '1')));
 cfg.samples = getfield_default(cfg, 'samples', str2double(getenv_default('BS_MATLAB_PUB_SAMPLES', '12')));
 cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', str2double(getenv_default('BS_MATLAB_NORM_RECOMP_TOL', num2str(sqrt(eps('double'))))));
-cfg.bsqr_backend = lower(string(getfield_default(cfg, 'bsqr_backend', getenv_default('BS_MATLAB_BSQR_BACKEND', 'auto'))));
+requested_backend = lower(string(getfield_default(cfg, 'bsqr_backend', 'mex')));
+cfg.bsqr_backend = "mex";
 
 if isempty(cfg.seeds)
     error('run_publication_benchmarks:InvalidConfig', 'At least one seed is required.');
@@ -86,8 +88,9 @@ end
 if isempty(cfg.families)
     error('run_publication_benchmarks:InvalidConfig', 'At least one family is required.');
 end
-if cfg.bsqr_backend ~= "auto" && cfg.bsqr_backend ~= "mfile" && cfg.bsqr_backend ~= "mex"
-    error('run_publication_benchmarks:InvalidConfig', 'bsqr_backend must be auto, mfile, or mex.');
+if requested_backend ~= "mex"
+    error('run_publication_benchmarks:MexOnly', ...
+        'Publication benchmarks are mex-only. Set bsqr_backend to ''mex'' or omit it.');
 end
 
 validate_matlab_outdir(cfg.outdir, repo_root, cfg.allow_shared_outdir);
@@ -106,10 +109,10 @@ for i = 1:numel(method_rows)
 end
 end
 
-function rows = bench_pair(A, k, norm_recomp_tol, warmup, samples, include_rinv, bsqr_backend)
+function rows = bench_pair(A, k, norm_recomp_tol, warmup, samples, include_rinv)
 rows = struct('method', {}, 'tmin', {}, 'tmed', {}, 'residual', {}, 'orthogonality', {});
 
-f_bs = @() run_bsqr(A, k, norm_recomp_tol, include_rinv, bsqr_backend);
+f_bs = @() run_bsqr(A, k, norm_recomp_tol, include_rinv);
 [tmin, tmed, out] = bench_function(f_bs, warmup, samples);
 [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
 if include_rinv
@@ -148,32 +151,17 @@ tmin = min(times);
 tmed = median(times);
 end
 
-function out = run_bsqr(A, k, norm_recomp_tol, return_rinv, bsqr_backend)
-if bsqr_backend == "mex"
-    ensure_mex_path_ready();
-    if return_rinv
-        [Q, R, p, rinv] = bsqr_mex(A, 'k', k, 'return_rinv_r12', true, ...
-            'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
-            'check_finite', false);
-        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', rinv);
-    else
-        [Q, R, p] = bsqr_mex(A, 'k', k, 'return_rinv_r12', false, ...
-            'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
-            'check_finite', false);
-        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', []);
-    end
+function out = run_bsqr(A, k, norm_recomp_tol, return_rinv)
+if return_rinv
+    [Q, R, p, rinv] = bsqr_mex(A, 'k', k, 'return_rinv_r12', true, ...
+        'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+        'check_finite', false);
+    out = struct('Q', Q, 'R', R, 'p', p, 'rinv', rinv);
 else
-    if return_rinv
-        [Q, R, p, rinv] = bsqr(A, 'k', k, 'return_rinv_r12', true, ...
-            'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
-            'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
-        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', rinv);
-    else
-        [Q, R, p] = bsqr(A, 'k', k, 'return_rinv_r12', false, ...
-            'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
-            'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
-        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', []);
-    end
+    [Q, R, p] = bsqr_mex(A, 'k', k, 'return_rinv_r12', false, ...
+        'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+        'check_finite', false);
+    out = struct('Q', Q, 'R', R, 'p', p, 'rinv', []);
 end
 validate_economy_vector_factor(A, out.Q, out.R, out.p, 'bsqr');
 end
@@ -435,7 +423,7 @@ if isfolder(mexdir)
 end
 if isempty(which('bsqr_mex'))
     error('run_publication_benchmarks:MexUnavailable', ...
-        'bsqr_backend=\"mex\" requested but bsqr_mex is not available.');
+        'Publication benchmarks require bsqr_mex, but it is not available.');
 end
 mex_ready = true;
 end
