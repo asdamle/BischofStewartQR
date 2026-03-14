@@ -1,24 +1,24 @@
 # MATLAB Publication Benchmark Summary
 
-- Run ID: `20260314_122821`
-- Generated: 14-Mar-2026 12:28:22
-- Seeds: 20260310
+- Run ID: `20260314_161027`
+- Generated: 14-Mar-2026 16:15:09
+- Seeds: 20260310, 20260311
 - Families: gaussian, ill_conditioned, orthonormal_rows
 
 | family | regime | geomean speedup (qr/bsqr_full) |
 |---|---|---:|
-| gaussian | short_wide | 0.05000 |
-| gaussian | square | 0.02148 |
-| ill_conditioned | short_wide | 0.04020 |
-| ill_conditioned | square | 0.03250 |
-| orthonormal_rows | short_wide | 0.03487 |
-| orthonormal_rows | square | 0.03347 |
+| gaussian | short_wide | 0.46201 |
+| gaussian | square | 0.57844 |
+| ill_conditioned | short_wide | 0.50187 |
+| ill_conditioned | square | 0.60248 |
+| orthonormal_rows | short_wide | 0.46275 |
+| orthonormal_rows | square | 0.56740 |
 
 | family | regime | geomean speedup (qr_trsm/bsqr_rinv) |
 |---|---|---:|
-| gaussian | short_wide | 0.09250 |
-| gaussian | square | 0.02115 |
-| ill_conditioned | short_wide | 0.05385 |
-| ill_conditioned | square | 0.04721 |
-| orthonormal_rows | short_wide | 0.07522 |
-| orthonormal_rows | square | 0.04351 |
+| gaussian | short_wide | 0.58512 |
+| gaussian | square | 0.59043 |
+| ill_conditioned | short_wide | 0.61862 |
+| ill_conditioned | square | 0.59983 |
+| orthonormal_rows | short_wide | 0.56443 |
+| orthonormal_rows | square | 0.58521 |
