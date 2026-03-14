@@ -19,6 +19,25 @@ struct Options {
     bool check_finite = true;
 };
 
+struct Workspace {
+    std::vector<double> A;
+    std::vector<double> tau;
+    std::vector<double> W;
+    std::vector<double> wnorm2;
+    std::vector<double> s;
+    std::vector<double> s_ref;
+    std::vector<mwSize> p;
+    std::vector<double> beta_vec;
+    std::vector<double> dots;
+    std::vector<double> hh_work;
+    std::vector<double> q_work;
+};
+
+Workspace &workspace() {
+    static Workspace ws;
+    return ws;
+}
+
 inline double &Aat(std::vector<double> &A, mwSize m, mwSize r, mwSize c) {
     return A[r + c * m];
 }
@@ -156,7 +175,7 @@ void apply_householder_left(
         return;
     }
 
-    const char side = 'L';
+    const char trans = 'T';
     ptrdiff_t inc1 = 1;
     ptrdiff_t ldc = static_cast<ptrdiff_t>(m);
     const size_t need = static_cast<size_t>(cols);
@@ -167,11 +186,25 @@ void apply_householder_left(
 
     double *v = &Aat(A, m, i, i);
     double *C = &Aat(A, m, i, i + 1);
-    dlarf(&side, &rows, &cols, v, &inc1, &tau, C, &ldc, workbuf.data());
+    const double one = 1.0;
+    const double zero = 0.0;
+    const double alpha = -tau;
+
+    // work := C' * v
+    dgemv(&trans, &rows, &cols, &one, C, &ldc, v, &inc1, &zero, workbuf.data(), &inc1);
+    // C := C - tau * v * work'
+    dger(&rows, &cols, &alpha, v, &inc1, workbuf.data(), &inc1, C, &ldc);
 }
 
-void build_q(const std::vector<double> &A, mwSize m, mwSize k, const std::vector<double> &tau, std::vector<double> &Q) {
-    Q.assign(static_cast<size_t>(m) * static_cast<size_t>(k), 0.0);
+void build_q(
+    const std::vector<double> &A,
+    mwSize m,
+    mwSize k,
+    const std::vector<double> &tau,
+    double *Q,
+    std::vector<double> &q_work
+) {
+    std::fill(Q, Q + static_cast<std::ptrdiff_t>(m) * static_cast<std::ptrdiff_t>(k), 0.0);
     for (mwSize c = 0; c < k; ++c) {
         Q[c + c * m] = 1.0;
     }
@@ -191,14 +224,16 @@ void build_q(const std::vector<double> &A, mwSize m, mwSize k, const std::vector
     ptrdiff_t info = 0;
     ptrdiff_t lwork = -1;
     double work_query = 0.0;
-    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q.data(), &ldc, &work_query, &lwork, &info);
+    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q, &ldc, &work_query, &lwork, &info);
     if (info != 0) {
         fail("bsqr:QBuildFailed", "LAPACK dormqr workspace query failed.");
     }
 
     lwork = std::max<ptrdiff_t>(1, static_cast<ptrdiff_t>(work_query));
-    std::vector<double> work(static_cast<size_t>(lwork), 0.0);
-    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q.data(), &ldc, work.data(), &lwork, &info);
+    if (q_work.size() < static_cast<size_t>(lwork)) {
+        q_work.resize(static_cast<size_t>(lwork));
+    }
+    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q, &ldc, q_work.data(), &lwork, &info);
     if (info != 0) {
         fail("bsqr:QBuildFailed", "LAPACK dormqr failed while forming Q.");
     }
@@ -215,12 +250,16 @@ mxArray *make_R(const std::vector<double> &A, mwSize m, mwSize n, mwSize k) {
     return R;
 }
 
-mxArray *make_Q(const std::vector<double> &A, mwSize m, mwSize k, const std::vector<double> &tau) {
+mxArray *make_Q(
+    const std::vector<double> &A,
+    mwSize m,
+    mwSize k,
+    const std::vector<double> &tau,
+    std::vector<double> &q_work
+) {
     mxArray *Qm = mxCreateDoubleMatrix(m, k, mxREAL);
     double *qptr = mxGetPr(Qm);
-    std::vector<double> Q;
-    build_q(A, m, k, tau, Q);
-    std::copy(Q.begin(), Q.end(), qptr);
+    build_q(A, m, k, tau, qptr, q_work);
     return Qm;
 }
 
@@ -287,8 +326,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     Options opt;
     parse_options(Ain, nrhs, prhs, opt);
 
+    Workspace &ws = workspace();
     const double *aptr = mxGetPr(Ain);
-    std::vector<double> A(aptr, aptr + static_cast<size_t>(m) * static_cast<size_t>(n));
+    const size_t mn = static_cast<size_t>(m) * static_cast<size_t>(n);
+    ws.A.resize(mn);
+    std::copy(aptr, aptr + mn, ws.A.data());
+    std::vector<double> &A = ws.A;
 
     if (opt.check_finite) {
         for (double v : A) {
@@ -299,10 +342,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     const mwSize k = opt.k;
-    std::vector<double> tau(k, 0.0);
-    std::vector<double> W(static_cast<size_t>(k) * static_cast<size_t>(n), 0.0);
-    std::vector<double> wnorm2(n, 0.0), s(n, 0.0), s_ref(n, 0.0);
-    std::vector<mwSize> p(n, 0);
+    ws.tau.assign(k, 0.0);
+    ws.W.assign(static_cast<size_t>(k) * static_cast<size_t>(n), 0.0);
+    ws.wnorm2.assign(n, 0.0);
+    ws.s.assign(n, 0.0);
+    ws.s_ref.assign(n, 0.0);
+    ws.p.resize(n);
+
+    std::vector<double> &tau = ws.tau;
+    std::vector<double> &W = ws.W;
+    std::vector<double> &wnorm2 = ws.wnorm2;
+    std::vector<double> &s = ws.s;
+    std::vector<double> &s_ref = ws.s_ref;
+    std::vector<mwSize> &p = ws.p;
 
     ptrdiff_t inc1 = 1;
     for (mwSize j = 0; j < n; ++j) {
@@ -314,9 +366,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         s_ref[j] = sj;
     }
 
-    std::vector<double> beta_vec(static_cast<size_t>(n), 0.0);
-    std::vector<double> dots(static_cast<size_t>(n), 0.0);
-    std::vector<double> hh_work(static_cast<size_t>(n), 0.0);
+    ws.beta_vec.resize(static_cast<size_t>(n));
+    ws.dots.resize(static_cast<size_t>(n));
+    ws.hh_work.resize(static_cast<size_t>(n));
+    std::vector<double> &beta_vec = ws.beta_vec;
+    std::vector<double> &dots = ws.dots;
+    std::vector<double> &hh_work = ws.hh_work;
 
     for (mwSize i = 0; i < k; ++i) {
         mwSize best_j = i;
@@ -331,11 +386,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         }
 
         if (best_j != i) {
-            for (mwSize r = 0; r < m; ++r) {
-                std::swap(Aat(A, m, r, i), Aat(A, m, r, best_j));
-            }
-            for (mwSize r = 0; r < i; ++r) {
-                std::swap(Wat(W, k, r, i), Wat(W, k, r, best_j));
+            const ptrdiff_t mptr = static_cast<ptrdiff_t>(m);
+            dswap(&mptr, &Aat(A, m, 0, i), &inc1, &Aat(A, m, 0, best_j), &inc1);
+            if (i > 0) {
+                const ptrdiff_t iptr = static_cast<ptrdiff_t>(i);
+                dswap(&iptr, &Wat(W, k, 0, i), &inc1, &Wat(W, k, 0, best_j), &inc1);
             }
             std::swap(s[i], s[best_j]);
             std::swap(s_ref[i], s_ref[best_j]);
@@ -436,7 +491,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         return;
     }
 
-    mxArray *Q = make_Q(A, m, k, tau);
+    mxArray *Q = make_Q(A, m, k, tau, ws.q_work);
     plhs[0] = Q;
     plhs[1] = R;
 
