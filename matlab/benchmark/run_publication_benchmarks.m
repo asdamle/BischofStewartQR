@@ -149,16 +149,31 @@ tmed = median(times);
 end
 
 function out = run_bsqr(A, k, norm_recomp_tol, return_rinv, bsqr_backend)
-if return_rinv
-    [Q, R, p, rinv] = bsqr(A, 'k', k, 'return_rinv_r12', true, ...
-        'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
-        'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
-    out = struct('Q', Q, 'R', R, 'p', p, 'rinv', rinv);
+if bsqr_backend == "mex"
+    ensure_mex_path_ready();
+    if return_rinv
+        [Q, R, p, rinv] = bsqr_mex(A, 'k', k, 'return_rinv_r12', true, ...
+            'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+            'check_finite', false);
+        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', rinv);
+    else
+        [Q, R, p] = bsqr_mex(A, 'k', k, 'return_rinv_r12', false, ...
+            'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+            'check_finite', false);
+        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', []);
+    end
 else
-    [Q, R, p] = bsqr(A, 'k', k, 'return_rinv_r12', false, ...
-        'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
-        'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
-    out = struct('Q', Q, 'R', R, 'p', p, 'rinv', []);
+    if return_rinv
+        [Q, R, p, rinv] = bsqr(A, 'k', k, 'return_rinv_r12', true, ...
+            'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
+            'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
+        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', rinv);
+    else
+        [Q, R, p] = bsqr(A, 'k', k, 'return_rinv_r12', false, ...
+            'pivot_format', 'vector', 'backend', char(bsqr_backend), ...
+            'norm_recomp_tol', norm_recomp_tol, 'check_finite', false);
+        out = struct('Q', Q, 'R', R, 'p', p, 'rinv', []);
+    end
 end
 validate_economy_vector_factor(A, out.Q, out.R, out.p, 'bsqr');
 end
@@ -406,6 +421,23 @@ val = getenv(key);
 if isempty(val)
     val = default;
 end
+end
+
+function ensure_mex_path_ready()
+persistent mex_ready
+if ~isempty(mex_ready) && mex_ready
+    return;
+end
+repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+mexdir = fullfile(repo_root, 'matlab', 'mex');
+if isfolder(mexdir)
+    addpath(mexdir);
+end
+if isempty(which('bsqr_mex'))
+    error('run_publication_benchmarks:MexUnavailable', ...
+        'bsqr_backend=\"mex\" requested but bsqr_mex is not available.');
+end
+mex_ready = true;
 end
 
 function v = getfield_default(s, field, default)

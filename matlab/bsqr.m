@@ -28,15 +28,7 @@ switch opts.backend
 end
 
 if use_mex
-    if ~bsqr_mex_available()
-        error('bsqr:MexUnavailable', ...
-            'backend="mex" requested but bsqr_mex is not available. Run matlab/build_bsqr_mex.m first.');
-    end
-    thisdir = fileparts(mfilename('fullpath'));
-    mexdir = fullfile(thisdir, 'mex');
-    if isfolder(mexdir)
-        addpath(mexdir);
-    end
+    ensure_bsqr_mex_ready();
     [varargout{1:nargout}] = bsqr_mex(A, varargin{:});
     return;
 end
@@ -46,6 +38,25 @@ end
 if nargout == 1
     varargout{1} = R;
     return;
+end
+
+function ensure_bsqr_mex_ready()
+persistent mex_ready
+if ~isempty(mex_ready) && mex_ready
+    return;
+end
+
+thisdir = fileparts(mfilename('fullpath'));
+mexdir = fullfile(thisdir, 'mex');
+if isfolder(mexdir)
+    addpath(mexdir);
+end
+
+if ~bsqr_mex_available()
+    error('bsqr:MexUnavailable', ...
+        'backend="mex" requested but bsqr_mex is not available. Run matlab/build_bsqr_mex.m first.');
+end
+mex_ready = true;
 end
 
 if nargout >= 2
