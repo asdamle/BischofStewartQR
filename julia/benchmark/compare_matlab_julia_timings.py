@@ -2,8 +2,8 @@
 """
 Compare MATLAB and Julia BSQR timing rows from publication CSV files.
 
-This script matches rows on (family, regime, m, n, seed) for one method and one
-benchmark surface, then reports geomean timings for representative cases.
+This script matches rows on (family, regime, m, n, seed) for one method,
+then reports geomean timings for representative cases.
 """
 
 import argparse
@@ -43,20 +43,10 @@ def read_csv_rows(path):
     return rows
 
 
-def row_surface(row, default_surface):
-    value = row.get("bench_surface", "")
-    if value is None:
-        value = ""
-    value = value.strip().lower()
-    return value if value else default_surface
-
-
-def filter_rows(rows, method, surface, blas_threads=None, default_surface="factor_only"):
+def filter_rows(rows, method, blas_threads=None):
     out = []
     for r in rows:
         if r.get("method", "") != method:
-            continue
-        if row_surface(r, default_surface) != surface:
             continue
         if blas_threads is not None:
             bt = r.get("blas_threads")
@@ -87,7 +77,6 @@ def main():
     ap.add_argument("--matlab-csv", required=True)
     ap.add_argument("--julia-csv", required=True)
     ap.add_argument("--method", default="bsqr_full", choices=["bsqr_full", "bsqr_rinv"])
-    ap.add_argument("--bench-surface", default="factor_only", choices=["factor_only", "materialize_qrp"])
     ap.add_argument("--julia-threads", type=int, default=1)
     ap.add_argument(
         "--cases",
@@ -99,18 +88,11 @@ def main():
     matlab_rows = read_csv_rows(args.matlab_csv)
     julia_rows = read_csv_rows(args.julia_csv)
 
-    matlab = filter_rows(
-        matlab_rows,
-        method=args.method,
-        surface=args.bench_surface,
-        default_surface="materialize_qrp",
-    )
+    matlab = filter_rows(matlab_rows, method=args.method)
     julia = filter_rows(
         julia_rows,
         method=args.method,
-        surface=args.bench_surface,
         blas_threads=args.julia_threads,
-        default_surface="factor_only",
     )
 
     if not matlab:
@@ -135,9 +117,7 @@ def main():
         shared_case_keys = sorted(set(m_case.keys()) & set(j_case.keys()), key=lambda x: (x[0], x[1], x[2]))
         cases = shared_case_keys[:6]
 
-    print(
-        f"# MATLAB vs Julia ({args.method}, surface={args.bench_surface}, julia_threads={args.julia_threads})"
-    )
+    print(f"# MATLAB vs Julia ({args.method}, julia_threads={args.julia_threads})")
     print("")
     print("| regime | m x n | MATLAB tmed (ms) | Julia tmed (ms) | MATLAB/Julia |")
     print("|---|---:|---:|---:|---:|")

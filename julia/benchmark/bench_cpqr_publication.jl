@@ -12,7 +12,7 @@ include("bench_common.jl")
 using .BenchCommon
 
 const DEFAULT_PUB_OUTDIR = joinpath(@__DIR__, "results", "publication")
-const PUBLICATION_SCHEMA_VERSION = "2026-03-16.v2"
+const PUBLICATION_SCHEMA_VERSION = "2026-03-16.v3"
 const REPO_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 const PLAIN_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
 const RINV_METHODS = Set([BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL])
@@ -58,11 +58,6 @@ function _parse_short_aspects()
     isempty(vals) && error("BS_PUB_SHORT_ASPECTS must contain at least one value")
     all(a -> a >= 1.0, vals) || error("BS_PUB_SHORT_ASPECTS entries must be >= 1.0")
     return vals
-end
-
-function _parse_bench_surface()
-    raw = lowercase(strip(get(ENV, "BS_PUB_BENCH_SURFACE", BENCH_SURFACE_FACTOR_ONLY)))
-    return validate_bench_surface(raw)
 end
 
 function _case_grid(square_ms::Vector{Int}, short_ms::Vector{Int}, short_aspects::Vector{Float64})
@@ -182,7 +177,6 @@ end
 function _write_metadata(
     metadata_path::String,
     run_id::String,
-    bench_surface::String,
     threads::Vector{Int},
     seeds::Vector{Int},
     families::Vector{Symbol},
@@ -229,7 +223,6 @@ function _write_metadata(
         println(io, "BS_PUB_SHORT_ASPECTS = ", join(string.(short_aspects), ","))
         println(io, "BS_PUB_WARMUP = ", warmup)
         println(io, "BS_PUB_SAMPLES = ", samples)
-        println(io, "BS_PUB_BENCH_SURFACE = ", bench_surface)
         println(io, "BS_NORM_RECOMP_TOL = ", get(ENV, "BS_NORM_RECOMP_TOL", string(DEFAULT_NORM_RECOMP_TOL)))
         println(io, "BS_PUB_CI_WARN_FRAC = ", get(ENV, "BS_PUB_CI_WARN_FRAC", "0.5"))
         println(io, "BS_PUB_CI_FAIL_FRAC = ", get(ENV, "BS_PUB_CI_FAIL_FRAC", "10.0"))
@@ -252,9 +245,9 @@ function _speedup_rows(
     baseline_method::String;
     regime::Union{Nothing,String} = nothing,
 )
-    idx = Dict{Tuple{Symbol,String,Int,Int,Int,Int,String,String},Float64}()
+    idx = Dict{Tuple{Symbol,String,Int,Int,Int,Int,String},Float64}()
     for r in rows
-        key = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, r.bench_surface, r.method)
+        key = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, r.method)
         idx[key] = r.tmed
     end
 
@@ -262,7 +255,7 @@ function _speedup_rows(
     for r in rows
         r.method == bsqr_method || continue
         regime !== nothing && r.regime != regime && continue
-        key_baseline = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, r.bench_surface, baseline_method)
+        key_baseline = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, baseline_method)
         haskey(idx, key_baseline) || continue
         baseline_t = idx[key_baseline]
         sp = r.tmed == 0.0 ? NaN : (baseline_t / r.tmed)
@@ -313,7 +306,6 @@ function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::Strin
         println(md, "- Run ID: `$run_id`")
         println(md, "- Generated: $(Dates.now())")
         println(md, "- BLAS: ", backend_string())
-        println(md, "- Bench Surface: ", rows[1].bench_surface)
         println(md, "- Threads: ", join(threads, ", "))
         println(md, "- Seeds: ", join(seeds, ", "))
         println(md, "")
@@ -334,10 +326,10 @@ function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::Strin
 end
 
 function _validate_pairs(rows::Vector{NamedTuple})
-    keyset = Dict{Tuple{Symbol,String,Int,Int,Int,Int,String},Set{String}}()
+    keyset = Dict{Tuple{Symbol,String,Int,Int,Int,Int},Set{String}}()
     for r in rows
         r.method in ALLOWED_METHODS || error("Unexpected method in benchmark rows: $(r.method)")
-        key = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, r.bench_surface)
+        key = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads)
         get!(keyset, key, Set{String}())
         push!(keyset[key], r.method)
     end
@@ -350,7 +342,6 @@ end
 function run_publication_benchmarks()
     check_backend()
     norm_recomp_tol = parse_env_float("BS_NORM_RECOMP_TOL", DEFAULT_NORM_RECOMP_TOL)
-    bench_surface = _parse_bench_surface()
 
     outdir = strip(get(ENV, "BS_PUB_OUTDIR", DEFAULT_PUB_OUTDIR))
     isempty(outdir) && error("BS_PUB_OUTDIR cannot be empty")
@@ -374,7 +365,7 @@ function run_publication_benchmarks()
     io = open(csv_path, "w")
     println(
         io,
-        "run_id,timestamp,family,regime,m,n,aspect,seed,blas_threads,method,bench_surface,tmin_s,tmed_s,tci_low_s,tci_high_s,alloc_bytes,residual,orthogonality",
+        "run_id,timestamp,family,regime,m,n,aspect,seed,blas_threads,method,tmin_s,tmed_s,tci_low_s,tci_high_s,alloc_bytes,residual,orthogonality",
     )
 
     rows = NamedTuple[]
@@ -403,7 +394,6 @@ function run_publication_benchmarks()
                             norm_recomp_tol;
                             warmup = warmup,
                             samples = samples,
-                            bench_surface = bench_surface,
                             bsqr_return_rinv_r12 = false,
                             include_dgeqp3_trsm = false,
                         )
@@ -413,7 +403,6 @@ function run_publication_benchmarks()
                             norm_recomp_tol;
                             warmup = warmup,
                             samples = samples,
-                            bench_surface = bench_surface,
                             bsqr_return_rinv_r12 = true,
                             include_dgeqp3_trsm = true,
                         )
@@ -449,7 +438,6 @@ function run_publication_benchmarks()
                                 seed = seed,
                                 blas_threads = nth,
                                 method = row.method,
-                                bench_surface = bench_surface,
                                 tmin = row.tmin,
                                 tmed = row.tmed,
                                 tci_low = row.tci_low,
@@ -461,7 +449,7 @@ function run_publication_benchmarks()
                             push!(rows, outrow)
                             println(
                                 io,
-                                "$(outrow.run_id),$(outrow.timestamp),$(outrow.family),$(outrow.regime),$(outrow.m),$(outrow.n),$(@sprintf("%.6f", outrow.aspect)),$(outrow.seed),$(outrow.blas_threads),$(outrow.method),$(outrow.bench_surface),$(outrow.tmin),$(outrow.tmed),$(outrow.tci_low),$(outrow.tci_high),$(outrow.alloc),$(outrow.resid),$(outrow.orth)",
+                                "$(outrow.run_id),$(outrow.timestamp),$(outrow.family),$(outrow.regime),$(outrow.m),$(outrow.n),$(@sprintf("%.6f", outrow.aspect)),$(outrow.seed),$(outrow.blas_threads),$(outrow.method),$(outrow.tmin),$(outrow.tmed),$(outrow.tci_low),$(outrow.tci_high),$(outrow.alloc),$(outrow.resid),$(outrow.orth)",
                             )
                         end
                     end
@@ -481,7 +469,6 @@ function run_publication_benchmarks()
     _write_metadata(
         metadata_path,
         run_id,
-        bench_surface,
         threads,
         seeds,
         families,

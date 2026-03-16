@@ -36,15 +36,6 @@ base = base(ismember(base.method, methods), :);
 cand = cand(ismember(cand.method, methods), :);
 
 key_cols = {'family', 'regime', 'm', 'n', 'aspect', 'seed', 'method'};
-if ismember('bench_surface', base.Properties.VariableNames) || ismember('bench_surface', cand.Properties.VariableNames)
-    if ~ismember('bench_surface', base.Properties.VariableNames)
-        base.bench_surface = repmat("factor_only", height(base), 1);
-    end
-    if ~ismember('bench_surface', cand.Properties.VariableNames)
-        cand.bench_surface = repmat("factor_only", height(cand), 1);
-    end
-    key_cols = [key_cols, {'bench_surface'}];
-end
 base_t = base(:, [key_cols, {'tmed_s'}]);
 base_t.Properties.VariableNames{'tmed_s'} = 'tmed_base';
 cand_t = cand(:, [key_cols, {'tmed_s'}]);
@@ -94,7 +85,7 @@ out.by_method = table(methods, med, mx, ...
 end
 
 function rows = normalize_text_columns(rows)
-text_cols = {'family', 'regime', 'method', 'run_id', 'timestamp', 'bench_surface'};
+text_cols = {'family', 'regime', 'method', 'run_id', 'timestamp'};
 for i = 1:numel(text_cols)
     c = text_cols{i};
     if ~ismember(c, rows.Properties.VariableNames)

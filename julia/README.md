@@ -22,17 +22,6 @@ Publication benchmark:
 julia --project=julia julia/benchmark/run_publication_benchmarks.jl
 ```
 
-Benchmark surface (timed API shape) is configurable via `BS_PUB_BENCH_SURFACE`:
-
-- `factor_only` (default): time factorization without explicit `Q,R,p` materialization.
-- `materialize_qrp`: include explicit `Q,R,p` materialization cost in timed path.
-
-Example:
-
-```bash
-BS_PUB_BENCH_SURFACE=materialize_qrp julia --project=julia julia/benchmark/run_publication_benchmarks.jl
-```
-
 Smoke benchmark:
 
 ```bash
@@ -57,7 +46,7 @@ Cross-language timing comparison helper:
 python3 julia/benchmark/compare_matlab_julia_timings.py \
   --matlab-csv matlab/benchmark/results/publication/publication_timings.csv \
   --julia-csv julia/benchmark/results/publication/publication_timings.csv \
-  --bench-surface factor_only --method bsqr_full --julia-threads 1
+  --method bsqr_full --julia-threads 1
 ```
 
 ## Output Defaults

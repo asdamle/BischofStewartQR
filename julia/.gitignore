@@ -26,3 +26,5 @@ JuliaLocalPreferences.toml
 # Local benchmark scratch outputs
 benchmark/results/tmp_*/
 benchmark/results/publication_smoke_materialize*/
+benchmark/results/publication_smoke/plots/
+benchmark/results/publication_smoke/tables/

@@ -23,15 +23,6 @@ const BSQR_METHOD_LABEL = "bsqr_full"
 const BSQR_RINV_METHOD_LABEL = "bsqr_rinv"
 const DGEQP3_METHOD_LABEL = "dgeqp3"
 const DGEQP3_TRSM_METHOD_LABEL = "dgeqp3_trsm"
-const BENCH_SURFACE_FACTOR_ONLY = "factor_only"
-const BENCH_SURFACE_MATERIALIZE_QRP = "materialize_qrp"
-const ALLOWED_BENCH_SURFACES = Set([BENCH_SURFACE_FACTOR_ONLY, BENCH_SURFACE_MATERIALIZE_QRP])
-
-function validate_bench_surface(surface::String)
-    lowercase(surface) in ALLOWED_BENCH_SURFACES ||
-        error("Unsupported bench surface '$surface'; expected one of $(collect(ALLOWED_BENCH_SURFACES))")
-    return lowercase(surface)
-end
 
 function backend_string()
     return sprint(show, BLAS.get_config())
@@ -176,11 +167,9 @@ function _bench_pair(
     warmup::Int,
     samples::Int,
     bench_quality::B,
-    bench_surface::String = BENCH_SURFACE_FACTOR_ONLY,
     bsqr_return_rinv_r12::Bool = false,
     include_dgeqp3_trsm::Bool = false,
 ) where {B<:Function}
-    bench_surface = validate_bench_surface(bench_surface)
     rows = NamedTuple[]
 
     f_bs() = run_bsqr_fair(
@@ -188,17 +177,16 @@ function _bench_pair(
         k,
         norm_recomp_tol;
         return_rinv_r12 = bsqr_return_rinv_r12,
-        bench_surface = bench_surface,
     )
     bs = bench_quality(f_bs, F -> residual_bs(A, F); warmup = warmup, samples = samples)
     push!(rows, (; method = BSQR_METHOD_LABEL, bs...))
 
-    f_qr() = run_qr_fair(A; bench_surface = bench_surface)
+    f_qr() = run_qr_fair(A)
     dg = bench_quality(f_qr, F -> residual_qr(A, F); warmup = warmup, samples = samples)
     push!(rows, (; method = DGEQP3_METHOD_LABEL, dg...))
 
     if include_dgeqp3_trsm
-        f_qr_trsm() = run_qr_trsm_fair(A; bench_surface = bench_surface)
+        f_qr_trsm() = run_qr_trsm_fair(A)
         dg_trsm = bench_quality(f_qr_trsm, F -> residual_qr(A, F); warmup = warmup, samples = samples)
         push!(rows, (; method = DGEQP3_TRSM_METHOD_LABEL, dg_trsm...))
     end
@@ -249,9 +237,7 @@ function run_bsqr_fair(
     k::Int,
     norm_recomp_tol::Float64;
     return_rinv_r12::Bool = false,
-    bench_surface::String = BENCH_SURFACE_FACTOR_ONLY,
 )
-    surface = validate_bench_surface(bench_surface)
     F = bsqr!(
         copy(A);
         k = k,
@@ -263,23 +249,15 @@ function run_bsqr_fair(
         workspace = nothing,
         blas_threads = nothing,
     )
-    if surface == BENCH_SURFACE_MATERIALIZE_QRP
-        return _materialize_bsqr_qrp(F)
-    end
-    return F
+    return _materialize_bsqr_qrp(F)
 end
 
-function run_qr_fair(A::Matrix{Float64}; bench_surface::String = BENCH_SURFACE_FACTOR_ONLY)
-    surface = validate_bench_surface(bench_surface)
+function run_qr_fair(A::Matrix{Float64})
     F = qr(copy(A), ColumnNorm())
-    if surface == BENCH_SURFACE_MATERIALIZE_QRP
-        return _materialize_qr_qrp(F)
-    end
-    return F
+    return _materialize_qr_qrp(F)
 end
 
-function run_qr_trsm_fair(A::Matrix{Float64}; bench_surface::String = BENCH_SURFACE_FACTOR_ONLY)
-    surface = validate_bench_surface(bench_surface)
+function run_qr_trsm_fair(A::Matrix{Float64})
     F = qr(copy(A), ColumnNorm())
     m, n = size(A)
     k = min(m, n)
@@ -289,10 +267,7 @@ function run_qr_trsm_fair(A::Matrix{Float64}; bench_surface::String = BENCH_SURF
         R12 = Matrix(view(Rf, 1:k, (k + 1):n))
         BLAS.trsm!('L', 'U', 'N', 'N', 1.0, R11, R12)
     end
-    if surface == BENCH_SURFACE_MATERIALIZE_QRP
-        return _materialize_qr_qrp(F)
-    end
-    return F
+    return _materialize_qr_qrp(F)
 end
 
 function bench_pair_basic(
@@ -301,7 +276,6 @@ function bench_pair_basic(
     norm_recomp_tol::Float64;
     warmup::Int,
     samples::Int,
-    bench_surface::String = BENCH_SURFACE_FACTOR_ONLY,
     bsqr_return_rinv_r12::Bool = false,
     include_dgeqp3_trsm::Bool = false,
 )
@@ -312,7 +286,6 @@ function bench_pair_basic(
         warmup = warmup,
         samples = samples,
         bench_quality = _bench_and_quality_basic,
-        bench_surface = bench_surface,
         bsqr_return_rinv_r12 = bsqr_return_rinv_r12,
         include_dgeqp3_trsm = include_dgeqp3_trsm,
     )
@@ -324,7 +297,6 @@ function bench_pair_ci(
     norm_recomp_tol::Float64;
     warmup::Int,
     samples::Int,
-    bench_surface::String = BENCH_SURFACE_FACTOR_ONLY,
     bsqr_return_rinv_r12::Bool = false,
     include_dgeqp3_trsm::Bool = false,
 )
@@ -335,7 +307,6 @@ function bench_pair_ci(
         warmup = warmup,
         samples = samples,
         bench_quality = _bench_and_quality_ci,
-        bench_surface = bench_surface,
         bsqr_return_rinv_r12 = bsqr_return_rinv_r12,
         include_dgeqp3_trsm = include_dgeqp3_trsm,
     )
@@ -368,12 +339,10 @@ end
 
 export DEFAULT_NORM_RECOMP_TOL
 export BSQR_METHOD_LABEL, BSQR_RINV_METHOD_LABEL, DGEQP3_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL
-export BENCH_SURFACE_FACTOR_ONLY, BENCH_SURFACE_MATERIALIZE_QRP, ALLOWED_BENCH_SURFACES
 export accelerate_active, backend_string, bench_pair_basic, bench_pair_ci
 export bench_trial_basic, bench_trial_ci, grouped_rows_with_baseline
 export check_backend, configure_blas_threads, make_matrix
 export parse_env_float, parse_env_int, parse_float_list, parse_int_list, parse_symbol_list
-export validate_bench_surface
 export residual_bs, residual_qr, run_bsqr_fair, run_qr_fair, run_qr_trsm_fair
 
 end
