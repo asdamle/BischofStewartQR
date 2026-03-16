@@ -1,6 +1,6 @@
-schema_version = 2026-03-14.matlab.v1
-run_id = 20260316_093531
-timestamp = 16-Mar-2026 09:40:22
+schema_version = 2026-03-16.matlab.v2
+run_id = 20260316_125458
+timestamp = 16-Mar-2026 13:01:23
 matlab_version = 25.2.0.3150157 (R2025b) Update 4
 outdir = /Users/anildamle/Dropbox/Trystuff/BSQR_Codex/matlab/benchmark/results/publication
 observed_rows = 750
@@ -8,3 +8,4 @@ warmup = 1
 samples = 12
 norm_recomp_tol = 1.4901000000000001e-08
 bsqr_backend = mex
+bench_surface = materialize_qrp

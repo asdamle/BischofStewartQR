@@ -1,0 +1,16 @@
+family,regime,m,n,aspect,geomean_speedup
+gaussian,square,64,64,1,1.08349297565421
+gaussian,square,128,128,1,1.11517235423846
+gaussian,square,256,256,1,0.664466086520944
+gaussian,square,384,384,1,0.533131604553795
+gaussian,square,512,512,1,0.504447704187212
+ill_conditioned,square,64,64,1,1.06600471760688
+ill_conditioned,square,128,128,1,1.06685768342029
+ill_conditioned,square,256,256,1,0.78053352182879
+ill_conditioned,square,384,384,1,0.558390077467126
+ill_conditioned,square,512,512,1,0.569223042015237
+orthonormal_rows,square,64,64,1,1.07676481357904
+orthonormal_rows,square,128,128,1,1.0967456529175
+orthonormal_rows,square,256,256,1,0.660106669882198
+orthonormal_rows,square,384,384,1,0.492675066923388
+orthonormal_rows,square,512,512,1,0.470283087476161
