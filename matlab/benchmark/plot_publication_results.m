@@ -31,6 +31,7 @@ validate_plot_targets(plots_dir, tables_dir, repo_root, allow_shared_outdir);
 
 rows = readtable(csv_path);
 rows = normalize_text_columns(rows);
+rows = validate_bench_surface_column(rows);
 style = publication_style();
 
 if ~isfolder(plots_dir)
@@ -579,6 +580,9 @@ key_cols = {'family', 'regime', 'm', 'n', 'aspect', 'seed'};
 if ismember('blas_threads', rows.Properties.VariableNames)
     key_cols = [key_cols, {'blas_threads'}];
 end
+if ismember('bench_surface', rows.Properties.VariableNames)
+    key_cols = [key_cols, {'bench_surface'}];
+end
 
 join_bs = rows_bs(:, [key_cols, {'tmed_s'}]);
 join_bs.Properties.VariableNames{'tmed_s'} = 'tmed_bs';
@@ -590,7 +594,7 @@ sp = joined(:, [key_cols, {'speedup'}]);
 end
 
 function rows = normalize_text_columns(rows)
-text_cols = {'family', 'regime', 'method', 'run_id', 'timestamp'};
+text_cols = {'family', 'regime', 'method', 'run_id', 'timestamp', 'bench_surface'};
 for i = 1:numel(text_cols)
     c = text_cols{i};
     if ~ismember(c, rows.Properties.VariableNames)
@@ -604,6 +608,18 @@ for i = 1:numel(text_cols)
     elseif iscategorical(v)
         rows.(c) = string(v);
     end
+end
+end
+
+function rows = validate_bench_surface_column(rows)
+if ~ismember('bench_surface', rows.Properties.VariableNames)
+    return;
+end
+vals = unique(rows.bench_surface);
+if numel(vals) ~= 1
+    error('plot_publication_results:MixedBenchSurface', ...
+        ['CSV contains multiple bench_surface values. ', ...
+         'Plot one surface at a time to avoid mixed speedup aggregates.']);
 end
 end
 

@@ -33,11 +33,11 @@ for seed = cfg.seeds
             A = make_matrix(family, kase.m, kase.n);
             k = min(kase.m, kase.n);
 
-            plain = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, false);
-            rinv = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, true);
+            plain = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, false, cfg.bench_surface);
+            rinv = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, true, cfg.bench_surface);
 
-            rows = [rows; pack_rows(plain, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
-            rows = [rows; pack_rows(rinv, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
+            rows = [rows; pack_rows(plain, run_id, timestamp, family, kase, seed, cfg.bench_surface)]; %#ok<AGROW>
+            rows = [rows; pack_rows(rinv, run_id, timestamp, family, kase, seed, cfg.bench_surface)]; %#ok<AGROW>
         end
     end
 end
@@ -87,6 +87,8 @@ cfg.short_aspects = getfield_default(cfg, 'short_aspects', parse_float_list(bsqr
 cfg.warmup = getfield_default(cfg, 'warmup', str2double(bsqr_bench_getenv_default('BS_MATLAB_PUB_WARMUP', '1')));
 cfg.samples = getfield_default(cfg, 'samples', str2double(bsqr_bench_getenv_default('BS_MATLAB_PUB_SAMPLES', '12')));
 cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', str2double(bsqr_bench_getenv_default('BS_MATLAB_NORM_RECOMP_TOL', num2str(sqrt(eps('double'))))));
+cfg.bench_surface = parse_bench_surface(getfield_default(cfg, 'bench_surface', ...
+    bsqr_bench_getenv_default('BS_MATLAB_PUB_BENCH_SURFACE', 'materialize_qrp')));
 
 if isempty(cfg.seeds)
     error('run_publication_benchmarks:InvalidConfig', 'At least one seed is required.');
@@ -107,24 +109,25 @@ cfg.bsqr_backend = "mex";
 validate_matlab_outdir(cfg.outdir, repo_root, cfg.allow_shared_outdir);
 end
 
-function rows = pack_rows(method_rows, run_id, timestamp, family, kase, seed)
+function rows = pack_rows(method_rows, run_id, timestamp, family, kase, seed, bench_surface)
 rows = table();
 for i = 1:numel(method_rows)
     r = method_rows(i);
     newrow = table( ...
         string(run_id), string(timestamp), string(family), string(kase.regime), ...
-        kase.m, kase.n, kase.aspect, seed, string(r.method), ...
+        kase.m, kase.n, kase.aspect, seed, string(r.method), string(bench_surface), ...
         r.tmin, r.tmed, r.residual, r.orthogonality, ...
-        'VariableNames', {'run_id','timestamp','family','regime','m','n','aspect','seed','method','tmin_s','tmed_s','residual','orthogonality'});
+        'VariableNames', {'run_id','timestamp','family','regime','m','n','aspect','seed','method','bench_surface','tmin_s','tmed_s','residual','orthogonality'});
     rows = [rows; newrow]; %#ok<AGROW>
 end
 end
 
-function rows = bench_pair(A, k, norm_recomp_tol, warmup, samples, include_rinv)
+function rows = bench_pair(A, k, norm_recomp_tol, warmup, samples, include_rinv, bench_surface)
 rows = struct('method', {}, 'tmin', {}, 'tmed', {}, 'residual', {}, 'orthogonality', {});
 
-f_bs = @() run_bsqr(A, k, norm_recomp_tol, include_rinv);
-[tmin, tmed, out] = bench_function(f_bs, warmup, samples);
+f_bs = @() run_bsqr_timed(A, k, norm_recomp_tol, include_rinv, bench_surface);
+[tmin, tmed] = bench_function(f_bs, warmup, samples);
+out = run_bsqr_quality(A, k, norm_recomp_tol, include_rinv);
 [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
 if include_rinv
     bs_label = "bsqr_rinv";
@@ -133,36 +136,37 @@ else
 end
 rows(end+1) = struct('method', bs_label, 'tmin', tmin, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 
-f_qr = @() run_qr_builtin(A);
-[tmin, tmed, out] = bench_function(f_qr, warmup, samples);
+f_qr = @() run_qr_builtin_timed(A, bench_surface);
+[tmin, tmed] = bench_function(f_qr, warmup, samples);
+out = run_qr_builtin_quality(A);
 [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
 rows(end+1) = struct('method', "qr_pivoted", 'tmin', tmin, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 
 if include_rinv
-    f_qr_trsm = @() run_qr_trsm(A);
-    [tmin, tmed, out] = bench_function(f_qr_trsm, warmup, samples);
+    f_qr_trsm = @() run_qr_trsm_timed(A, bench_surface);
+    [tmin, tmed] = bench_function(f_qr_trsm, warmup, samples);
+    out = run_qr_trsm_quality(A);
     [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
     rows(end+1) = struct('method', "qr_pivoted_trsm", 'tmin', tmin, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 end
 end
 
-function [tmin, tmed, out] = bench_function(f, warmup, samples)
+function [tmin, tmed] = bench_function(f, warmup, samples)
 for i = 1:warmup
     f();
 end
 
 times = zeros(samples, 1);
-out = struct();
 for i = 1:samples
     tic;
-    out = f();
+    f();
     times(i) = toc;
 end
 tmin = min(times);
 tmed = median(times);
 end
 
-function out = run_bsqr(A, k, norm_recomp_tol, return_rinv)
+function out = run_bsqr_quality(A, k, norm_recomp_tol, return_rinv)
 if return_rinv
     [Q, R, p, rinv] = bsqr_mex(A, 'k', k, 'return_rinv_r12', true, ...
         'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
@@ -177,13 +181,53 @@ end
 validate_economy_vector_factor(A, out.Q, out.R, out.p, 'bsqr');
 end
 
-function out = run_qr_builtin(A)
+function run_bsqr_timed(A, k, norm_recomp_tol, return_rinv, bench_surface)
+switch bench_surface
+    case "factor_only"
+        if return_rinv
+            [R] = bsqr_mex(A, 'k', k, 'return_rinv_r12', true, ...
+                'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+                'check_finite', false); %#ok<ASGLU>
+        else
+            [R] = bsqr_mex(A, 'k', k, 'return_rinv_r12', false, ...
+                'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+                'check_finite', false); %#ok<ASGLU>
+        end
+    case "materialize_qrp"
+        if return_rinv
+            [Q, R, p, rinv] = bsqr_mex(A, 'k', k, 'return_rinv_r12', true, ...
+                'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+                'check_finite', false); %#ok<ASGLU>
+        else
+            [Q, R, p] = bsqr_mex(A, 'k', k, 'return_rinv_r12', false, ...
+                'pivot_format', 'vector', 'norm_recomp_tol', norm_recomp_tol, ...
+                'check_finite', false); %#ok<ASGLU>
+        end
+    otherwise
+        error('run_publication_benchmarks:InvalidBenchSurface', ...
+            'Unknown bench_surface: %s', bench_surface);
+end
+end
+
+function out = run_qr_builtin_quality(A)
 [Q, R, p] = qr_vector(A);
 out = struct('Q', Q, 'R', R, 'p', p);
 validate_economy_vector_factor(A, out.Q, out.R, out.p, 'qr_pivoted');
 end
 
-function out = run_qr_trsm(A)
+function run_qr_builtin_timed(A, bench_surface)
+switch bench_surface
+    case "factor_only"
+        [~, R, p] = qr_vector(A); %#ok<ASGLU>
+    case "materialize_qrp"
+        [Q, R, p] = qr_vector(A); %#ok<ASGLU>
+    otherwise
+        error('run_publication_benchmarks:InvalidBenchSurface', ...
+            'Unknown bench_surface: %s', bench_surface);
+end
+end
+
+function out = run_qr_trsm_quality(A)
 [Q, R, p] = qr_vector(A);
 [m, n] = size(A);
 k = min(m, n);
@@ -194,6 +238,25 @@ if n > k && k > 0
 end
 out = struct('Q', Q, 'R', R, 'p', p);
 validate_economy_vector_factor(A, out.Q, out.R, out.p, 'qr_pivoted_trsm');
+end
+
+function run_qr_trsm_timed(A, bench_surface)
+switch bench_surface
+    case "factor_only"
+        [~, R, p] = qr_vector(A); %#ok<ASGLU>
+    case "materialize_qrp"
+        [Q, R, p] = qr_vector(A); %#ok<ASGLU>
+    otherwise
+        error('run_publication_benchmarks:InvalidBenchSurface', ...
+            'Unknown bench_surface: %s', bench_surface);
+end
+[m, n] = size(A);
+k = min(m, n);
+if n > k && k > 0
+    R11 = R(1:k, 1:k);
+    R12 = R(1:k, k+1:n);
+    R11 \ R12; %#ok<VUNUS>
+end
 end
 
 function [Q, R, p] = qr_vector(A)
@@ -305,6 +368,7 @@ fprintf(fid, '- Run ID: `%s`\n', run_id);
 fprintf(fid, '- Generated: %s\n', string(datetime('now')));
 fprintf(fid, '- Seeds: %s\n', join(string(cfg.seeds), ', '));
 fprintf(fid, '- Families: %s\n\n', join(string(cfg.families), ', '));
+fprintf(fid, '- Bench Surface: %s\n\n', string(cfg.bench_surface));
 
 fprintf(fid, '| family | regime | geomean speedup (qr/bsqr_full) |\n');
 fprintf(fid, '|---|---|---:|\n');
@@ -327,7 +391,7 @@ if fid < 0
 end
 clean = onCleanup(@() fclose(fid));
 
-fprintf(fid, 'schema_version = 2026-03-14.matlab.v1\n');
+fprintf(fid, 'schema_version = 2026-03-16.matlab.v2\n');
 fprintf(fid, 'run_id = %s\n', run_id);
 fprintf(fid, 'timestamp = %s\n', string(datetime('now')));
 fprintf(fid, 'matlab_version = %s\n', version);
@@ -337,6 +401,7 @@ fprintf(fid, 'warmup = %d\n', cfg.warmup);
 fprintf(fid, 'samples = %d\n', cfg.samples);
 fprintf(fid, 'norm_recomp_tol = %.17g\n', cfg.norm_recomp_tol);
 fprintf(fid, 'bsqr_backend = %s\n', cfg.bsqr_backend);
+fprintf(fid, 'bench_surface = %s\n', string(cfg.bench_surface));
 end
 
 function agg = speedup_table(rows, bs_method, baseline_method)
@@ -366,6 +431,9 @@ if isempty(rows_bs) || isempty(rows_base)
 end
 
 key_cols = {'family', 'regime', 'm', 'n', 'aspect', 'seed'};
+if ismember('bench_surface', rows.Properties.VariableNames)
+    key_cols = [key_cols, {'bench_surface'}];
+end
 join_bs = rows_bs(:, [key_cols, {'tmed_s'}]);
 join_bs.Properties.VariableNames{'tmed_s'} = 'tmed_bs';
 join_base = rows_base(:, [key_cols, {'tmed_s'}]);
@@ -430,6 +498,14 @@ if isempty(which('bsqr_mex'))
         'Publication benchmarks require bsqr_mex, but it is not available.');
 end
 mex_ready = true;
+end
+
+function surface = parse_bench_surface(raw)
+surface = lower(string(raw));
+if surface ~= "factor_only" && surface ~= "materialize_qrp"
+    error('run_publication_benchmarks:InvalidBenchSurface', ...
+        'bench_surface must be ''factor_only'' or ''materialize_qrp''.');
+end
 end
 
 function v = getfield_default(s, field, default)

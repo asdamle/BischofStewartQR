@@ -58,6 +58,9 @@ Benchmark contract:
 - Built-in baseline uses economy pivoted QR with vector permutation (`qr(...,'econ','vector')`, with compatibility fallback to `qr(A,0,'vector')`).
 - BSQR baseline uses the MEX backend directly (`bsqr_mex`) with vector permutation.
 - Publication runner is mex-only and does not accept `cfg.bsqr_backend`.
+- Timed benchmark surface is configurable:
+  - `materialize_qrp` (default): timed path returns `Q,R,p`.
+  - `factor_only`: timed path excludes explicit `Q` materialization.
 
 Regenerate plots/tables from CSV:
 
@@ -84,6 +87,7 @@ Environment knobs (optional):
 - `BS_MATLAB_PUB_WARMUP`
 - `BS_MATLAB_PUB_SAMPLES`
 - `BS_MATLAB_NORM_RECOMP_TOL`
+- `BS_MATLAB_PUB_BENCH_SURFACE` (`materialize_qrp` or `factor_only`)
 - `BS_MATLAB_ALLOW_SHARED_OUTDIR` (`0` default). Keep at `0` to prevent MATLAB
   benchmark artifacts from writing into Julia benchmark roots
   (`benchmark/results/*` and `julia/benchmark/results/*`).

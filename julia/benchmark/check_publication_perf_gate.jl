@@ -21,11 +21,13 @@ function _load(csv_path::String)
         haskey(idx, c) || error("Missing required column '$c' in $csv_path")
     end
 
-    out = Dict{Tuple{String,String,Int,Int,Float64,Int,String},Float64}()
+    has_surface = haskey(idx, "bench_surface")
+    out = Dict{Tuple{String,String,Int,Int,Float64,Int,String,String},Float64}()
     for i in 1:size(data, 1)
         row = view(data, i, :)
         method = _as_string(row[idx["method"]])
         method in METHODS || continue
+        bench_surface = has_surface ? _as_string(row[idx["bench_surface"]]) : "factor_only"
         key = (
             _as_string(row[idx["family"]]),
             _as_string(row[idx["regime"]]),
@@ -33,6 +35,7 @@ function _load(csv_path::String)
             _as_int(row[idx["n"]]),
             _as_float(row[idx["aspect"]]),
             _as_int(row[idx["seed"]]),
+            bench_surface,
             method,
         )
         out[key] = _as_float(row[idx["tmed_s"]])
@@ -53,13 +56,13 @@ function main()
     isempty(common_keys) && error("No overlapping rows between baseline and candidate.")
 
     by_method = Dict("bsqr_full" => Float64[], "bsqr_rinv" => Float64[])
-    violations = Tuple{Tuple{String,String,Int,Int,Float64,Int,String},Float64}[]
+    violations = Tuple{Tuple{String,String,Int,Int,Float64,Int,String,String},Float64}[]
     for k in common_keys
         tb = base[k]
         tc = cand[k]
         tb > 0 || error("Non-positive baseline tmed for key=$k")
         slowdown = tc / tb - 1.0
-        push!(by_method[k[7]], slowdown)
+        push!(by_method[k[8]], slowdown)
         if isfinite(slowdown) && slowdown > max_slowdown
             push!(violations, (k, slowdown))
         end

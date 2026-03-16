@@ -22,6 +22,7 @@ cfg.short_aspects = getfield_default(cfg, 'short_aspects', 2);
 cfg.warmup = getfield_default(cfg, 'warmup', 1);
 cfg.samples = getfield_default(cfg, 'samples', 3);
 cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', sqrt(eps('double')));
+cfg.bench_surface = getfield_default(cfg, 'bench_surface', "materialize_qrp");
 
 run_publication_benchmarks(cfg);
 end

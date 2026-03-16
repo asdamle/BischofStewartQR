@@ -1,0 +1,44 @@
+schema_version = 2026-03-16.v2
+run_id = 20260316_120942
+timestamp = 2026-03-16T12:09:45.616
+julia_version = 1.11.6
+git_sha = 676cc21be934efc4ec2819bdaee04b4729b72bfe
+git_branch = main
+git_dirty = true
+repo_root = /Users/anildamle/Dropbox/Trystuff/BSQR_Codex/
+cpu_model = Apple M3
+cpu_threads = 4
+blas_threads_at_end = 4
+blas_config = LBTConfig([ILP64] libopenblas64_.dylib, [LP64] Accelerate, [ILP64] Accelerate)
+expected_rows = 8
+observed_rows = 8
+
+[publication_knobs]
+BS_PUB_THREADS = 1
+BS_PUB_SEEDS = 20260310
+BS_PUB_FAMILIES = gaussian
+BS_PUB_SQUARE_MS = 64
+BS_PUB_SHORT_MS = 32
+BS_PUB_SHORT_ASPECTS = 2.0
+BS_PUB_WARMUP = 1
+BS_PUB_SAMPLES = 2
+BS_PUB_BENCH_SURFACE = factor_only
+BS_NORM_RECOMP_TOL = 1.4901161193847656e-8
+BS_PUB_CI_WARN_FRAC = 0.5
+BS_PUB_CI_FAIL_FRAC = 10.0
+BS_PUB_CI_MIN_TMED = 1.0e-4
+BS_PUB_CI_ENFORCE = 0
+BS_PUB_RESID_FACTOR = 2500.0
+BS_PUB_ORTH_FACTOR = 2500.0
+
+[environment]
+BS_PUB_BENCH_SURFACE = factor_only
+BS_PUB_FAMILIES = gaussian
+BS_PUB_OUTDIR = julia/benchmark/results/tmp_surface_smoke
+BS_PUB_SAMPLES = 2
+BS_PUB_SEEDS = 20260310
+BS_PUB_SHORT_ASPECTS = 2.0
+BS_PUB_SHORT_MS = 32
+BS_PUB_SQUARE_MS = 64
+BS_PUB_THREADS = 1
+BS_PUB_WARMUP = 1

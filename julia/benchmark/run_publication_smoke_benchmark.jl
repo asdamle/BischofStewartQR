@@ -29,6 +29,7 @@ env_keys = [
     "BS_PUB_SHORT_ASPECTS",
     "BS_PUB_WARMUP",
     "BS_PUB_SAMPLES",
+    "BS_PUB_BENCH_SURFACE",
 ]
 
 old = _save_env(env_keys)
@@ -42,6 +43,7 @@ try
     ENV["BS_PUB_SHORT_ASPECTS"] = "2.0"
     ENV["BS_PUB_WARMUP"] = "1"
     ENV["BS_PUB_SAMPLES"] = "3"
+    ENV["BS_PUB_BENCH_SURFACE"] = "factor_only"
 
     include(joinpath(@__DIR__, "bench_cpqr_publication.jl"))
 finally
