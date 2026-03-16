@@ -180,9 +180,9 @@ void apply_householder_left(
     const char trans = 'T';
     ptrdiff_t inc1 = 1;
     ptrdiff_t ldc = static_cast<ptrdiff_t>(m);
-    // Moderate block width keeps BLAS work cache-friendly without extra complexity.
-    constexpr ptrdiff_t kApplyBlockCols = 256;
-    const ptrdiff_t block_cols = std::min(cols_total, kApplyBlockCols);
+    // Use the full trailing width in one BLAS call. Small fixed blocks add
+    // call overhead and can suppress vendor BLAS heuristics on larger sizes.
+    const ptrdiff_t block_cols = cols_total;
     const size_t need = static_cast<size_t>(std::max<ptrdiff_t>(1, block_cols));
     if (workbuf.size() < need) {
         workbuf.resize(need);
@@ -196,8 +196,6 @@ void apply_householder_left(
     for (ptrdiff_t off = 0; off < cols_total; off += block_cols) {
         const ptrdiff_t cols = std::min(block_cols, cols_total - off);
         double *C = &Aat(A, m, i, i + 1 + static_cast<mwSize>(off));
-        std::fill(workbuf.begin(), workbuf.begin() + static_cast<std::vector<double>::difference_type>(cols), 0.0);
-
         // work := C' * v
         dgemv(&trans, &rows, &cols, &one, C, &ldc, v, &inc1, &zero, workbuf.data(), &inc1);
         // C := C - tau * v * work'
@@ -392,7 +390,6 @@ void update_trailing_state(
         Wat(W, k, i, j) = beta_vec[t];
     }
 
-    std::fill(dots.begin(), dots.begin() + static_cast<std::vector<double>::difference_type>(nrem), 0.0);
     ptrdiff_t inc1 = 1;
     if (i > 0) {
         const ptrdiff_t mm = static_cast<ptrdiff_t>(i);
@@ -436,8 +433,19 @@ void update_trailing_state(
             double exact = 0.0;
             if (i + 1 < m) {
                 const ptrdiff_t len = static_cast<ptrdiff_t>(m - i - 1);
-                const double nrm = dnrm2(&len, &Aat(A, m, i + 1, j), &inc1);
-                exact = nrm * nrm;
+                // For short tails, inline accumulation avoids BLAS call overhead.
+                constexpr ptrdiff_t kRecomputeLoopThreshold = 256;
+                if (len <= kRecomputeLoopThreshold) {
+                    double acc = 0.0;
+                    for (mwSize r = i + 1; r < m; ++r) {
+                        const double v = AatConst(A, m, r, j);
+                        acc = std::fma(v, v, acc);
+                    }
+                    exact = acc;
+                } else {
+                    const double nrm = dnrm2(&len, &Aat(A, m, i + 1, j), &inc1);
+                    exact = nrm * nrm;
+                }
             }
             s_ref[j] = exact;
             s[j] = exact;
