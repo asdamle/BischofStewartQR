@@ -22,3 +22,7 @@ JuliaLocalPreferences.toml
 
 # macOS Finder metadata
 .DS_Store
+
+# Local benchmark scratch outputs
+benchmark/results/tmp_*/
+benchmark/results/publication_smoke_materialize*/

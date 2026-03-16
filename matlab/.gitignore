@@ -3,8 +3,10 @@ mex/*.mex*
 
 # MATLAB benchmark local outputs
 benchmark/results/publication_mex_smoke/
+benchmark/results/publication_mex_smoke_*/
 benchmark/results/perf_compare/
 benchmark/results/diagnostic_*/
+benchmark/results/tmp_*/
 
 # macOS Finder metadata
 .DS_Store
