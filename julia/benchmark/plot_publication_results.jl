@@ -198,21 +198,41 @@ METHOD_STYLE = {
 }
 
 plt.rcParams.update({
-    "font.size": 10,
-    "axes.titlesize": 10,
-    "axes.labelsize": 10,
-    "legend.fontsize": 9,
-    "legend.title_fontsize": 9,
-    "xtick.labelsize": 9,
-    "ytick.labelsize": 9,
+    "font.size": 8.5,
+    "axes.titlesize": 9,
+    "axes.labelsize": 8.5,
+    "legend.fontsize": 8,
+    "legend.title_fontsize": 8,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "figure.titlesize": 9,
+    "savefig.bbox": "tight",
 })
 
-layout = os.getenv("BS_PUB_LAYOUT", "single_column").strip().lower()
+layout = os.getenv("BS_PUB_LAYOUT", "double_column").strip().lower()
 if layout not in ("single_column", "double_column"):
     raise RuntimeError("BS_PUB_LAYOUT must be 'single_column' or 'double_column'")
 single_col_width_in = float(os.getenv("BS_PUB_SINGLE_COL_WIDTH_IN", "3.35"))
 double_col_width_in = float(os.getenv("BS_PUB_DOUBLE_COL_WIDTH_IN", "6.9"))
 fig_width_in = single_col_width_in if layout == "single_column" else double_col_width_in
+
+def parse_fig_formats():
+    raw = os.getenv("BS_PUB_FIG_FORMATS", "png")
+    formats = [part.strip().lower() for part in raw.split(",") if part.strip()]
+    if not formats:
+        raise RuntimeError("BS_PUB_FIG_FORMATS must list at least one format")
+    allowed = {"png", "pdf", "eps"}
+    bad = sorted(set(formats) - allowed)
+    if bad:
+        raise RuntimeError(f"Unsupported BS_PUB_FIG_FORMATS value(s): {', '.join(bad)}")
+    # Keep user order while removing duplicates.
+    out = []
+    for fmt in formats:
+        if fmt not in out:
+            out.append(fmt)
+    return out
+
+FIG_FORMATS = parse_fig_formats()
 
 def finite(vals):
     return [v for v in vals if math.isfinite(v)]
@@ -236,7 +256,7 @@ def median_min_max(vals):
     arr = np.asarray(v, dtype=float)
     return float(np.median(arr)), float(np.min(arr)), float(np.max(arr))
 
-def paired_speedup_rows(rows_in, bsqr_method, baseline_method, regime_filter=None):
+def paired_relative_time_rows(rows_in, bsqr_method, baseline_method, regime_filter=None):
     idx = {}
     for r in rows_in:
         key = (
@@ -256,7 +276,7 @@ def paired_speedup_rows(rows_in, bsqr_method, baseline_method, regime_filter=Non
             r["seed"], r["blas_threads"], baseline_method
         )
         d = idx.get(key_dg)
-        if d is None or r["tmed"] == 0.0:
+        if d is None or d["tmed"] == 0.0:
             continue
         out.append({
             "family": r["family"],
@@ -266,20 +286,26 @@ def paired_speedup_rows(rows_in, bsqr_method, baseline_method, regime_filter=Non
             "aspect": r["aspect"],
             "seed": r["seed"],
             "blas_threads": r["blas_threads"],
-            "speedup": d["tmed"] / r["tmed"],
+            "relative_time": r["tmed"] / d["tmed"],
             "baseline_method": baseline_method,
             "bsqr_tmed": r["tmed"],
             "baseline_tmed": d["tmed"],
         })
     return out
 
-speed_rows = paired_speedup_rows(comparison_rows, bsqr_method, baseline_method)
-if not speed_rows:
-    raise RuntimeError(f"No paired speedup rows for comparison {comparison_name}")
+rel_rows = paired_relative_time_rows(comparison_rows, bsqr_method, baseline_method)
+if not rel_rows:
+    raise RuntimeError(f"No paired relative-time rows for comparison {comparison_name}")
 
 def save_fig(fig, stem):
-    fig.savefig(os.path.join(outdir, f"{stem}.png"), dpi=300)
-    fig.savefig(os.path.join(outdir, f"{stem}.pdf"))
+    for fmt in FIG_FORMATS:
+        path = os.path.join(outdir, f"{stem}.{fmt}")
+        if fmt == "png":
+            fig.savefig(path, dpi=300)
+        elif fmt == "pdf":
+            fig.savefig(path)
+        elif fmt == "eps":
+            fig.savefig(path, format="eps")
     plt.close(fig)
 
 def _auto_height(kind, nrows=1, ncols=1, n_items=0):
@@ -302,11 +328,11 @@ def _auto_height(kind, nrows=1, ncols=1, n_items=0):
     else:
         if kind == "line_panels":
             if multi_col:
-                return max(3.4, 1.0 * panel_rows + 0.95)
+                return max(5.2, 1.45 * panel_rows + 1.0)
             return max(3.8, 1.15 * panel_rows + 0.8)
         if kind == "heatmap_panels":
             if multi_col:
-                return max(3.4, 0.95 * panel_rows + 1.05)
+                return max(5.0, 1.3 * panel_rows + 1.0)
             return max(3.8, 1.05 * panel_rows + 1.0)
         if kind == "quality":
             return 3.8
@@ -331,6 +357,20 @@ def mk_axes_grid(nr, nc, kind, constrained=True):
         constrained_layout=constrained,
     )
     return fig, axes
+
+def display_family(name):
+    return {
+        "gaussian": "Gaussian",
+        "ill_conditioned": "Ill-conditioned",
+        "orthonormal_rows": "Orthonormal rows",
+    }.get(name, name.replace("_", " ").title())
+
+def display_method(name):
+    return METHOD_STYLE.get(name, {"label": name})["label"]
+
+def lighten(color, amount=0.82):
+    rgb = np.asarray(mcolors.to_rgb(color), dtype=float)
+    return tuple(rgb + (1.0 - rgb) * amount)
 
 # Figure 1: square runtime log-log (per family, faceted by threads)
 panel_keys = [(fam, th) for fam in families for th in threads]
@@ -357,18 +397,18 @@ for idx, (fam, th) in enumerate(panel_keys):
             ymed.append(med)
             ylow.append(lo)
             yhigh.append(hi)
-        ax.plot(ms, ymed, marker=marker, linestyle=ls, label=style["label"])
-        ax.fill_between(ms, ylow, yhigh, alpha=0.18)
+        line, = ax.plot(ms, ymed, marker=marker, linestyle=ls, label=style["label"])
+        ax.fill_between(ms, ylow, yhigh, color=lighten(line.get_color()), edgecolor="none")
     ax.set_xscale("log", base=2)
     ax.set_yscale("log")
-    ax.set_title(f"{fam} | BLAS={th}")
+    ax.set_title(f"{display_family(fam)} | BLAS={th}")
     if idx // fig1_nc == fig1_nr - 1:
         ax.set_xlabel("m=n")
-    ax.set_ylabel("median time (s)")
-    ax.grid(True, alpha=0.25)
+    ax.set_ylabel("Median time (s)")
+    ax.grid(True, color="#d9d9d9", linewidth=0.5)
 for ax in axes1_flat[len(panel_keys):]:
     ax.set_visible(False)
-axes1_flat[0].legend(loc="best", frameon=True)
+axes1_flat[0].legend(loc="best", frameon=True, framealpha=1.0)
 save_fig(fig1, "figure1_square_runtime")
 
 # Figure 2: short-wide runtime vs n (fixed m curves, per family, faceted by threads)
@@ -404,17 +444,17 @@ for idx, (fam, th) in enumerate(panel_keys):
                 ylow.append(lo)
                 yhigh.append(hi)
             ax.plot(ns, ymed, marker=marker, linestyle=ls, color=color)
-            ax.fill_between(ns, ylow, yhigh, color=color, alpha=0.12)
+            ax.fill_between(ns, ylow, yhigh, color=lighten(color, 0.86), edgecolor="none")
     ax.set_xscale("log", base=2)
     ax.set_yscale("log")
-    ax.set_title(f"{fam} | BLAS={th}")
+    ax.set_title(f"{display_family(fam)} | BLAS={th}")
     if idx // fig2_nc == fig2_nr - 1:
         ax.set_xlabel("n")
-    ax.set_ylabel("median time (s)")
-    ax.grid(True, alpha=0.25)
+    ax.set_ylabel("Median time (s)")
+    ax.grid(True, color="#d9d9d9", linewidth=0.5)
 for ax in axes2_flat[len(panel_keys):]:
     ax.set_visible(False)
-fig2.subplots_adjust(bottom=0.29, top=0.96, left=0.1, right=0.99, hspace=0.35, wspace=0.25)
+fig2.subplots_adjust(bottom=0.23, top=0.95, left=0.09, right=0.99, hspace=0.55, wspace=0.28)
 method_handles = [
     Line2D(
         [0],
@@ -433,46 +473,48 @@ m_handles = [
 leg_method = fig2.legend(
     handles=method_handles,
     loc="lower center",
-    bbox_to_anchor=(0.5, 0.145),
+    bbox_to_anchor=(0.5, 0.105),
     ncol=3,
     frameon=True,
+    framealpha=1.0,
     title="Method",
 )
 leg_m = fig2.legend(
     handles=m_handles,
     loc="lower center",
-    bbox_to_anchor=(0.5, 0.03),
+    bbox_to_anchor=(0.5, 0.0),
     ncol=max(1, min(5, len(m_handles))),
     frameon=True,
+    framealpha=1.0,
     title="m (rows)",
 )
 fig2.add_artist(leg_method)
 save_fig(fig2, "figure2_shortwide_runtime")
 
-def plot_shortwide_speedup_heatmap(speed_rows_in, cbar_label, stem):
+def plot_shortwide_relative_time_heatmap(rel_rows_in, cbar_label, stem):
     fig_nr, fig_nc = _panel_grid(len(panel_keys))
     fig, axes = mk_axes_grid(fig_nr, fig_nc, "heatmap_panels")
     axes_flat = axes.ravel()
-    all_speed = [s["speedup"] for s in speed_rows_in if s["regime"] == "short_wide" and math.isfinite(s["speedup"])]
-    vmin = np.nanmin(all_speed) if all_speed else 0.5
-    vmax = np.nanmax(all_speed) if all_speed else 1.5
+    all_rel = [s["relative_time"] for s in rel_rows_in if s["regime"] == "short_wide" and math.isfinite(s["relative_time"])]
+    vmin = np.nanmin(all_rel) if all_rel else 0.5
+    vmax = np.nanmax(all_rel) if all_rel else 1.5
     if vmin == vmax:
         vmin = min(vmin, 0.95)
         vmax = max(vmax, 1.05)
-    if vmax <= 1.0:
-        vmax = 1.01
-    if vmin >= 1.0:
-        vmin = 0.99
+    spread = max(abs(math.log(max(vmax, 1.0))), abs(math.log(min(vmin, 1.0)))) if vmin > 0.0 else abs(math.log(max(vmax, 1.0)))
+    spread = max(spread, 0.05)
+    vmin = math.exp(-spread)
+    vmax = math.exp(spread)
     norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=1.0, vmax=vmax)
     imh = None
     for idx, (fam, th) in enumerate(panel_keys):
         ax = axes_flat[idx]
         sub = [
-            s for s in speed_rows_in
+            s for s in rel_rows_in
             if s["family"] == fam and s["blas_threads"] == th and s["regime"] == "short_wide"
         ]
         if not sub:
-            ax.set_title(f"{fam} | BLAS={th}")
+            ax.set_title(f"{display_family(fam)} | BLAS={th}")
             ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
             ax.set_xticks([])
             ax.set_yticks([])
@@ -482,10 +524,10 @@ def plot_shortwide_speedup_heatmap(speed_rows_in, cbar_label, stem):
         Z = np.full((len(ms), len(aspects)), np.nan)
         for im, m in enumerate(ms):
             for ia, aspect in enumerate(aspects):
-                vals = [s["speedup"] for s in sub if s["m"] == m and abs(s["aspect"] - aspect) < 1e-12]
+                vals = [s["relative_time"] for s in sub if s["m"] == m and abs(s["aspect"] - aspect) < 1e-12]
                 Z[im, ia] = geomean(vals)
-        imh = ax.imshow(Z, origin="lower", aspect="auto", cmap="RdYlGn", norm=norm)
-        ax.set_title(f"{fam} | BLAS={th}")
+        imh = ax.imshow(Z, origin="lower", aspect="auto", cmap="coolwarm", norm=norm)
+        ax.set_title(f"{display_family(fam)} | BLAS={th}")
         ax.set_xticks(range(len(aspects)))
         ax.set_xticklabels([f"{a:.1f}" for a in aspects], rotation=45, ha="right")
         ax.set_yticks(range(len(ms)))
@@ -500,10 +542,10 @@ def plot_shortwide_speedup_heatmap(speed_rows_in, cbar_label, stem):
         cbar.set_label(cbar_label)
     save_fig(fig, stem)
 
-# Figure 3: short-wide speedup heatmap
-plot_shortwide_speedup_heatmap(
-    speed_rows,
-    f"speedup {baseline_method}/{bsqr_method}",
+# Figure 3: short-wide relative-time heatmap
+plot_shortwide_relative_time_heatmap(
+    rel_rows,
+    f"Relative time ({display_method(bsqr_method)} / {display_method(baseline_method)}); 1.0 = parity",
     "figure3_shortwide_speedup_heatmap",
 )
 
@@ -551,15 +593,15 @@ for ax, metric, title in zip(quality_axes, ["residual", "orthogonality"], ["Resi
     ax.set_xticks(x)
     ax.set_xticklabels(regime_display)
     ax.set_title(title)
-    ax.grid(True, axis="y", alpha=0.25)
-quality_axes[0].legend(loc="upper left")
+    ax.grid(True, axis="y", color="#d9d9d9", linewidth=0.5)
+quality_axes[0].legend(loc="upper left", framealpha=1.0)
 save_fig(fig4, "figure4_quality")
 
-# Figure 5: aggregate speedup bars with per-seed intervals
+# Figure 5: aggregate relative-time bars with per-seed intervals
 seed_group = defaultdict(list)
-for s in speed_rows:
+for s in rel_rows:
     key = (s["family"], s["regime"], s["blas_threads"], s["seed"])
-    seed_group[key].append(s["speedup"])
+    seed_group[key].append(s["relative_time"])
 
 combo_seed_vals = defaultdict(list)
 for (fam, regime, th, seed), vals in seed_group.items():
@@ -602,9 +644,9 @@ ax5.errorbar(centers, y, xerr=xerr, fmt="none", ecolor="black", capsize=3, linew
 ax5.axvline(1.0, color="black", linestyle="--", linewidth=1.0)
 ax5.set_yticks(y)
 ax5.set_yticklabels(labels)
-ax5.set_xlabel(f"geomean speedup ({baseline_method}/{bsqr_method})")
-ax5.set_title("Aggregate speedup by family/regime/thread")
-ax5.grid(True, axis="x", alpha=0.25)
+ax5.set_xlabel(f"Geomean relative time ({display_method(bsqr_method)} / {display_method(baseline_method)}); 1.0 = parity")
+ax5.set_title("Aggregate relative time")
+ax5.grid(True, axis="x", color="#d9d9d9", linewidth=0.5)
 save_fig(fig5, "figure5_aggregate_speedup")
 
 # Caption-ready tables
@@ -616,10 +658,10 @@ def write_csv(path, columns, rows_out):
             w.writerow(row)
 
 square_table = []
-sq_groups = grouped_rows([s for s in speed_rows if s["regime"] == "square"], ["family", "blas_threads", "m", "n"])
+sq_groups = grouped_rows([s for s in rel_rows if s["regime"] == "square"], ["family", "blas_threads", "m", "n"])
 for key in sorted(sq_groups.keys()):
     vals = sq_groups[key]
-    speedups = [v["speedup"] for v in vals]
+    reltimes = [v["relative_time"] for v in vals]
     bs = [v["bsqr_tmed"] for v in vals]
     dg = [v["baseline_tmed"] for v in vals]
     square_table.append({
@@ -627,18 +669,18 @@ for key in sorted(sq_groups.keys()):
         "blas_threads": key[1],
         "m": key[2],
         "n": key[3],
-        "speedup_geomean": geomean(speedups),
-        "speedup_seed_min": min(finite(speedups)) if finite(speedups) else float("nan"),
-        "speedup_seed_max": max(finite(speedups)) if finite(speedups) else float("nan"),
+        "relative_time_geomean": geomean(reltimes),
+        "relative_time_seed_min": min(finite(reltimes)) if finite(reltimes) else float("nan"),
+        "relative_time_seed_max": max(finite(reltimes)) if finite(reltimes) else float("nan"),
         "bsqr_tmed_geomean_s": geomean(bs),
         "baseline_tmed_geomean_s": geomean(dg),
     })
 
 short_table = []
-sw_groups = grouped_rows([s for s in speed_rows if s["regime"] == "short_wide"], ["family", "blas_threads", "m", "n", "aspect"])
+sw_groups = grouped_rows([s for s in rel_rows if s["regime"] == "short_wide"], ["family", "blas_threads", "m", "n", "aspect"])
 for key in sorted(sw_groups.keys()):
     vals = sw_groups[key]
-    speedups = [v["speedup"] for v in vals]
+    reltimes = [v["relative_time"] for v in vals]
     bs = [v["bsqr_tmed"] for v in vals]
     dg = [v["baseline_tmed"] for v in vals]
     short_table.append({
@@ -647,9 +689,9 @@ for key in sorted(sw_groups.keys()):
         "m": key[2],
         "n": key[3],
         "aspect": key[4],
-        "speedup_geomean": geomean(speedups),
-        "speedup_seed_min": min(finite(speedups)) if finite(speedups) else float("nan"),
-        "speedup_seed_max": max(finite(speedups)) if finite(speedups) else float("nan"),
+        "relative_time_geomean": geomean(reltimes),
+        "relative_time_seed_min": min(finite(reltimes)) if finite(reltimes) else float("nan"),
+        "relative_time_seed_max": max(finite(reltimes)) if finite(reltimes) else float("nan"),
         "bsqr_tmed_geomean_s": geomean(bs),
         "baseline_tmed_geomean_s": geomean(dg),
     })
@@ -676,7 +718,7 @@ write_csv(
     os.path.join(tabledir, "table_square_speedup.csv"),
     [
         "family", "blas_threads", "m", "n",
-        "speedup_geomean", "speedup_seed_min", "speedup_seed_max",
+        "relative_time_geomean", "relative_time_seed_min", "relative_time_seed_max",
         "bsqr_tmed_geomean_s", "baseline_tmed_geomean_s",
     ],
     square_table,
@@ -685,7 +727,7 @@ write_csv(
     os.path.join(tabledir, "table_shortwide_speedup.csv"),
     [
         "family", "blas_threads", "m", "n", "aspect",
-        "speedup_geomean", "speedup_seed_min", "speedup_seed_max",
+        "relative_time_geomean", "relative_time_seed_min", "relative_time_seed_max",
         "bsqr_tmed_geomean_s", "baseline_tmed_geomean_s",
     ],
     short_table,

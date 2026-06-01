@@ -26,6 +26,10 @@ Plot generation:
 julia --project=julia julia/benchmark/plot_publication_results.jl
 ```
 
+Plot generation defaults to PNG. Set `BS_PUB_FIG_FORMATS=png,pdf,eps` to
+also emit publication vector formats. Derived comparison artifacts report
+relative time (`BSQR / baseline`); `1.0` is parity.
+
 Perf gate:
 
 ```bash
@@ -46,6 +50,7 @@ Publication knobs:
 - `BS_PUB_WARMUP` (default: `1`)
 - `BS_PUB_SAMPLES` (default: `30`)
 - `BS_NORM_RECOMP_TOL` (default: `sqrt(eps(Float64))`)
+- `BS_PUB_FIG_FORMATS` (default: `png`; supported: `png,pdf,eps`)
 
 Quality/CI knobs:
 

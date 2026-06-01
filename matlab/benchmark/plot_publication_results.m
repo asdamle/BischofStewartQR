@@ -54,21 +54,21 @@ if ~isfolder(mode_tables)
     mkdir(mode_tables);
 end
 
-sp = pair_speedups(rows, bs_method, baseline_method);
+rt = pair_relative_times(rows, bs_method, baseline_method);
 quality = rows(rows.method == bs_method | rows.method == baseline_method, :);
 
-square = sp(sp.regime == "square", :);
-short = sp(sp.regime == "short_wide", :);
+square = rt(rt.regime == "square", :);
+short = rt(rt.regime == "short_wide", :);
 
-write_speedup_table(square, fullfile(mode_tables, 'table_square_speedup.csv'));
-write_speedup_table(short, fullfile(mode_tables, 'table_shortwide_speedup.csv'));
+write_relative_time_table(square, fullfile(mode_tables, 'table_square_speedup.csv'));
+write_relative_time_table(short, fullfile(mode_tables, 'table_shortwide_speedup.csv'));
 write_quality_table(quality, fullfile(mode_tables, 'table_quality.csv'));
 
 plot_square_runtime(rows, bs_method, baseline_method, fullfile(mode_plots, 'figure1_square_runtime'), style);
 plot_shortwide_runtime(rows, bs_method, baseline_method, fullfile(mode_plots, 'figure2_shortwide_runtime'), style);
 plot_shortwide_heatmap(short, baseline_method, bs_method, fullfile(mode_plots, 'figure3_shortwide_speedup_heatmap'), style);
 plot_quality(quality, bs_method, baseline_method, fullfile(mode_plots, 'figure4_quality'), style);
-plot_aggregate_speedup(sp, baseline_method, bs_method, fullfile(mode_plots, 'figure5_aggregate_speedup'), style);
+plot_aggregate_relative_time(rt, baseline_method, bs_method, fullfile(mode_plots, 'figure5_aggregate_speedup'), style);
 end
 
 function plot_square_runtime(rows, bs_method, baseline_method, outstem, style)
@@ -82,6 +82,7 @@ end
 [x_base, med_base, lo_base, hi_base] = grouped_stats(base.m, base.tmed_s);
 
 fig = figure('Visible', 'off', 'Color', 'w');
+set_publication_figure_size(fig, style, style.default_height);
 ax = axes(fig);
 hold(ax, 'on');
 
@@ -91,8 +92,8 @@ h_base = plot_with_band(ax, x_base, med_base, lo_base, hi_base, method_style(sty
 set(ax, 'XScale', 'log', 'YScale', 'log');
 apply_axes_style(ax, style);
 xlabel(ax, 'm=n', 'Interpreter', 'none');
-ylabel(ax, 'median time (s)', 'Interpreter', 'none');
-title(ax, 'Square Runtime', 'Interpreter', 'none');
+ylabel(ax, 'Median time (s)', 'Interpreter', 'none');
+title(ax, 'Square runtime', 'Interpreter', 'none');
 lgd = legend(ax, [h_bs, h_base], {method_label(bs_method), method_label(baseline_method)}, ...
     'Location', 'northwest', 'Interpreter', 'none', 'Box', 'on');
 set(lgd, 'FontSize', style.legend_font_size);
@@ -114,6 +115,7 @@ end
 
 cmap = lines(numel(m_vals));
 fig = figure('Visible', 'off', 'Color', 'w');
+set_publication_figure_size(fig, style, style.default_height);
 ax = axes(fig);
 hold(ax, 'on');
 
@@ -136,8 +138,8 @@ end
 set(ax, 'XScale', 'log', 'YScale', 'log');
 apply_axes_style(ax, style);
 xlabel(ax, 'n', 'Interpreter', 'none');
-ylabel(ax, 'median time (s)', 'Interpreter', 'none');
-title(ax, 'Short-Wide Runtime', 'Interpreter', 'none');
+ylabel(ax, 'Median time (s)', 'Interpreter', 'none');
+title(ax, 'Short-wide runtime', 'Interpreter', 'none');
 
 method_handles = gobjects(0, 1);
 method_labels = strings(0, 1);
@@ -179,7 +181,7 @@ H = nan(numel(m_vals), numel(a_vals));
 for i = 1:numel(m_vals)
     for j = 1:numel(a_vals)
         mask = short.m == m_vals(i) & short.aspect == a_vals(j);
-        vals = short.speedup(mask);
+        vals = short.relative_time(mask);
         vals = vals(vals > 0 & isfinite(vals));
         if ~isempty(vals)
             H(i, j) = geomean(vals);
@@ -188,32 +190,37 @@ for i = 1:numel(m_vals)
 end
 
 fig = figure('Visible', 'off', 'Color', 'w');
+set_publication_figure_size(fig, style, style.default_height);
 ax = axes(fig);
-imagesc(ax, a_vals, m_vals, H);
+Hlog = log(H);
+imagesc(ax, a_vals, m_vals, Hlog);
 set(ax, 'YDir', 'normal');
 apply_axes_style(ax, style);
 
-finite_vals = H(isfinite(H));
+finite_vals = H(isfinite(H) & H > 0);
 if isempty(finite_vals)
-    caxis(ax, [0.9, 1.1]);
+    spread = log(1.1);
 else
-    lo = min(finite_vals);
-    hi = max(finite_vals);
-    if lo == hi
-        lo = min(lo, 0.95);
-        hi = max(hi, 1.05);
-    end
-    lo = min(lo, 0.99);
-    hi = max(hi, 1.01);
-    caxis(ax, [lo, hi]);
+    spread = max(abs(log(finite_vals)));
+    spread = max(spread, log(1.05));
 end
-colormap(ax, red_white_green(256));
+caxis(ax, [-spread, spread]);
+colormap(ax, blue_white_red(256));
 cb = colorbar(ax);
-ylabel(cb, "speedup " + baseline_method + "/" + bs_method, 'Interpreter', 'none');
+tick_vals = [0.5, 0.75, 1, 1.5, 2, 3, 4];
+tick_vals = tick_vals(log(tick_vals) >= -spread & log(tick_vals) <= spread);
+if ~any(abs(tick_vals - 1) < eps)
+    tick_vals = sort([tick_vals, 1]);
+end
+set(cb, 'Ticks', log(tick_vals), 'TickLabels', compose('%.2g', tick_vals));
+ylabel(cb, "Relative time (" + string(method_label(bs_method)) + " / " + ...
+    string(method_label(baseline_method)) + "); 1.0 = parity", 'Interpreter', 'none');
 
 xlabel(ax, 'aspect (n/m)', 'Interpreter', 'none');
 ylabel(ax, 'm', 'Interpreter', 'none');
-title(ax, 'Short-Wide Speedup Heatmap', 'Interpreter', 'none');
+xticks(ax, a_vals);
+yticks(ax, m_vals);
+title(ax, 'Short-wide relative time', 'Interpreter', 'none');
 
 save_figure(fig, outstem);
 end
@@ -229,6 +236,7 @@ metrics = {'residual', 'orthogonality'};
 titles = {'Residual', 'Orthogonality'};
 
 fig = figure('Visible', 'off', 'Color', 'w');
+set_publication_figure_size(fig, style, style.quality_height);
 tl = tiledlayout(fig, 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
 axes_handles = gobjects(numel(metrics), 1);
 
@@ -284,17 +292,17 @@ set(lgd, 'FontSize', style.legend_font_size);
 save_figure(fig, outstem);
 end
 
-function plot_aggregate_speedup(sp, baseline_method, bs_method, outstem, style)
-if isempty(sp)
+function plot_aggregate_relative_time(rt, baseline_method, bs_method, outstem, style)
+if isempty(rt)
     return;
 end
 
-has_threads = ismember('blas_threads', sp.Properties.VariableNames);
+has_threads = ismember('blas_threads', rt.Properties.VariableNames);
 
 if has_threads
-    combo_keys = unique(sp(:, {'family', 'regime', 'blas_threads'}), 'rows');
+    combo_keys = unique(rt(:, {'family', 'regime', 'blas_threads'}), 'rows');
 else
-    combo_keys = unique(sp(:, {'family', 'regime'}), 'rows');
+    combo_keys = unique(rt(:, {'family', 'regime'}), 'rows');
 end
 
 labels = strings(height(combo_keys), 1);
@@ -304,28 +312,28 @@ hi = nan(height(combo_keys), 1);
 
 for i = 1:height(combo_keys)
     if has_threads
-        combo_mask = sp.family == combo_keys.family(i) & sp.regime == combo_keys.regime(i) & ...
-            sp.blas_threads == combo_keys.blas_threads(i);
+        combo_mask = rt.family == combo_keys.family(i) & rt.regime == combo_keys.regime(i) & ...
+            rt.blas_threads == combo_keys.blas_threads(i);
     else
-        combo_mask = sp.family == combo_keys.family(i) & sp.regime == combo_keys.regime(i);
+        combo_mask = rt.family == combo_keys.family(i) & rt.regime == combo_keys.regime(i);
     end
 
-    combo_rows = sp(combo_mask, :);
+    combo_rows = rt(combo_mask, :);
     seeds = unique(combo_rows.seed);
-    seed_speedups = nan(numel(seeds), 1);
+    seed_reltimes = nan(numel(seeds), 1);
     for sidx = 1:numel(seeds)
-        vals = combo_rows.speedup(combo_rows.seed == seeds(sidx));
+        vals = combo_rows.relative_time(combo_rows.seed == seeds(sidx));
         vals = vals(vals > 0 & isfinite(vals));
-        seed_speedups(sidx) = geomean(vals);
+        seed_reltimes(sidx) = geomean(vals);
     end
-    seed_speedups = seed_speedups(isfinite(seed_speedups));
-    if isempty(seed_speedups)
+    seed_reltimes = seed_reltimes(isfinite(seed_reltimes));
+    if isempty(seed_reltimes)
         continue;
     end
 
-    center(i) = geomean(seed_speedups);
-    lo(i) = min(seed_speedups);
-    hi(i) = max(seed_speedups);
+    center(i) = geomean(seed_reltimes);
+    lo(i) = min(seed_reltimes);
+    hi(i) = max(seed_reltimes);
 
     family_short = short_family_name(combo_keys.family(i));
     regime_short = "sq";
@@ -350,6 +358,7 @@ if isempty(center)
 end
 
 fig = figure('Visible', 'off', 'Color', 'w');
+set_publication_figure_size(fig, style, max(style.aggregate_height, 1.6 + 0.24 * numel(center)));
 ax = axes(fig);
 y = 1:numel(center);
 barh(ax, y, center, 'FaceColor', style.aggregate_color);
@@ -360,36 +369,37 @@ xline(ax, 1.0, '--k', 'LineWidth', 1.0);
 yticks(ax, y);
 yticklabels(ax, cellstr(labels));
 apply_axes_style(ax, style);
-xlabel(ax, "geomean speedup (" + baseline_method + "/" + bs_method + ")", 'Interpreter', 'none');
-title(ax, 'Aggregate Speedup by Family/Regime', 'Interpreter', 'none');
+xlabel(ax, "Geomean relative time (" + string(method_label(bs_method)) + " / " + ...
+    string(method_label(baseline_method)) + "); 1.0 = parity", 'Interpreter', 'none');
+title(ax, 'Aggregate relative time', 'Interpreter', 'none');
 
 save_figure(fig, outstem);
 end
 
-function write_speedup_table(sp, path)
-if isempty(sp)
+function write_relative_time_table(rt, path)
+if isempty(rt)
     writetable(table(), path);
     return;
 end
 
 key_cols = {'family', 'regime', 'm', 'n', 'aspect'};
-if ismember('blas_threads', sp.Properties.VariableNames)
+if ismember('blas_threads', rt.Properties.VariableNames)
     key_cols = [key_cols, {'blas_threads'}];
 end
 
-keys = unique(sp(:, key_cols), 'rows');
+keys = unique(rt(:, key_cols), 'rows');
 vals = zeros(height(keys), 1);
 for i = 1:height(keys)
-    mask = true(height(sp), 1);
+    mask = true(height(rt), 1);
     for j = 1:numel(key_cols)
         col = key_cols{j};
-        mask = mask & sp.(col) == keys.(col)(i);
+        mask = mask & rt.(col) == keys.(col)(i);
     end
-    v = sp.speedup(mask);
+    v = rt.relative_time(mask);
     v = v(v > 0 & isfinite(v));
     vals(i) = geomean(v);
 end
-out = [keys, table(vals, 'VariableNames', {'geomean_speedup'})];
+out = [keys, table(vals, 'VariableNames', {'geomean_relative_time'})];
 writetable(out, path);
 end
 
@@ -465,8 +475,8 @@ med = med(good);
 lo = lo(good);
 hi = hi(good);
 
-h_fill = fill(ax, [x; flipud(x)], [lo; flipud(hi)], st.color, ...
-    'FaceAlpha', 0.14, 'EdgeColor', 'none');
+h_fill = fill(ax, [x; flipud(x)], [lo; flipud(hi)], lighten_color(st.color, 0.86), ...
+    'EdgeColor', 'none');
 set(h_fill, 'HandleVisibility', 'off');
 h_line = plot(ax, x, med, ...
     'LineStyle', st.linestyle, ...
@@ -524,16 +534,16 @@ else
 end
 end
 
-function c = red_white_green(n)
+function c = blue_white_red(n)
 if nargin < 1
     n = 256;
 end
 n = max(3, round(n));
 half = floor(n / 2);
 upper = n - half;
-red = [ones(half, 1), linspace(0, 1, half)', linspace(0, 1, half)'];
-green = [linspace(1, 0, upper)', ones(upper, 1), linspace(1, 0, upper)'];
-c = [red; green];
+blue = [linspace(0.22, 1.0, half)', linspace(0.45, 1.0, half)', ones(half, 1)];
+red = [ones(upper, 1), linspace(1.0, 0.35, upper)', linspace(1.0, 0.24, upper)'];
+c = [blue; red];
 c = c(1:n, :);
 end
 
@@ -542,10 +552,16 @@ set(ax, ...
     'Box', 'on', ...
     'LineWidth', style.axis_line_width, ...
     'FontSize', style.axis_font_size, ...
-    'GridAlpha', 0.25, ...
-    'MinorGridAlpha', 0.15, ...
+    'GridColor', [0.85, 0.85, 0.85], ...
+    'GridAlpha', 1.0, ...
+    'MinorGridColor', [0.9, 0.9, 0.9], ...
+    'MinorGridAlpha', 1.0, ...
     'TickLabelInterpreter', 'none');
 grid(ax, 'on');
+end
+
+function out = lighten_color(color, amount)
+out = color + (1 - color) * amount;
 end
 
 function style = publication_style()
@@ -553,25 +569,70 @@ style = struct();
 style.bsqr_color = [76, 120, 168] / 255;
 style.baseline_color = [245, 133, 24] / 255;
 style.aggregate_color = [114, 183, 178] / 255;
-style.axis_font_size = 10;
-style.legend_font_size = 9;
-style.line_width = 1.5;
-style.marker_size = 5;
+style.axis_font_size = 9;
+style.legend_font_size = 8;
+style.line_width = 1.35;
+style.marker_size = 4.5;
 style.axis_line_width = 0.9;
+style.double_col_width = 6.9;
+style.default_height = 4.1;
+style.quality_height = 4.4;
+style.aggregate_height = 4.4;
+style.formats = parse_figure_formats();
+end
+
+function formats = parse_figure_formats()
+raw = string(bsqr_bench_getenv_default('BS_MATLAB_PUB_FIG_FORMATS', 'png'));
+parts = strip(split(lower(raw), ','));
+parts(parts == "") = [];
+if isempty(parts)
+    error('plot_publication_results:InvalidFigureFormats', ...
+        'BS_MATLAB_PUB_FIG_FORMATS must list at least one format.');
+end
+allowed = ["png", "pdf", "eps"];
+bad = setdiff(unique(parts), allowed);
+if ~isempty(bad)
+    error('plot_publication_results:InvalidFigureFormats', ...
+        'Unsupported BS_MATLAB_PUB_FIG_FORMATS value(s): %s', join(bad, ', '));
+end
+formats = strings(0, 1);
+for i = 1:numel(parts)
+    if ~any(formats == parts(i))
+        formats(end + 1, 1) = parts(i); %#ok<AGROW>
+    end
+end
+end
+
+function set_publication_figure_size(fig, style, height)
+set(fig, 'Units', 'inches', 'Position', [1, 1, style.double_col_width, height]);
+set(fig, 'PaperPositionMode', 'auto');
+fig.UserData = struct('formats', style.formats);
 end
 
 function save_figure(fig, outstem)
 set(fig, 'Color', 'w');
-print(fig, [outstem, '.png'], '-dpng', '-r220');
-print(fig, [outstem, '.pdf'], '-dpdf');
+for i = 1:numel(fig.UserData.formats)
+    fmt = fig.UserData.formats(i);
+    switch fmt
+        case "png"
+            print(fig, [outstem, '.png'], '-dpng', '-r300');
+        case "pdf"
+            print(fig, [outstem, '.pdf'], '-dpdf', '-painters');
+        case "eps"
+            print(fig, [outstem, '.eps'], '-depsc', '-painters');
+        otherwise
+            error('plot_publication_results:InvalidFigureFormats', ...
+                'Unsupported figure format: %s', fmt);
+    end
+end
 close(fig);
 end
 
-function sp = pair_speedups(rows, bs_method, baseline_method)
+function rt = pair_relative_times(rows, bs_method, baseline_method)
 rows_bs = rows(rows.method == bs_method, :);
 rows_base = rows(rows.method == baseline_method, :);
 if isempty(rows_bs) || isempty(rows_base)
-    sp = table();
+    rt = table();
     return;
 end
 
@@ -585,8 +646,8 @@ join_bs.Properties.VariableNames{'tmed_s'} = 'tmed_bs';
 join_base = rows_base(:, [key_cols, {'tmed_s'}]);
 join_base.Properties.VariableNames{'tmed_s'} = 'tmed_base';
 joined = innerjoin(join_bs, join_base, 'Keys', key_cols);
-joined.speedup = joined.tmed_base ./ joined.tmed_bs;
-sp = joined(:, [key_cols, {'speedup'}]);
+joined.relative_time = joined.tmed_bs ./ joined.tmed_base;
+rt = joined(:, [key_cols, {'relative_time'}]);
 end
 
 function rows = normalize_text_columns(rows)

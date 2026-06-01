@@ -67,6 +67,10 @@ addpath('matlab/benchmark')
 plot_publication_results
 ```
 
+Publication plots default to PNG. Set `BS_MATLAB_PUB_FIG_FORMATS=png,pdf,eps`
+to request vector outputs as well. Derived performance plots and tables report
+relative time (`BSQR / baseline`), where `1.0` is parity.
+
 Compare candidate timings against a baseline with slowdown gating:
 
 ```matlab
@@ -85,6 +89,7 @@ Environment knobs (optional):
 - `BS_MATLAB_PUB_WARMUP`
 - `BS_MATLAB_PUB_SAMPLES`
 - `BS_MATLAB_NORM_RECOMP_TOL`
+- `BS_MATLAB_PUB_FIG_FORMATS` (`png` default; supports `png,pdf,eps`)
 - `BS_MATLAB_ALLOW_SHARED_OUTDIR` (`0` default). Keep at `0` to prevent MATLAB
   benchmark artifacts from writing into Julia benchmark roots
   (`benchmark/results/*` and `julia/benchmark/results/*`).

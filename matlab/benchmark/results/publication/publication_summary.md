@@ -5,20 +5,22 @@
 - Seeds: 20260310, 20260311
 - Families: gaussian, ill_conditioned, orthonormal_rows
 
-| family | regime | geomean speedup (qr/bsqr_full) |
-|---|---|---:|
-| gaussian | short_wide | 0.46425 |
-| gaussian | square | 0.59249 |
-| ill_conditioned | short_wide | 0.52707 |
-| ill_conditioned | square | 0.57582 |
-| orthonormal_rows | short_wide | 0.48130 |
-| orthonormal_rows | square | 0.52977 |
+Relative time is BSQR median time divided by baseline median time; `1.0` is parity.
 
-| family | regime | geomean speedup (qr_trsm/bsqr_rinv) |
+| family | regime | geomean relative time (bsqr_full/qr) |
 |---|---|---:|
-| gaussian | short_wide | 0.57200 |
-| gaussian | square | 0.61001 |
-| ill_conditioned | short_wide | 0.59166 |
-| ill_conditioned | square | 0.59601 |
-| orthonormal_rows | short_wide | 0.56144 |
-| orthonormal_rows | square | 0.56438 |
+| gaussian | short_wide | 2.1926 |
+| gaussian | square | 1.6547 |
+| ill_conditioned | short_wide | 1.8998 |
+| ill_conditioned | square | 1.7577 |
+| orthonormal_rows | short_wide | 2.0766 |
+| orthonormal_rows | square | 1.8892 |
+
+| family | regime | geomean relative time (bsqr_rinv/qr_trsm) |
+|---|---|---:|
+| gaussian | short_wide | 1.7483 |
+| gaussian | square | 1.6393 |
+| ill_conditioned | short_wide | 1.6902 |
+| ill_conditioned | square | 1.6778 |
+| orthonormal_rows | short_wide | 1.7811 |
+| orthonormal_rows | square | 1.7719 |

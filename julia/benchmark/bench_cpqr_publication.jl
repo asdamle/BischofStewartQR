@@ -239,7 +239,7 @@ function _write_metadata(
     end
 end
 
-function _speedup_rows(
+function _relative_time_rows(
     rows::Vector{NamedTuple},
     bsqr_method::String,
     baseline_method::String;
@@ -251,15 +251,15 @@ function _speedup_rows(
         idx[key] = r.tmed
     end
 
-    speed = NamedTuple[]
+    reltimes = NamedTuple[]
     for r in rows
         r.method == bsqr_method || continue
         regime !== nothing && r.regime != regime && continue
         key_baseline = (r.family, r.regime, r.m, r.n, r.seed, r.blas_threads, baseline_method)
         haskey(idx, key_baseline) || continue
         baseline_t = idx[key_baseline]
-        sp = r.tmed == 0.0 ? NaN : (baseline_t / r.tmed)
-        push!(speed, (
+        rt = baseline_t == 0.0 ? NaN : (r.tmed / baseline_t)
+        push!(reltimes, (
             family = r.family,
             regime = r.regime,
             m = r.m,
@@ -267,14 +267,14 @@ function _speedup_rows(
             aspect = r.aspect,
             seed = r.seed,
             blas_threads = r.blas_threads,
-            speedup = sp,
+            relative_time = rt,
             bsqr_method = bsqr_method,
             baseline_method = baseline_method,
             bsqr_tmed_s = r.tmed,
             baseline_tmed_s = baseline_t,
         ))
     end
-    return speed
+    return reltimes
 end
 
 function _geomean(vals::Vector{Float64})
@@ -284,20 +284,20 @@ function _geomean(vals::Vector{Float64})
 end
 
 function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::String, threads::Vector{Int}, seeds::Vector{Int})
-    plain_speeds = _speedup_rows(rows, BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL)
-    rinv_speeds = _speedup_rows(rows, BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL)
+    plain_reltimes = _relative_time_rows(rows, BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL)
+    rinv_reltimes = _relative_time_rows(rows, BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL)
 
     grouped_plain = Dict{Tuple{Symbol,String,Int},Vector{Float64}}()
-    for s in plain_speeds
+    for s in plain_reltimes
         key = (s.family, s.regime, s.blas_threads)
         get!(grouped_plain, key, Float64[])
-        push!(grouped_plain[key], s.speedup)
+        push!(grouped_plain[key], s.relative_time)
     end
     grouped_rinv = Dict{Tuple{Symbol,String,Int},Vector{Float64}}()
-    for s in rinv_speeds
+    for s in rinv_reltimes
         key = (s.family, s.regime, s.blas_threads)
         get!(grouped_rinv, key, Float64[])
-        push!(grouped_rinv[key], s.speedup)
+        push!(grouped_rinv[key], s.relative_time)
     end
 
     open(md_path, "w") do md
@@ -309,14 +309,17 @@ function _write_summary(md_path::String, rows::Vector{NamedTuple}, run_id::Strin
         println(md, "- Threads: ", join(threads, ", "))
         println(md, "- Seeds: ", join(seeds, ", "))
         println(md, "")
-        println(md, "| family | regime | blas_threads | geomean speedup (dgeqp3/bsqr_full) |")
+        println(md, "")
+        println(md, "Relative time is BSQR median time divided by baseline median time; `1.0` is parity.")
+        println(md, "")
+        println(md, "| family | regime | blas_threads | geomean relative time (bsqr_full/dgeqp3) |")
         println(md, "|---|---|---:|---:|")
         for key in sort!(collect(keys(grouped_plain)), by = x -> (string(x[1]), x[2], x[3]))
             g = _geomean(grouped_plain[key])
             println(md, "| $(key[1]) | $(key[2]) | $(key[3]) | $(round(g, sigdigits=5)) |")
         end
         println(md, "")
-        println(md, "| family | regime | blas_threads | geomean speedup (dgeqp3_trsm/bsqr_rinv) |")
+        println(md, "| family | regime | blas_threads | geomean relative time (bsqr_rinv/dgeqp3_trsm) |")
         println(md, "|---|---|---:|---:|")
         for key in sort!(collect(keys(grouped_rinv)), by = x -> (string(x[1]), x[2], x[3]))
             g = _geomean(grouped_rinv[key])

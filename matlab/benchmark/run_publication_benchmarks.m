@@ -320,8 +320,8 @@ end
 end
 
 function write_summary(rows, path, run_id, cfg)
-plain = speedup_table(rows, "bsqr_full", "qr_pivoted");
-rinv = speedup_table(rows, "bsqr_rinv", "qr_pivoted_trsm");
+plain = relative_time_table(rows, "bsqr_full", "qr_pivoted");
+rinv = relative_time_table(rows, "bsqr_rinv", "qr_pivoted_trsm");
 
 fid = fopen(path, 'w');
 if fid < 0
@@ -334,18 +334,19 @@ fprintf(fid, '- Run ID: `%s`\n', run_id);
 fprintf(fid, '- Generated: %s\n', string(datetime('now')));
 fprintf(fid, '- Seeds: %s\n', join(string(cfg.seeds), ', '));
 fprintf(fid, '- Families: %s\n\n', join(string(cfg.families), ', '));
+fprintf(fid, 'Relative time is BSQR median time divided by baseline median time; `1.0` is parity.\n\n');
 
-fprintf(fid, '| family | regime | geomean speedup (qr/bsqr_full) |\n');
+fprintf(fid, '| family | regime | geomean relative time (bsqr_full/qr) |\n');
 fprintf(fid, '|---|---|---:|\n');
 for i = 1:height(plain)
-    fprintf(fid, '| %s | %s | %.5f |\n', plain.family(i), plain.regime(i), plain.geomean_speedup(i));
+    fprintf(fid, '| %s | %s | %.5f |\n', plain.family(i), plain.regime(i), plain.geomean_relative_time(i));
 end
 fprintf(fid, '\n');
 
-fprintf(fid, '| family | regime | geomean speedup (qr_trsm/bsqr_rinv) |\n');
+fprintf(fid, '| family | regime | geomean relative time (bsqr_rinv/qr_trsm) |\n');
 fprintf(fid, '|---|---|---:|\n');
 for i = 1:height(rinv)
-    fprintf(fid, '| %s | %s | %.5f |\n', rinv.family(i), rinv.regime(i), rinv.geomean_speedup(i));
+    fprintf(fid, '| %s | %s | %.5f |\n', rinv.family(i), rinv.regime(i), rinv.geomean_relative_time(i));
 end
 end
 
@@ -368,29 +369,29 @@ fprintf(fid, 'norm_recomp_tol = %.17g\n', cfg.norm_recomp_tol);
 fprintf(fid, 'bsqr_backend = %s\n', cfg.bsqr_backend);
 end
 
-function agg = speedup_table(rows, bs_method, baseline_method)
-sp = pair_speedups(rows, bs_method, baseline_method);
-if isempty(sp)
-    agg = table(strings(0,1), strings(0,1), zeros(0,1), 'VariableNames', {'family','regime','geomean_speedup'});
+function agg = relative_time_table(rows, bs_method, baseline_method)
+rt = pair_relative_times(rows, bs_method, baseline_method);
+if isempty(rt)
+    agg = table(strings(0,1), strings(0,1), zeros(0,1), 'VariableNames', {'family','regime','geomean_relative_time'});
     return;
 end
 
-keys = unique(sp(:, {'family', 'regime'}), 'rows');
+keys = unique(rt(:, {'family', 'regime'}), 'rows');
 vals = zeros(height(keys), 1);
 for i = 1:height(keys)
-    mask = sp.family == keys.family(i) & sp.regime == keys.regime(i);
-    vals_i = sp.speedup(mask);
+    mask = rt.family == keys.family(i) & rt.regime == keys.regime(i);
+    vals_i = rt.relative_time(mask);
     vals(i) = exp(mean(log(vals_i(vals_i > 0 & isfinite(vals_i)))));
 end
-agg = table(keys.family, keys.regime, vals, 'VariableNames', {'family','regime','geomean_speedup'});
+agg = table(keys.family, keys.regime, vals, 'VariableNames', {'family','regime','geomean_relative_time'});
 end
 
-function sp = pair_speedups(rows, bs_method, baseline_method)
+function rt = pair_relative_times(rows, bs_method, baseline_method)
 rows_bs = rows(rows.method == bs_method, :);
 rows_base = rows(rows.method == baseline_method, :);
 
 if isempty(rows_bs) || isempty(rows_base)
-    sp = table();
+    rt = table();
     return;
 end
 
@@ -401,8 +402,8 @@ join_base = rows_base(:, [key_cols, {'tmed_s'}]);
 join_base.Properties.VariableNames{'tmed_s'} = 'tmed_base';
 
 joined = innerjoin(join_bs, join_base, 'Keys', key_cols);
-joined.speedup = joined.tmed_base ./ joined.tmed_bs;
-sp = joined(:, [key_cols, {'speedup'}]);
+joined.relative_time = joined.tmed_bs ./ joined.tmed_base;
+rt = joined(:, [key_cols, {'relative_time'}]);
 end
 
 function out = parse_int_list(str)

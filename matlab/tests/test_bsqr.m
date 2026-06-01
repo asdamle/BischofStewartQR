@@ -127,6 +127,10 @@ if ~bsqr_mex_available()
     return;
 end
 
+old_formats = getenv('BS_MATLAB_PUB_FIG_FORMATS');
+clean_formats = onCleanup(@() setenv('BS_MATLAB_PUB_FIG_FORMATS', old_formats));
+setenv('BS_MATLAB_PUB_FIG_FORMATS', 'png,pdf,eps');
+
 outdir = fullfile(tempdir, ['bsqr_matlab_smoke_', char(string(randi(1e9)))]);
 cfg = struct();
 cfg.outdir = outdir;
@@ -147,6 +151,10 @@ verifyTrue(testCase, isfile(fullfile(outdir, 'metadata.txt')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'plain', 'figure1_square_runtime.png')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'tables', 'plain', 'table_square_speedup.csv')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'figure5_aggregate_speedup.pdf')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'figure5_aggregate_speedup.eps')));
+
+tbl = readtable(fullfile(outdir, 'tables', 'plain', 'table_square_speedup.csv'));
+verifyTrue(testCase, ismember('geomean_relative_time', tbl.Properties.VariableNames));
 end
 
 function testBenchmarkRejectsBackendField(testCase)

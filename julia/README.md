@@ -34,6 +34,10 @@ Plot from CSV:
 julia --project=julia julia/benchmark/plot_publication_results.jl
 ```
 
+Publication plots default to PNG. Set `BS_PUB_FIG_FORMATS=png,pdf,eps`
+to request vector outputs as well. Derived performance plots and tables report
+relative time (`BSQR / baseline`), where `1.0` is parity.
+
 Performance gate:
 
 ```bash
