@@ -31,7 +31,7 @@ julia --project=julia julia/benchmark/check_publication_perf_gate.jl    # perf g
 ### MATLAB
 
 ```bash
-matlab -batch "addpath('matlab'); run_tests"                  # tests
+matlab -batch "addpath('matlab/tests'); run_tests"            # tests
 matlab -batch "addpath('matlab'); build_bsqr_mex"             # build MEX (sources in matlab/mex/src/)
 matlab -batch "addpath('matlab'); addpath('matlab/benchmark'); run_publication_benchmarks"
 matlab -batch "addpath('matlab'); addpath('matlab/benchmark'); run_publication_smoke_benchmark"

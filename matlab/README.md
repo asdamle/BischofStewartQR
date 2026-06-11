@@ -25,14 +25,14 @@ Name-value options:
 ## Tests
 
 ```matlab
-addpath('matlab')
+addpath('matlab/tests')
 run_tests
 ```
 
 or from shell:
 
 ```bash
-matlab -batch "addpath('matlab'); run_tests"
+matlab -batch "addpath('matlab/tests'); run_tests"
 ```
 
 ## Benchmarks
