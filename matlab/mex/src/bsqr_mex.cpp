@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <limits>
 #include <string>
 #include <vector>
@@ -33,6 +34,16 @@ struct Workspace {
     std::vector<double> dots;
     std::vector<double> hh_work;
     std::vector<double> q_work;
+    // Panel kernel accumulators (see docs/P3_BLOCKED_BSQR.md)
+    std::vector<double> V;      // m x nb reflectors (global rows)
+    std::vector<double> Fa;     // n x nb deferred-update factors for A
+    std::vector<double> B;      // nb x n panel rows of W (eager)
+    std::vector<double> Bsel;   // nb x n beta rows frozen at selection
+    std::vector<double> Omega;  // k x nb pivot prefix w-vectors
+    std::vector<double> ph;     // nb scratch
+    std::vector<double> pq;     // nb scratch
+    std::vector<double> py;     // n scratch
+    std::vector<mwSize> flush_recompute;
 };
 
 Workspace &workspace() {
@@ -458,6 +469,308 @@ mwSize update_trailing_state(
     return nrecomp;
 }
 
+int panel_nb_from_env() {
+    const char *raw = std::getenv("BS_PANEL_NB");
+    if (!raw || !*raw) {
+        return 0;
+    }
+    char *end = nullptr;
+    const long v = std::strtol(raw, &end, 10);
+    if (end == raw || *end != '\0') {
+        fail("bsqr:InvalidPanelNb", "BS_PANEL_NB must be an integer.");
+    }
+    return static_cast<int>(v);
+}
+
+// Pivot exchange i <-> best_j for the panel kernel: stored A column, W prefix
+// rows (0..s0-1; panel rows live in B), running scalars, and the panel
+// bookkeeping indexed by absolute column position (Fa rows, B/Bsel columns,
+// entries from the t prior panel steps).
+void panel_swap(
+    std::vector<double> &A,
+    std::vector<double> &W,
+    std::vector<double> &s,
+    std::vector<double> &s_ref,
+    std::vector<double> &wnorm2,
+    std::vector<mwSize> &p,
+    Workspace &ws,
+    mwSize m,
+    mwSize n,
+    mwSize k,
+    mwSize nb,
+    mwSize s0,
+    mwSize i,
+    mwSize best_j,
+    mwSize t
+) {
+    if (best_j == i) {
+        return;
+    }
+    ptrdiff_t inc1 = 1;
+    const ptrdiff_t mptr = static_cast<ptrdiff_t>(m);
+    dswap(&mptr, &Aat(A, m, 0, i), &inc1, &Aat(A, m, 0, best_j), &inc1);
+    if (s0 > 0) {
+        const ptrdiff_t sptr = static_cast<ptrdiff_t>(s0);
+        dswap(&sptr, &Wat(W, k, 0, i), &inc1, &Wat(W, k, 0, best_j), &inc1);
+    }
+    std::swap(s[i], s[best_j]);
+    std::swap(s_ref[i], s_ref[best_j]);
+    std::swap(wnorm2[i], wnorm2[best_j]);
+    std::swap(p[i], p[best_j]);
+    for (mwSize u = 0; u < t; ++u) {
+        std::swap(ws.Fa[i + u * n], ws.Fa[best_j + u * n]);
+        std::swap(ws.B[u + i * nb], ws.B[u + best_j * nb]);
+        std::swap(ws.Bsel[u + i * nb], ws.Bsel[u + best_j * nb]);
+    }
+}
+
+// Panel/blocked kernel: line-for-line port of the Julia _bsqr_kernel_panel!
+// (julia/src/kernel_panel.jl; derivation in docs/P3_BLOCKED_BSQR.md). All
+// selection quantities equal the unblocked kernel's in exact arithmetic.
+void bsqr_panel_kernel(
+    std::vector<double> &A,
+    std::vector<double> &W,
+    std::vector<double> &wnorm2,
+    std::vector<double> &s,
+    std::vector<double> &s_ref,
+    std::vector<double> &tau,
+    std::vector<mwSize> &p,
+    Workspace &ws,
+    mwSize m,
+    mwSize n,
+    mwSize k,
+    mwSize nb,
+    double norm_recomp_tol,
+    bool want_trace,
+    std::vector<double> &trace_crit,
+    std::vector<double> &trace_nrecomp
+) {
+    ws.V.resize(static_cast<size_t>(m) * nb);
+    ws.Fa.resize(static_cast<size_t>(n) * nb);
+    ws.B.resize(static_cast<size_t>(nb) * n);
+    ws.Bsel.resize(static_cast<size_t>(nb) * n);
+    ws.Omega.resize(static_cast<size_t>(std::max<mwSize>(k, 1)) * nb);
+    ws.ph.resize(nb);
+    ws.pq.resize(nb);
+    ws.py.resize(n);
+
+    ptrdiff_t inc1 = 1;
+    const double one = 1.0;
+    const double zero = 0.0;
+    const double neg1 = -1.0;
+    const ptrdiff_t lda = static_cast<ptrdiff_t>(m);
+    const ptrdiff_t ldf = static_cast<ptrdiff_t>(n);
+    const ptrdiff_t ldb = static_cast<ptrdiff_t>(nb);
+    const ptrdiff_t ldo = static_cast<ptrdiff_t>(std::max<mwSize>(k, 1));
+
+    mwSize s0 = 0;
+    while (s0 < k) {
+        const mwSize tmax = std::min(nb, k - s0);
+        mwSize tdone = 0;
+        ws.flush_recompute.clear();
+
+        for (mwSize t = 0; t < tmax; ++t) {
+            const mwSize i = s0 + t;
+            double best_c = 0.0;
+            const mwSize best_j = select_pivot_column(s, wnorm2, i, n, best_c);
+            panel_swap(A, W, s, s_ref, wnorm2, p, ws, m, n, k, nb, s0, i, best_j, t);
+            if (want_trace) {
+                trace_crit[i] = best_c;
+            }
+
+            // --- Catch up the pivot column (stale rows i:m-1 only) and reflect ---
+            if (t > 0) {
+                const ptrdiff_t rows = static_cast<ptrdiff_t>(m - i);
+                const ptrdiff_t tp = static_cast<ptrdiff_t>(t);
+                const ptrdiff_t incf = ldf;  // Fa row i, stride n
+                char tn = 'N';
+                dgemv(&tn, &rows, &tp, &neg1, &ws.V[i], &lda, &ws.Fa[i], &incf,
+                      &one, &Aat(A, m, i, i), &inc1);
+            }
+            double tau_i = 0.0, beta_i = 0.0;
+            householder_column(A, m, i, tau_i, beta_i);
+            tau[i] = tau_i;
+            for (mwSize r = s0; r < i; ++r) {
+                ws.V[r + t * m] = 0.0;
+            }
+            ws.V[i + t * m] = 1.0;
+            for (mwSize r = i + 1; r < m; ++r) {
+                ws.V[r + t * m] = AatConst(A, m, r, i);
+            }
+
+            const mwSize nrem = n - i - 1;
+            if (nrem > 0) {
+                // --- Fa(:,t) = tau * (A_true' v) over stale rows i:m-1 ---
+                const ptrdiff_t rows = static_cast<ptrdiff_t>(m - i);
+                const ptrdiff_t cols = static_cast<ptrdiff_t>(nrem);
+                char tt = 'T';
+                char tn = 'N';
+                dgemv(&tt, &rows, &cols, &tau_i, &Aat(A, m, i, i + 1), &lda,
+                      &ws.V[i + t * m], &inc1, &zero, ws.py.data(), &inc1);
+                if (t > 0) {
+                    const ptrdiff_t tp = static_cast<ptrdiff_t>(t);
+                    dgemv(&tt, &rows, &tp, &one, &ws.V[i], &lda,
+                          &ws.V[i + t * m], &inc1, &zero, ws.ph.data(), &inc1);
+                    const double ntau = -tau_i;
+                    dgemv(&tn, &cols, &tp, &ntau, &ws.Fa[i + 1], &ldf,
+                          ws.ph.data(), &inc1, &one, ws.py.data(), &inc1);
+                }
+                std::copy(ws.py.begin(), ws.py.begin() + nrem, &ws.Fa[(i + 1) + t * n]);
+
+                // --- Finalize row i of the trailing block ---
+                const ptrdiff_t tp1 = static_cast<ptrdiff_t>(t + 1);
+                dgemv(&tn, &cols, &tp1, &neg1, &ws.Fa[i + 1], &ldf,
+                      &ws.V[i], &lda, &one, &Aat(A, m, i, i + 1), &lda);
+            }
+
+            Aat(A, m, i, i) = beta_i;
+            s[i] = beta_i * beta_i;
+            s_ref[i] = s[i];
+
+            mwSize nrecomp_step = 0;
+            if (nrem > 0) {
+                const double invdiag = (beta_i != 0.0) ? (1.0 / beta_i) : 0.0;
+                for (mwSize r = 0; r < nrem; ++r) {
+                    ws.beta_vec[r] = AatConst(A, m, i, i + 1 + r) * invdiag;
+                }
+
+                // omega_t: true prefix w of the pivot (rows 0..s0-1)
+                double *omega = &ws.Omega[t * ldo];
+                std::copy(&Wat(W, k, 0, i), &Wat(W, k, 0, i) + s0, omega);
+                char tn = 'N';
+                char tt = 'T';
+                if (t > 0 && s0 > 0) {
+                    const ptrdiff_t sp = static_cast<ptrdiff_t>(s0);
+                    const ptrdiff_t tp = static_cast<ptrdiff_t>(t);
+                    dgemv(&tn, &sp, &tp, &neg1, ws.Omega.data(), &ldo,
+                          &ws.Bsel[i * nb], &inc1, &one, omega, &inc1);
+                }
+                std::copy(&ws.B[i * nb], &ws.B[i * nb] + t, ws.pq.data());
+
+                const double wcoeff = wnorm2[i] + 1.0;
+                const ptrdiff_t cols = static_cast<ptrdiff_t>(nrem);
+                // dots = W0' omega - Bsel' (Omega' omega) + B' q
+                if (s0 > 0) {
+                    const ptrdiff_t sp = static_cast<ptrdiff_t>(s0);
+                    dgemv(&tt, &sp, &cols, &one, &Wat(W, k, 0, i + 1), &ldo,
+                          omega, &inc1, &zero, ws.dots.data(), &inc1);
+                } else {
+                    std::fill(ws.dots.begin(), ws.dots.begin() + nrem, 0.0);
+                }
+                if (t > 0) {
+                    const ptrdiff_t tp = static_cast<ptrdiff_t>(t);
+                    if (s0 > 0) {
+                        const ptrdiff_t sp = static_cast<ptrdiff_t>(s0);
+                        dgemv(&tt, &sp, &tp, &one, ws.Omega.data(), &ldo,
+                              omega, &inc1, &zero, ws.ph.data(), &inc1);
+                        dgemv(&tt, &tp, &cols, &neg1, &ws.Bsel[(i + 1) * nb], &ldb,
+                              ws.ph.data(), &inc1, &one, ws.dots.data(), &inc1);
+                    }
+                    dgemv(&tt, &tp, &cols, &one, &ws.B[(i + 1) * nb], &ldb,
+                          ws.pq.data(), &inc1, &one, ws.dots.data(), &inc1);
+                }
+
+                // --- Eager panel-row updates of W (rows s0..i-1 live in B) ---
+                for (mwSize r = 0; r < nrem; ++r) {
+                    ws.Bsel[t + (i + 1 + r) * nb] = ws.beta_vec[r];
+                }
+                if (t > 0) {
+                    const ptrdiff_t tp = static_cast<ptrdiff_t>(t);
+                    dger(&tp, &cols, &neg1, ws.pq.data(), &inc1,
+                         ws.beta_vec.data(), &inc1, &ws.B[(i + 1) * nb], &ldb);
+                }
+                for (mwSize r = 0; r < nrem; ++r) {
+                    ws.B[t + (i + 1 + r) * nb] = ws.beta_vec[r];
+                }
+
+                // --- wnorm2 recurrence and norm downdates (as unblocked) ---
+                for (mwSize r = 0; r < nrem; ++r) {
+                    const mwSize j = i + 1 + r;
+                    const double b = ws.beta_vec[r];
+                    const double wn = wnorm2[j] - 2.0 * b * ws.dots[r] + b * b * wcoeff;
+                    wnorm2[j] = std::max(wn, 0.0);
+
+                    const double old_s = s[j];
+                    if (!(old_s > 0.0)) {
+                        s[j] = 0.0;
+                        continue;
+                    }
+                    const double alpha = AatConst(A, m, i, j);
+                    const double sj = std::max(old_s - alpha * alpha, 0.0);
+                    s[j] = sj;
+                    if (sj <= s_ref[j] * norm_recomp_tol) {
+                        ws.flush_recompute.push_back(j);
+                        ++nrecomp_step;
+                    }
+                }
+            }
+            if (want_trace) {
+                trace_nrecomp[i] = static_cast<double>(nrecomp_step);
+            }
+
+            tdone = t + 1;
+            if (!ws.flush_recompute.empty()) {
+                // Exact refresh needs true columns; flush early (dlaqps-style).
+                break;
+            }
+        }
+
+        // --- Panel flush: apply the deferred rank-tdone updates ---
+        if (tdone > 0) {
+            const mwSize ie = s0 + tdone - 1;
+            if (ie + 1 < m && ie + 1 < n) {
+                const ptrdiff_t rows = static_cast<ptrdiff_t>(m - ie - 1);
+                const ptrdiff_t cols = static_cast<ptrdiff_t>(n - ie - 1);
+                const ptrdiff_t tp = static_cast<ptrdiff_t>(tdone);
+                char tn = 'N';
+                char tt = 'T';
+                dgemm(&tn, &tt, &rows, &cols, &tp, &neg1, &ws.V[ie + 1], &lda,
+                      &ws.Fa[ie + 1], &ldf, &one, &Aat(A, m, ie + 1, ie + 1), &lda);
+            }
+            if (ie + 1 < n) {
+                if (s0 > 0) {
+                    const ptrdiff_t sp = static_cast<ptrdiff_t>(s0);
+                    const ptrdiff_t cols = static_cast<ptrdiff_t>(n - ie - 1);
+                    const ptrdiff_t tp = static_cast<ptrdiff_t>(tdone);
+                    char tn = 'N';
+                    dgemm(&tn, &tn, &sp, &cols, &tp, &neg1, ws.Omega.data(), &ldo,
+                          &ws.Bsel[(ie + 1) * nb], &ldb, &one, &Wat(W, k, 0, ie + 1), &ldo);
+                }
+                for (mwSize j = ie + 1; j < n; ++j) {
+                    for (mwSize u = 0; u < tdone; ++u) {
+                        Wat(W, k, s0 + u, j) = ws.B[u + j * nb];
+                    }
+                }
+            }
+
+            // Exact norm refresh for columns flagged mid-panel (now true).
+            // Same short-tail FMA loop as the unblocked path.
+            for (mwSize j : ws.flush_recompute) {
+                double exact = 0.0;
+                if (ie + 1 < m) {
+                    const ptrdiff_t len = static_cast<ptrdiff_t>(m - ie - 1);
+                    constexpr ptrdiff_t kRecomputeLoopThreshold = 256;
+                    if (len <= kRecomputeLoopThreshold) {
+                        double acc = 0.0;
+                        for (mwSize r = ie + 1; r < m; ++r) {
+                            const double v = AatConst(A, m, r, j);
+                            acc = std::fma(v, v, acc);
+                        }
+                        exact = acc;
+                    } else {
+                        const double nrm = dnrm2(&len, &Aat(A, m, ie + 1, j), &inc1);
+                        exact = nrm * nrm;
+                    }
+                }
+                s_ref[j] = exact;
+                s[j] = exact;
+            }
+        }
+
+        s0 += std::max<mwSize>(tdone, 1);
+    }
+}
+
 mxArray *make_trace(const std::vector<double> &crit, const std::vector<double> &nrecomp, mwSize k) {
     const char *fields[] = {"crit", "nrecomp"};
     mxArray *trace = mxCreateStructMatrix(1, 1, 2, fields);
@@ -552,30 +865,37 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         trace_nrecomp.assign(k, 0.0);
     }
 
-    for (mwSize i = 0; i < k; ++i) {
-        double best_c = 0.0;
-        const mwSize best_j = select_pivot_column(s, wnorm2, i, n, best_c);
-        swap_pivot_state(A, W, s, s_ref, wnorm2, p, m, k, i, best_j);
+    const int panel_nb = panel_nb_from_env();
+    if (panel_nb >= 2) {
+        bsqr_panel_kernel(A, W, wnorm2, s, s_ref, tau, p, ws, m, n, k,
+                          static_cast<mwSize>(panel_nb), opt.norm_recomp_tol,
+                          opt.trace, trace_crit, trace_nrecomp);
+    } else {
+        for (mwSize i = 0; i < k; ++i) {
+            double best_c = 0.0;
+            const mwSize best_j = select_pivot_column(s, wnorm2, i, n, best_c);
+            swap_pivot_state(A, W, s, s_ref, wnorm2, p, m, k, i, best_j);
 
-        double tau_i = 0.0, beta_i = 0.0;
-        householder_column(A, m, i, tau_i, beta_i);
-        tau[i] = tau_i;
+            double tau_i = 0.0, beta_i = 0.0;
+            householder_column(A, m, i, tau_i, beta_i);
+            tau[i] = tau_i;
 
-        if (tau_i != 0.0 && i + 1 < n) {
-            Aat(A, m, i, i) = 1.0;
-            apply_householder_left(A, m, n, i, tau_i, hh_work);
-        }
+            if (tau_i != 0.0 && i + 1 < n) {
+                Aat(A, m, i, i) = 1.0;
+                apply_householder_left(A, m, n, i, tau_i, hh_work);
+            }
 
-        Aat(A, m, i, i) = beta_i;
-        s[i] = beta_i * beta_i;
-        s_ref[i] = s[i];
+            Aat(A, m, i, i) = beta_i;
+            s[i] = beta_i * beta_i;
+            s_ref[i] = s[i];
 
-        const mwSize nrecomp =
-            update_trailing_state(A, W, wnorm2, s, s_ref, beta_vec, dots, m, n, k, i, beta_i, opt.norm_recomp_tol);
+            const mwSize nrecomp =
+                update_trailing_state(A, W, wnorm2, s, s_ref, beta_vec, dots, m, n, k, i, beta_i, opt.norm_recomp_tol);
 
-        if (opt.trace) {
-            trace_crit[i] = best_c;
-            trace_nrecomp[i] = static_cast<double>(nrecomp);
+            if (opt.trace) {
+                trace_crit[i] = best_c;
+                trace_nrecomp[i] = static_cast<double>(nrecomp);
+            }
         }
     }
 
