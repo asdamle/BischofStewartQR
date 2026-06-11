@@ -53,7 +53,7 @@ test that pins it. Deliverable: `docs/VALIDATION.md` (the audit table, kept curr
 
 ## Part I — Validation plan
 
-### V0. Literature audit (references → writeup → code)
+### V0. Literature audit (references → writeup → code) — **done**, see `docs/VALIDATION.md`
 
 The writeup is our own exposition; the papers are ground truth. Read Bischof (1990) and
 Stewart (1990) from `notes/` and confirm:

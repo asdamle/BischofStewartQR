@@ -23,7 +23,69 @@ recurrence with the production kernels.
 | criterion `c_j = (1+‖w_j‖²)/s_j` | `_select_pivot_column!` | `select_pivot_column` | `select_pivot_column` |
 | `π` | `jpvt` | `p` | `p` |
 
-Paper-level audit (Bischof 1990 / Stewart 1990 equations → writeup equations): **pending (V0)**.
+## V0 paper audit (completed 2026-06-11)
+
+Sources: Bischof, *Incremental Condition Estimation*, SIAM J. Matrix Anal. Appl. 11(2), 1990
+(`notes/Bischof.pdf`); Stewart, *Incremental Condition Calculation and Column Selection*,
+UMIACS TR, 1990 (`notes/Stewart.pdf`).
+
+**Attribution.** The algorithm we implement is Stewart's. Bischof's ICE maintains an
+*approximate* singular vector to estimate `σ_min` of a growing triangular matrix (his eqs.
+(1)–(10): a 2×2 eigenproblem per step, motivated as a secular-equation approximation), and his
+§5 only *guards* classical column pivoting with that estimate — he does not propose a pivot
+criterion. Stewart's condition calculator computes `‖R11⁻¹‖_F` *exactly* via the `S` matrix and
+turns it into the selection rule we use. Writeup-wording nuance: the writeup's introduction says
+Bischof "tracks the growth of `‖R⁻¹‖_F`"; precisely, Bischof tracks an estimate of `σ_min`,
+and the exact Frobenius tracking is Stewart's contribution.
+
+**Equation map** (Stewart → writeup → code):
+
+| Stewart (1990) | Writeup | Code |
+|---|---|---|
+| §2: `S ≡ (s_{k+1},…,s_n) = R11⁻¹R12` | eq. (w-def), `W` | `ws.W` / `W` |
+| eq. (2.2): `ν̃ = √(ν² + α⁻²(1+‖s‖²))` | eq. (frob-growth) | `frob_inv_trace` accumulation (Julia), `crit_best` (oracle) |
+| eq. (2.3): `s_j ← (s_j − α⁻¹ρ_{k+1,j} s_{k+1};  α⁻¹ρ_{k+1,j})` | eq. (w-update), `β_j = α_j/ρ` | `ger`/`dger` rank-1 update + β row |
+| Fig. 2.2: minimize `ω_j⁻²(1+σ_j²)` | eq. (criterion) | `_select_pivot_column!` / `select_pivot_column` |
+| Fig. 2.2 init: `σ_j = 0`, `ω_j` = column norms | Remark "First step simplification" (= Businger–Golub at step 1) | `wnorm2 = 0`, `s` init |
+| Fig. 2.2: `ω_j ← √(ω_j² − ρ_{k+1,j}²)` | line 19 downdate | `s[j] -= α²` |
+| §2 end: Householder variant, `ω_i` = norms of `A22` columns | Algorithm 1 (the variant we implement) | tail norms `s` |
+| Footnote 2: care in `ω` updates, cites LINPACK `sqrdc`; recompute `S` column *ab initio* on cancellation | Remark "Column norm downdating" (ω part only) | recompute guard on `s` only — see open items |
+
+**Confirmations.** The criterion, the `S`/`w` update, the `ω` downdate with safeguard, the
+first-step reduction to Businger–Golub, and the Householder-variant tail-norm denominators all
+match Stewart exactly. The running-`ν` identity (writeup Remark "Tracking the full inverse
+norm") is Stewart's (2.2) and is pinned by `testCriterionTraceMatchesInverseFrobNorm`.
+
+**Differences found (all benign, now documented):**
+
+1. *`σ` maintenance:* Stewart's Fig. 2.2 recomputes `σ_j = ‖s_j‖` directly from the updated
+   `s_j` each step. The writeup's eq. (wnorm-update) is an O(1)-per-column recurrence obtained
+   by expanding `‖s_j − β_j s_{k+1}‖² + β_j²` — algebraically identical, different rounding.
+   The kernels implement the recurrence; the oracle uses neither (from-scratch solves), so
+   parity tests pin the equivalence. Added as deviation #9 below.
+2. *Tie-breaking:* Stewart only implies a convention ("breaks ties by doing nothing", i.e. the
+   current column wins a tie) in his Kahan discussion. Our strict-`<` first-minimum scan keeps
+   the current column on ties and is consistent with, and a total refinement of, Stewart's.
+3. *Deviation #1 provenance:* the norm-downdate safeguard is not merely "LAPACK-style" — it is
+   prescribed by Stewart himself (footnote 2, citing LINPACK `sqrdc`).
+
+**Intentionally out of scope (papers contain, we do not implement):**
+
+- Stewart §3 recovery procedure (swap-out heuristic that fixes the Kahan failure). The greedy
+  forward selection — Stewart's, the writeup's, and ours — fails on Kahan's matrix by design;
+  Osinsky's guarantees cover the orthonormal-rows regime. The Kahan matrix belongs in the test
+  zoo as a documented known-failure of greedy selection, not as a bug.
+- Stewart's plane-rotation variant for selecting within a *precomputed* triangular `R`; we
+  implement his Householder variant for a general `m×n` matrix.
+- Bischof's ICE estimator itself and his §5 guarded-pivoting scheme.
+
+**Open item from the audit (tracked in V2):** Stewart's footnote 2 prescribes recomputing a
+column of `S` *ab initio* if cancellation occurs in its update. Our kernels safeguard only the
+`ω`/`s` downdates; the `W` columns and the `wnorm2` recurrence (which contains a subtraction,
+`−2β_j·(w_jᵀw*)`) have no analogous safeguard, and `wnorm2` is clamped at zero rather than
+refreshed. Likely benign for the publication regimes (the criterion numerator is `≥ 1`, so
+absolute `wnorm2` noise is damped when `‖w‖` is small), but it deserves either an engineered
+cancellation stress test demonstrating harmlessness, or a cheap guard mirroring the `s` one.
 
 ## Deviation table
 
@@ -39,7 +101,8 @@ equivalence claim is wrong.
 | 5 | BLAS-2 organization of the W update (`gemv` for dots, `ger` for the rank-1) | Julia, MEX | writeup Remark "Practical considerations"; same recurrence, regrouped | `test_oracle_parity` (oracle has no recurrence at all) |
 | 6 | `rank_stop` early-exit option | Julia only, off by default in `bsqr` | extension, not in Algorithm 1; cross-language defaults agree (no early exit) | Julia testset "Rank-stop policy"; cross-language default parity pending (V3 fixtures) |
 | 7 | Short-wide fastpath (inline W-row materialization) | Julia only | pure memory-layout reordering; identical arithmetic | Julia testset "Kernel helper invariants and fastpath knobs" |
-| 8 | First-minimum tie-breaking via strict `<` | all three kernels and the oracle | writeup's argmin leaves ties unspecified; fixed convention | `testPivotTieStability` (MATLAB); Julia "Criterion-consistent pivot sequence" |
+| 8 | First-minimum tie-breaking via strict `<` | all three kernels and the oracle | writeup's argmin leaves ties unspecified; consistent with Stewart's "ties by doing nothing" | `testPivotTieStability` (MATLAB); Julia "Criterion-consistent pivot sequence" |
+| 9 | `‖w_j‖²` maintained by the writeup's O(1) recurrence instead of Stewart's direct `σ_j = ‖s_j‖` recomputation | all three kernels | algebraic expansion of `‖s_j − β_j s_k‖² + β_j²`; identical in exact arithmetic | `test_oracle_parity` (oracle computes `‖w_j‖` from scratch) |
 
 ## Validation assets
 
@@ -47,10 +110,11 @@ equivalence claim is wrong.
 |---|---|
 | V1 oracle (`matlab/tests/oracle_bsqr.m`) | done |
 | Oracle/backend parity + invariants + Osinsky canaries (`matlab/tests/test_oracle_parity.m`) | done (mfile + MEX) |
-| V0 paper → writeup audit | pending |
+| V0 paper → writeup audit | done (see above) |
 | V3 cross-language fixtures (Julia ↔ MATLAB, incl. Julia ↔ oracle) | pending |
 | V4 per-step trace parity instrumentation | pending |
 | V5 Julia `larfg!` unification (or extreme-scale equivalence tests) | pending |
+| V2 follow-up: `wnorm2`/W cancellation stress test or guard (V0 open item) | pending |
 
 Notes on test design choices:
 
