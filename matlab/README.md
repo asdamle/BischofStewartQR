@@ -35,6 +35,14 @@ or from shell:
 matlab -batch "addpath('matlab/tests'); run_tests"
 ```
 
+Cross-language parity fixtures live in `parity/` (oracle outputs consumed by both the
+MATLAB and Julia test suites). Regenerate them only when `matlab/tests/parity_zoo.m`
+changes, then rerun both suites:
+
+```bash
+matlab -batch "addpath('matlab/tests'); generate_parity_fixtures"
+```
+
 ## Benchmarks
 
 Run publication benchmark + artifact generation:

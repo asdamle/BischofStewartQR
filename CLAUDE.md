@@ -38,7 +38,17 @@ matlab -batch "addpath('matlab'); addpath('matlab/benchmark'); run_publication_s
 matlab -batch "addpath('matlab/benchmark'); plot_publication_results"
 ```
 
-Tests are in `matlab/tests/test_bsqr.m` (script-based `runtests`); run a single file with `runtests('matlab/tests/test_bsqr.m')` after adding paths.
+Tests are function-based `runtests` files under `matlab/tests/`; run a single file with `runtests('matlab/tests/test_bsqr.m')` after adding paths.
+
+### Validation harness
+
+`matlab/tests/oracle_bsqr.m` is the executable ground truth (a literal transcription of the
+algorithm writeup; see `docs/VALIDATION.md` for the deviation audit). Cross-language parity
+fixtures in `parity/` are oracle outputs consumed by both test suites; regenerate with
+`matlab -batch "addpath('matlab/tests'); generate_parity_fixtures"` whenever
+`matlab/tests/parity_zoo.m` changes (a drift-guard test fails if you forget), then rerun both
+languages' tests. Kernel-behavior changes must keep all of this green — pivot sequences are
+compared exactly across Julia, MATLAB m-file, and MEX.
 
 ### Cross-language comparison
 

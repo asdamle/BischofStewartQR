@@ -112,17 +112,19 @@ MATLAB covers 1 directly against the in-language oracle (`matlab/tests/test_orac
 done for mfile + MEX, including 2, 5, 6, 7); Julia covers 1 by consuming fixtures (below) rather
 than reimplementing the oracle.
 
-### V3. Cross-implementation parity harness
+### V3. Cross-implementation parity harness — **done**
 
-- A Julia script generates the parity fixture set: input matrices plus expected outputs
-  (pivot sequence, `R`, `rinv_r12`, `ksteps`) written to a `parity/` fixtures directory as
-  CSV (sizes kept modest, e.g. ≤ 512×1024, so this stays fast).
-- A MATLAB test (`tests/test_parity_fixtures.m`) runs both `mfile` and `mex` backends on each
-  fixture and asserts: identical pivot sequence, factor agreement to scaled tolerance.
-- The existing `testMexParityWhenAvailable` (mfile vs MEX, random inputs) stays; this adds the
-  Julia↔MATLAB leg, which currently does not exist.
-- Fixture matrices are screened at generation time for criterion-gap robustness (runner-up gap
-  at every step > 1e3·eps·scale), so exact pivot equality is a fair demand across BLAS runtimes.
+- `matlab/tests/generate_parity_fixtures.m` writes the committed `parity/` fixture set: the
+  `parity_zoo` inputs plus the V1 oracle's expected outputs (full pivot vector, `R`,
+  `rinv_r12`), printed with `%.17g` so doubles round-trip exactly and both languages read
+  bit-identical inputs. Generation re-asserts the near-tie screen (min relative criterion gap
+  > 1e-6).
+- `matlab/tests/test_parity_fixtures.m` asserts the committed inputs are bit-identical to the
+  current `parity_zoo` (drift guard) and that both backends reproduce the expected pivots
+  exactly and factors to tolerance.
+- `julia/test/test_parity_fixtures.jl` (wired into `runtests.jl`) validates the Julia kernel
+  against the same files — this is the Julia ↔ oracle and Julia ↔ MATLAB leg.
+- The existing `testMexParityWhenAvailable` (mfile vs MEX, random inputs) stays.
 
 ### V4. Per-step trace parity (debug instrumentation)
 
