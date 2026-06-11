@@ -153,7 +153,7 @@ function bsqr!(
     end
 
     return _with_blas_threads(blas_threads) do
-        _bsqr_kernel!(
+        _run_kernel!(
             A,
             tau,
             jpvt,
@@ -164,6 +164,15 @@ function bsqr!(
             norm_recomp_tol = norm_recomp_tol,
         )
     end
+end
+
+# Prototype dispatch (P3): BS_PANEL_NB >= 2 routes through the panel kernel.
+function _run_kernel!(A, tau, jpvt, ws, k; kwargs...)
+    nb = _panel_nb()
+    if nb >= 2
+        return _bsqr_kernel_panel!(A, tau, jpvt, ws, k, nb; kwargs...)
+    end
+    return _bsqr_kernel!(A, tau, jpvt, ws, k; kwargs...)
 end
 
 """
@@ -191,7 +200,7 @@ function bsqr!(
     frob_trace = track_inverse_frob ? Float64[] : nothing
 
     ksteps = _with_blas_threads(blas_threads) do
-        _bsqr_kernel!(
+        _run_kernel!(
             A,
             tau,
             jpvt,
