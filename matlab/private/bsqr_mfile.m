@@ -1,5 +1,8 @@
-function [Q, R, p, rinv_r12] = bsqr_mfile(A, opts)
+function [Q, R, p, rinv_r12, trace] = bsqr_mfile(A, opts)
 %BSQR_MFILE Pure MATLAB BSQR backend.
+%   The fifth output is the per-step validation trace (docs/VALIDATION.md
+%   V4): trace.crit(i) is the criterion value of the selected pivot and
+%   trace.nrecomp(i) the number of norm-recompute events at step i.
 
 Awork = double(A);
 [m, n] = size(Awork);
@@ -10,9 +13,11 @@ tau = zeros(k, 1);
 W = zeros(k, n);
 wnorm2 = zeros(1, n);
 [s, s_ref] = init_column_norm_state(Awork, n);
+trace = struct('crit', zeros(1, k), 'nrecomp', zeros(1, k));
 
 for i = 1:k
-    best_j = select_pivot_column(i, n, s, wnorm2);
+    [best_j, best_c] = select_pivot_column(i, n, s, wnorm2);
+    trace.crit(i) = best_c;
     if best_j ~= i
         [Awork, W, s, s_ref, wnorm2, p] = swap_pivot_state(Awork, W, s, s_ref, wnorm2, p, i, best_j);
     end
@@ -36,8 +41,9 @@ for i = 1:k
         continue;
     end
 
-    [W, wnorm2, s, s_ref] = update_trailing_state( ...
+    [W, wnorm2, s, s_ref, nrecomp] = update_trailing_state( ...
         Awork, W, wnorm2, s, s_ref, i, m, n, beta_i, opts.norm_recomp_tol);
+    trace.nrecomp(i) = nrecomp;
 end
 
 if k == 0
@@ -73,7 +79,7 @@ for j = 1:n
 end
 end
 
-function best_j = select_pivot_column(i, n, s, wnorm2)
+function [best_j, best_c] = select_pivot_column(i, n, s, wnorm2)
 best_j = i;
 best_c = inf;
 for j = i:n
@@ -102,8 +108,9 @@ wnorm2([i, best_j]) = wnorm2([best_j, i]);
 p([i, best_j]) = p([best_j, i]);
 end
 
-function [W, wnorm2, s, s_ref] = update_trailing_state(Awork, W, wnorm2, s, s_ref, i, m, n, beta_i, norm_recomp_tol)
+function [W, wnorm2, s, s_ref, nrecomp] = update_trailing_state(Awork, W, wnorm2, s, s_ref, i, m, n, beta_i, norm_recomp_tol)
 nrem = n - i;
+nrecomp = 0;
 alpha = Awork(i, i+1:n);
 if beta_i ~= 0
     invdiag = 1 / beta_i;
@@ -154,6 +161,7 @@ for t = 1:nrem
         end
         s_ref(j) = sj_exact;
         s(j) = sj_exact;
+        nrecomp = nrecomp + 1;
     end
 end
 end

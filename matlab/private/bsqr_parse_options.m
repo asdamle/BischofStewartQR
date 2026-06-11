@@ -16,6 +16,7 @@ addParameter(parser, 'pivot_format', 'matrix', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'backend', 'auto', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'norm_recomp_tol', sqrt(eps('double')), @(x) isnumeric(x) && isscalar(x) && isfinite(x));
 addParameter(parser, 'check_finite', true, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
+addParameter(parser, 'trace', false, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
 parse(parser, varargin{:});
 
 opts = parser.Results;
@@ -36,6 +37,7 @@ end
 
 opts.return_rinv_r12 = logical(opts.return_rinv_r12);
 opts.check_finite = logical(opts.check_finite);
+opts.trace = logical(opts.trace);
 
 opts.pivot_format = lower(string(opts.pivot_format));
 if opts.pivot_format ~= "matrix" && opts.pivot_format ~= "vector"

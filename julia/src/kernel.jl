@@ -348,7 +348,7 @@ end
     kernel_stats::Union{Nothing,BSKernelStats},
 )
     nrem = n - i
-    nrem > 0 || return nothing
+    nrem > 0 || return 0
 
     t_update = kernel_stats === nothing ? 0 : time_ns()
     invdiag = beta_i != 0.0 ? (1.0 / beta_i) : 0.0
@@ -439,7 +439,7 @@ end
         wns = elapsed - downdate_ns
         kernel_stats.w_update_ns += wns > 0 ? wns : 0
     end
-    return nothing
+    return nrecompute
 end
 
 function _bsqr_kernel!(
@@ -453,6 +453,7 @@ function _bsqr_kernel!(
     rank_stop::Bool = true,
     norm_recomp_tol::Float64 = _DEFAULT_NORM_RECOMP_TOL,
     norm_recomp_count::Union{Nothing,Base.RefValue{Int}} = nothing,
+    recomp_history::Union{Nothing,Vector{Int}} = nothing,
     kernel_stats::Union{Nothing,BSKernelStats} = nothing,
 )
     m, n = size(A)
@@ -475,7 +476,7 @@ function _bsqr_kernel!(
         end
 
         beta_i = _householder_stage!(A, tau, i, m, n, ws, kernel_stats)
-        _update_trailing_state!(
+        nrecomp = _update_trailing_state!(
             A,
             ws,
             i,
@@ -487,6 +488,9 @@ function _bsqr_kernel!(
             norm_recomp_count,
             kernel_stats,
         )
+        if recomp_history !== nothing
+            push!(recomp_history, nrecomp)
+        end
 
         ksteps = i
         if frob_inv_trace !== nothing
@@ -610,27 +614,35 @@ function _swap_columns_prefix!(A::StridedMatrix{Float64}, i::Int, j::Int, rmax::
     return nothing
 end
 
+# Reflector construction goes through LAPACK dlarfg so Julia and the MEX
+# backend share identical semantics, including dlarfg's rescaling
+# safeguards near under/overflow (docs/VALIDATION.md, V5). The stdlib
+# LAPACK.larfg! discards beta, hence the direct ccall.
 function _householder!(x::StridedVector{Float64})
-    n = length(x)
-    alpha = x[1]
+    n = LinearAlgebra.BlasInt(length(x))
+    n >= 1 || return 0.0, 0.0
 
-    if n == 1
-        return 0.0, alpha
-    end
-
-    xtail = view(x, 2:n)
-    xnorm = BLAS.nrm2(xtail)
-    if xnorm == 0.0
-        return 0.0, alpha
-    end
-
-    beta = -copysign(hypot(alpha, xnorm), alpha)
-    tau = (beta - alpha) / beta
-    scale = 1.0 / (alpha - beta)
-    BLAS.scal!(scale, xtail)
+    alpha = Ref{Float64}(x[1])
+    tau = Ref{Float64}(0.0)
+    ccall(
+        (BLAS.@blasfunc(dlarfg_), BLAS.libblastrampoline),
+        Cvoid,
+        (
+            Ref{LinearAlgebra.BlasInt},
+            Ref{Float64},
+            Ptr{Float64},
+            Ref{LinearAlgebra.BlasInt},
+            Ref{Float64},
+        ),
+        n,
+        alpha,
+        pointer(x, 2),
+        LinearAlgebra.BlasInt(1),
+        tau,
+    )
+    beta = alpha[]
     x[1] = beta
-
-    return tau, beta
+    return tau[], beta
 end
 
 function _apply_householder_left!(

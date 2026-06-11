@@ -10,12 +10,22 @@ function varargout = bsqr(A, varargin)
 %   'return_rinv_r12'  - logical flag to return R11^{-1}R12 (default false)
 %   'pivot_format'     - 'matrix' (default) or 'vector'
 %   'backend'          - 'auto' (default), 'mfile', or 'mex'
+%   'trace'            - logical flag enabling the per-step validation
+%                        trace as a fifth output: a struct with fields
+%                        'crit' (criterion value of the selected pivot)
+%                        and 'nrecomp' (norm-recompute events per step);
+%                        see docs/VALIDATION.md (V4)
 
-if nargout > 4
-    error('bsqr:TooManyOutputs', 'bsqr supports at most 4 outputs.');
+if nargout > 5
+    error('bsqr:TooManyOutputs', 'bsqr supports at most 5 outputs.');
 end
 
 opts = bsqr_parse_options(A, varargin{:});
+
+if nargout > 4 && ~opts.trace
+    error('bsqr:TraceNotRequested', ...
+        'A fifth output requires the option trace=true.');
+end
 
 if should_use_mex(opts.backend)
     ensure_bsqr_mex_ready();
@@ -23,7 +33,7 @@ if should_use_mex(opts.backend)
     return;
 end
 
-[Q, R, p, rinv_r12] = bsqr_mfile(A, opts);
+[Q, R, p, rinv_r12, trace] = bsqr_mfile(A, opts);
 
 if nargout == 1
     varargout{1} = R;
@@ -43,6 +53,9 @@ if nargout >= 4
     else
         varargout{4} = [];
     end
+end
+if nargout >= 5
+    varargout{5} = trace;
 end
 
 end

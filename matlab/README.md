@@ -19,6 +19,9 @@ Name-value options:
 - `'backend'`: `'auto'` (default), `'mfile'`, `'mex'`
 - `'norm_recomp_tol'`: running norm refresh tolerance (default `sqrt(eps)`)
 - `'check_finite'`: validate finite input (default `true`)
+- `'trace'`: enable the per-step validation trace as a fifth output
+  (`[Q,R,p,rinv,trace] = bsqr(A,'trace',true)`; struct with fields `crit`
+  and `nrecomp`; see `docs/VALIDATION.md` V4)
 
 `backend='auto'` uses `bsqr_mex` when available, otherwise the pure MATLAB kernel.
 

@@ -54,20 +54,46 @@ for row = 1:height(manifest)
     A = read_fixture(testCase, [name, '_A.csv']);
     p_exp = read_fixture(testCase, [name, '_p.csv']);
     R_exp = read_fixture(testCase, [name, '_R.csv']);
+    crit_exp = read_fixture(testCase, [name, '_crit.csv']);
 
-    [~, R, p, rinv] = bsqr(A, 'backend', backend, 'k', k, ...
-        'pivot_format', 'vector', 'return_rinv_r12', true);
+    [~, R, p, rinv, trace] = bsqr(A, 'backend', backend, 'k', k, ...
+        'pivot_format', 'vector', 'return_rinv_r12', true, 'trace', true);
 
     label = sprintf('%s/%s', name, backend);
     verifyEqual(testCase, p, p_exp, sprintf('%s: pivot sequence', label));
     verifyLessThan(testCase, rel_err(R, R_exp), manifest.rtol_R(row), ...
         sprintf('%s: R factor', label));
 
+    crit_err = max(abs(trace.crit - crit_exp) ./ crit_exp);
+    verifyLessThan(testCase, crit_err, manifest.rtol_crit(row), ...
+        sprintf('%s: criterion trace', label));
+
     if manifest.rinv_check(row) && k < n
         rinv_exp = read_fixture(testCase, [name, '_rinv.csv']);
         verifyLessThan(testCase, rel_err(rinv, rinv_exp), manifest.rtol_rinv(row), ...
             sprintf('%s: rinv_r12', label));
     end
+end
+end
+
+function testTraceParityBetweenBackends(testCase)
+% Recompute events are threshold crossings on running norms, so equality
+% between the two MATLAB backends pins both the guard logic and the norm
+% downdate arithmetic step by step (measured exactly equal on the zoo).
+if ~bsqr_mex_available()
+    return;
+end
+manifest = testCase.TestData.manifest;
+for row = 1:height(manifest)
+    name = manifest.name{row};
+    A = read_fixture(testCase, [name, '_A.csv']);
+    k = manifest.k(row);
+    [~, ~, ~, ~, tm] = bsqr(A, 'backend', 'mfile', 'k', k, ...
+        'pivot_format', 'vector', 'trace', true);
+    [~, ~, ~, ~, tx] = bsqr(A, 'backend', 'mex', 'k', k, ...
+        'pivot_format', 'vector', 'trace', true);
+    verifyEqual(testCase, tx.nrecomp, tm.nrecomp, ...
+        sprintf('%s: nrecomp trace mfile vs mex', name));
 end
 end
 

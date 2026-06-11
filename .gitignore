@@ -1,2 +1,4 @@
 notes/
 .DS_Store
+julia/benchmark/results/publication_smoke/
+matlab/benchmark/results/publication_smoke/

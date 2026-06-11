@@ -22,6 +22,12 @@ function zoo = parity_zoo()
 %     gap_tol           minimum relative criterion gap for the near-tie
 %                       screen
 %     rtol_R, rtol_rinv relative tolerances for factor agreement
+%     rtol_crit         relative tolerance for the per-step criterion
+%                       trace vs. the oracle (kernels use the wnorm2
+%                       recurrence and downdated norms, the oracle exact
+%                       recomputation; drift scales with conditioning —
+%                       measured ~1e-12 for well-conditioned members,
+%                       ~2e-7 for the graded ones)
 
 zoo = {};
 zoo{end+1} = zoo_member('gaussian_square_a', gaussian(40, 40, 20260401), 40);
@@ -37,12 +43,14 @@ z = zoo_member('illcond_square', graded(48, 48, 1e-10, 20260406), 48);
 z.rinv_check = false;
 z.frob_check = false;
 z.q_check = false;
+z.rtol_crit = 1e-4;
 zoo{end+1} = z;
 
 z = zoo_member('illcond_shortwide', graded(24, 96, 1e-8, 20260407), 24);
 z.rinv_check = false;
 z.frob_check = false;
 z.q_check = false;
+z.rtol_crit = 1e-4;
 zoo{end+1} = z;
 
 z = zoo_member('orthrows_24x96', orthonormal_rows(24, 96, 20260408), 24);
@@ -59,7 +67,7 @@ end
 function z = zoo_member(name, A, k)
 z = struct('name', name, 'A', A, 'k', k, 'rinv_check', true, ...
     'frob_check', true, 'q_check', true, 'orthonormal_rows', false, ...
-    'gap_tol', 1e-6, 'rtol_R', 1e-10, 'rtol_rinv', 2e-8);
+    'gap_tol', 1e-6, 'rtol_R', 1e-10, 'rtol_rinv', 2e-8, 'rtol_crit', 1e-9);
 end
 
 function A = gaussian(m, n, seed)

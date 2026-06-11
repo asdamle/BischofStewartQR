@@ -18,6 +18,7 @@ struct Options {
     bool pivot_vector = false;  // false => matrix
     double norm_recomp_tol = std::sqrt(std::numeric_limits<double>::epsilon());
     bool check_finite = true;
+    bool trace = false;
 };
 
 struct Workspace {
@@ -142,6 +143,8 @@ void parse_options(const mxArray *A, int nrhs, const mxArray *prhs[], Options &o
             opt.norm_recomp_tol = t;
         } else if (name == "check_finite") {
             opt.check_finite = scalar_to_bool(val, "bsqr:InvalidCheckFinite");
+        } else if (name == "trace") {
+            opt.trace = scalar_to_bool(val, "bsqr:InvalidTrace");
         } else {
             fail("bsqr:UnknownOption", "Unknown bsqr option.");
         }
@@ -316,7 +319,8 @@ mwSize select_pivot_column(
     const std::vector<double> &s,
     const std::vector<double> &wnorm2,
     mwSize i,
-    mwSize n
+    mwSize n,
+    double &best_c_out
 ) {
     mwSize best_j = i;
     double best_c = std::numeric_limits<double>::infinity();
@@ -329,6 +333,7 @@ mwSize select_pivot_column(
             best_j = j;
         }
     }
+    best_c_out = best_c;
     return best_j;
 }
 
@@ -362,7 +367,7 @@ void swap_pivot_state(
     std::swap(p[i], p[best_j]);
 }
 
-void update_trailing_state(
+mwSize update_trailing_state(
     std::vector<double> &A,
     std::vector<double> &W,
     std::vector<double> &wnorm2,
@@ -377,9 +382,10 @@ void update_trailing_state(
     double beta_i,
     double norm_recomp_tol
 ) {
+    mwSize nrecomp = 0;
     const mwSize nrem = n - i - 1;
     if (nrem == 0) {
-        return;
+        return nrecomp;
     }
 
     const double invdiag = (beta_i != 0.0) ? (1.0 / beta_i) : 0.0;
@@ -449,8 +455,25 @@ void update_trailing_state(
             }
             s_ref[j] = exact;
             s[j] = exact;
+            ++nrecomp;
         }
     }
+    return nrecomp;
+}
+
+mxArray *make_trace(const std::vector<double> &crit, const std::vector<double> &nrecomp, mwSize k) {
+    const char *fields[] = {"crit", "nrecomp"};
+    mxArray *trace = mxCreateStructMatrix(1, 1, 2, fields);
+
+    mxArray *crit_arr = mxCreateDoubleMatrix(1, k, mxREAL);
+    std::copy(crit.begin(), crit.begin() + k, mxGetPr(crit_arr));
+    mxSetField(trace, 0, "crit", crit_arr);
+
+    mxArray *nrecomp_arr = mxCreateDoubleMatrix(1, k, mxREAL);
+    std::copy(nrecomp.begin(), nrecomp.begin() + k, mxGetPr(nrecomp_arr));
+    mxSetField(trace, 0, "nrecomp", nrecomp_arr);
+
+    return trace;
 }
 
 }  // namespace
@@ -459,8 +482,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if (nrhs < 1) {
         fail("bsqr:NotEnoughInputs", "bsqr requires at least one input matrix A.");
     }
-    if (nlhs > 4) {
-        fail("bsqr:TooManyOutputs", "bsqr supports at most 4 outputs.");
+    if (nlhs > 5) {
+        fail("bsqr:TooManyOutputs", "bsqr supports at most 5 outputs.");
     }
 
     const mxArray *Ain = prhs[0];
@@ -473,6 +496,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     Options opt;
     parse_options(Ain, nrhs, prhs, opt);
+
+    if (nlhs > 4 && !opt.trace) {
+        fail("bsqr:TraceNotRequested", "A fifth output requires the option trace=true.");
+    }
 
     Workspace &ws = workspace();
     const double *aptr = mxGetPr(Ain);
@@ -521,8 +548,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     std::vector<double> &dots = ws.dots;
     std::vector<double> &hh_work = ws.hh_work;
 
+    std::vector<double> trace_crit;
+    std::vector<double> trace_nrecomp;
+    if (opt.trace) {
+        trace_crit.assign(k, 0.0);
+        trace_nrecomp.assign(k, 0.0);
+    }
+
     for (mwSize i = 0; i < k; ++i) {
-        const mwSize best_j = select_pivot_column(s, wnorm2, i, n);
+        double best_c = 0.0;
+        const mwSize best_j = select_pivot_column(s, wnorm2, i, n, best_c);
         swap_pivot_state(A, W, s, s_ref, wnorm2, p, m, k, i, best_j);
 
         double tau_i = 0.0, beta_i = 0.0;
@@ -538,7 +573,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         s[i] = beta_i * beta_i;
         s_ref[i] = s[i];
 
-        update_trailing_state(A, W, wnorm2, s, s_ref, beta_vec, dots, m, n, k, i, beta_i, opt.norm_recomp_tol);
+        const mwSize nrecomp =
+            update_trailing_state(A, W, wnorm2, s, s_ref, beta_vec, dots, m, n, k, i, beta_i, opt.norm_recomp_tol);
+
+        if (opt.trace) {
+            trace_crit[i] = best_c;
+            trace_nrecomp[i] = static_cast<double>(nrecomp);
+        }
     }
 
     if (nlhs == 0) {
@@ -561,5 +602,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     if (nlhs >= 4) {
         plhs[3] = make_rinv(W, k, n, opt.return_rinv_r12);
+    }
+
+    if (nlhs >= 5) {
+        plhs[4] = make_trace(trace_crit, trace_nrecomp, k);
     }
 }

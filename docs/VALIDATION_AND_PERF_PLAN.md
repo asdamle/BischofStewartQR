@@ -112,6 +112,11 @@ MATLAB covers 1 directly against the in-language oracle (`matlab/tests/test_orac
 done for mfile + MEX, including 2, 5, 6, 7); Julia covers 1 by consuming fixtures (below) rather
 than reimplementing the oracle.
 
+The V0-spawned cancellation question (no `W`/`wnorm2` analogue of Stewart's ab-initio
+safeguard) is resolved — no guard needed; see the stress-test resolution in
+`docs/VALIDATION.md` and the pinning tests `matlab/tests/test_cancellation_stress.m` and the
+Julia testset "Cancellation stress: wnorm2/W recurrence drift".
+
 ### V3. Cross-implementation parity harness — **done**
 
 - `matlab/tests/generate_parity_fixtures.m` writes the committed `parity/` fixture set: the
@@ -126,25 +131,20 @@ than reimplementing the oracle.
   against the same files — this is the Julia ↔ oracle and Julia ↔ MATLAB leg.
 - The existing `testMexParityWhenAvailable` (mfile vs MEX, random inputs) stays.
 
-### V4. Per-step trace parity (debug instrumentation)
+### V4. Per-step trace parity (debug instrumentation) — **done**
 
-Julia already supports `pivot_history` and kernel stats. Add an option-gated equivalent to the
-MEX (and m-file) kernels that records per step: chosen pivot, criterion value, `rho_i`, and
-which columns triggered norm recomputes. Validation builds diff the traces across all three
-implementations on the fixture suite — this localizes any divergence to the exact step and
-quantity rather than discovering it post-hoc in `R`. Keep the instrumentation compiled out /
-branch-predicted away in the hot path (it must not contaminate benchmarks).
+The `trace` option (mfile + MEX, fifth output: `crit` and `nrecomp` per step) and the Julia
+kernel hooks (`frob_inv_trace`, `recomp_history`) expose the per-step criterion values and
+norm-recompute counts. The oracle's criterion trace ships in the `parity/` fixtures
+(`<name>_crit.csv`, tolerance `rtol_crit` on the zoo members) and is compared by all three
+implementations; mfile↔MEX `nrecomp` equality is pinned in `test_parity_fixtures.m`. Tracing
+is off by default and adds only two scalar writes per step when enabled.
 
-### V5. Householder construction equivalence
+### V5. Householder construction equivalence — **done**
 
-Julia hand-rolls `_householder!` (hypot-based); MEX calls LAPACK `dlarfg`. These agree in the
-common case but `dlarfg` has additional rescaling safeguards near under/overflow. Either:
-
-- (a) switch Julia to `LAPACK.larfg!` so reflector construction is identical by construction, or
-- (b) keep the hand-rolled version and add equivalence tests across extreme scales
-  (`||x|| ~ 1e±300`, subnormal tails).
-
-(a) is preferred: it removes a whole class of divergence and is performance-neutral.
+Julia's `_householder!` is now a direct `dlarfg` ccall returning `(tau, beta)` (the stdlib
+`LAPACK.larfg!` discards beta), so reflector construction — including LAPACK's rescaling
+safeguards near under/overflow — is shared with the MEX by construction.
 
 ### Exit criteria for Part I
 

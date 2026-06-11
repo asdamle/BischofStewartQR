@@ -353,3 +353,55 @@ end
         end
     end
 end
+
+@testset "Cancellation stress: wnorm2/W recurrence drift" begin
+    # V2 follow-up to the V0 audit (docs/VALIDATION.md): Stewart's footnote 2
+    # recomputes an S column ab initio if cancellation occurs in its update;
+    # our kernels carry no such guard for W or the wnorm2 recurrence. This
+    # testset pins the evidence that none is needed. The construction forces
+    # maximal one-step wnorm2 cancellation: near-duplicate columns c*B + T
+    # with unit tails T orthogonal to range(B), over a graded spectrum that
+    # drives ||R11^{-1}||_F to ~1e10. The criterion min (1+||w||^2)/rho^2
+    # never selects a large-||w*|| pivot, so the subtracted recurrence term
+    # stays moderate and the drift remains at rounding level (measured
+    # ~1e-15; asserted with margin at 1e-12).
+    for sigma_min in (1e-8, 1e-10)
+        rng = MersenneTwister(20260502)
+        m, r = 32, 24
+        Ufull = Matrix(qr(randn(rng, m, m)).Q)
+        U = Ufull[:, 1:r]
+        N = Ufull[:, (r + 1):end]
+        V = Matrix(qr(randn(rng, r, r)).Q)
+        sv = exp10.(range(0, log10(sigma_min); length = r))
+        B = U * Diagonal(sv) * V'
+        T = N * randn(rng, m - r, r)
+        T = T ./ reshape(norm.(eachcol(T)), 1, :)
+        A = [B (B ./ 3 .+ T)]
+        n = size(A, 2)
+        k = min(m, n)
+
+        Awork = copy(A)
+        ws = BSPivotQR.BSWorkspace(m, n, k)
+        tau = zeros(k)
+        jpvt = collect(1:n)
+        ksteps = bsqr!(Awork, tau, jpvt, ws; k = k)
+        @test ksteps == k
+
+        Rfac = triu(Awork[1:k, :])
+        R11 = UpperTriangular(Rfac[1:k, 1:k])
+
+        # Three layers of ||w_j||^2 for the unselected columns: the running
+        # recurrence (ws.wnorm2), the tracked W column, and a from-scratch
+        # solve against the final factor. Drift is measured relative to the
+        # criterion numerator scale max(||w||^2, 1).
+        for j in (k + 1):n
+            wn_rec = ws.wnorm2[j]
+            wn_W = norm(view(ws.W, 1:k, j))^2
+            w_true = R11 \ Rfac[1:k, j]
+            wn_true = norm(w_true)^2
+            denom = max(wn_true, 1.0)
+            @test abs(wn_rec - wn_W) / denom < 1e-12
+            @test abs(wn_W - wn_true) / denom < 1e-12
+        end
+    end
+end
