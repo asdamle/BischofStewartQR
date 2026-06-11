@@ -214,38 +214,35 @@ void build_q(
     double *Q,
     std::vector<double> &q_work
 ) {
-    std::fill(Q, Q + static_cast<std::ptrdiff_t>(m) * static_cast<std::ptrdiff_t>(k), 0.0);
-    for (mwSize c = 0; c < k; ++c) {
-        Q[c + c * m] = 1.0;
-    }
-
     if (k == 0) {
         return;
     }
 
-    const char side = 'L';
-    const char trans = 'N';
+    // dorgqr generates Q directly from the stored reflectors (~1/3 fewer
+    // flops than applying them to an identity via dormqr) and matches how
+    // the qr() baseline materializes its Q (P1.1 in docs/PERF_P0_FINDINGS.md).
+    std::copy(A.begin(), A.begin() + static_cast<std::ptrdiff_t>(m) * static_cast<std::ptrdiff_t>(k), Q);
+
     const ptrdiff_t mm = static_cast<ptrdiff_t>(m);
     const ptrdiff_t nn = static_cast<ptrdiff_t>(k);
     const ptrdiff_t kk = static_cast<ptrdiff_t>(k);
-    const ptrdiff_t lda = static_cast<ptrdiff_t>(m);
-    const ptrdiff_t ldc = static_cast<ptrdiff_t>(m);
+    const ptrdiff_t ldq = static_cast<ptrdiff_t>(m);
 
     ptrdiff_t info = 0;
     ptrdiff_t lwork = -1;
     double work_query = 0.0;
-    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q, &ldc, &work_query, &lwork, &info);
+    dorgqr(&mm, &nn, &kk, Q, &ldq, tau.data(), &work_query, &lwork, &info);
     if (info != 0) {
-        fail("bsqr:QBuildFailed", "LAPACK dormqr workspace query failed.");
+        fail("bsqr:QBuildFailed", "LAPACK dorgqr workspace query failed.");
     }
 
     lwork = std::max<ptrdiff_t>(1, static_cast<ptrdiff_t>(work_query));
     if (q_work.size() < static_cast<size_t>(lwork)) {
         q_work.resize(static_cast<size_t>(lwork));
     }
-    dormqr(&side, &trans, &mm, &nn, &kk, A.data(), &lda, tau.data(), Q, &ldc, q_work.data(), &lwork, &info);
+    dorgqr(&mm, &nn, &kk, Q, &ldq, tau.data(), q_work.data(), &lwork, &info);
     if (info != 0) {
-        fail("bsqr:QBuildFailed", "LAPACK dormqr failed while forming Q.");
+        fail("bsqr:QBuildFailed", "LAPACK dorgqr failed while forming Q.");
     }
 }
 

@@ -177,7 +177,16 @@ alone.** The realistic levers are (a) making BSQR's flops run at higher throughp
 and (c) the timed-path costs outside the kernel. The plan therefore starts by *measuring the
 achievable floor* so "as close as possible" becomes a number.
 
-### P0. Measurement foundation (do this first, ~no code risk)
+### P0. Measurement foundation (do this first, ~no code risk) — **done**, see `docs/PERF_P0_FINDINGS.md`
+
+Headline results: short-wide BSQR is already at its flop floor (1.887 measured vs 1.879
+predicted at 128×1024) and `dgeqpf ≈ dgeqp3` there, so only BLAS-3 reorganization of the W
+work can move that regime; square splits into a 1.12–1.28 blocking gap plus 1.38–1.55
+extra-work gap against a 1.25 flop prediction; the kernel is two BLAS-2 walls (reflector
+apply 44–57%, W update 38–53%) with everything else ≤3%; the norm-recompute safeguard is
+free; MEX marshaling/Q/finite-check are ≤4% — its gap is in the kernel. Revised priorities:
+P1.1 (orgqr materialization, also a fairness fix) now, then P3; P2 only for W layout; skip
+P1.3/P1.4 and P2.3.
 
 1. **Per-phase breakdown** across the publication grid using the existing `BSKernelStats`
    (pivot scan / householder / reflector-apply / W-update / norm-downdate). Profile the MEX

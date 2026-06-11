@@ -25,12 +25,14 @@ end
 function _explicit_q(F::BSQRPivoted)
     m = size(F.factors, 1)
     k = F.ksteps
-    Q = Matrix{Float64}(I, m, m)
-    k == 0 && return Q
+    k == 0 && return Matrix{Float64}(I, m, m)
 
-    Aref = Matrix(view(F.factors, :, 1:k))
-    tau = view(F.tau, 1:k)
-    return LAPACK.ormqr!('L', 'N', Aref, tau, Q)
+    # orgqr generates Q directly from the stored reflectors (~1/3 fewer
+    # flops than applying them to an identity via ormqr) and matches how
+    # the dgeqp3 baseline materializes its Q (P1.1 in docs/PERF_P0_FINDINGS.md).
+    Q = Matrix{Float64}(undef, m, m)
+    copyto!(view(Q, :, 1:k), view(F.factors, :, 1:k))
+    return LAPACK.orgqr!(Q, view(F.tau, 1:k), k)
 end
 
 function reconstruct(F::BSQRPivoted, Aorig::AbstractMatrix)
