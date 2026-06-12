@@ -43,12 +43,25 @@ function BSPanelWorkspace(m::Int, n::Int, kmax::Int, nb::Int)
 end
 
 const _DEFAULT_PANEL_NB = 8
+# Empirical crossover: below this k*n the panel bookkeeping (per-call buffers,
+# extra BLAS-call latency) outweighs the gemm benefit. Measured boundary on
+# Apple Silicon/Accelerate: losers <= 16k (128x128, 32x256), winners >= 33k
+# (128x256, 192x192, 64x640).
+const _DEFAULT_PANEL_MIN_KN = 24576
 
 @inline function _panel_nb()
     raw = strip(get(ENV, "BS_PANEL_NB", ""))
     isempty(raw) && return _DEFAULT_PANEL_NB
     v = tryparse(Int, raw)
     v === nothing && throw(ArgumentError("BS_PANEL_NB must be an integer"))
+    return v
+end
+
+@inline function _panel_min_kn()
+    raw = strip(get(ENV, "BS_PANEL_MIN_KN", ""))
+    isempty(raw) && return _DEFAULT_PANEL_MIN_KN
+    v = tryparse(Int, raw)
+    v === nothing && throw(ArgumentError("BS_PANEL_MIN_KN must be an integer"))
     return v
 end
 

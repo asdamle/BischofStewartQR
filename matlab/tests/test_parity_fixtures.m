@@ -44,6 +44,26 @@ end
 verify_backend_against_fixtures(testCase, 'mex');
 end
 
+function testMexPanelKernelMatchesFixtures(testCase)
+% The fixture zoo sits below the panel kernel's k*n crossover, so the
+% default dispatch runs the unblocked kernel; force the panel kernel to
+% keep that execution path pinned to the oracle as well.
+if ~bsqr_mex_available()
+    return;
+end
+old_nb = getenv('BS_PANEL_NB');
+old_kn = getenv('BS_PANEL_MIN_KN');
+restore = onCleanup(@() restore_panel_env(old_nb, old_kn));
+setenv('BS_PANEL_NB', '8');
+setenv('BS_PANEL_MIN_KN', '0');
+verify_backend_against_fixtures(testCase, 'mex');
+end
+
+function restore_panel_env(old_nb, old_kn)
+setenv('BS_PANEL_NB', old_nb);
+setenv('BS_PANEL_MIN_KN', old_kn);
+end
+
 function verify_backend_against_fixtures(testCase, backend)
 manifest = testCase.TestData.manifest;
 for row = 1:height(manifest)

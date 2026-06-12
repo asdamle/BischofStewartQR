@@ -44,7 +44,12 @@ function main()
     baseline_csv = length(ARGS) >= 1 ? ARGS[1] : DEFAULT_INPUT
     candidate_csv = length(ARGS) >= 2 ? ARGS[2] : DEFAULT_INPUT
     max_slowdown = length(ARGS) >= 3 ? parse(Float64, ARGS[3]) : 0.05
+    # Cells whose baseline median is below this floor cannot carry a slowdown
+    # signal across runs (timer/scheduler noise dominates sub-ms cases); they
+    # are reported in the aggregates but exempt from the gate.
+    min_tmed = length(ARGS) >= 4 ? parse(Float64, ARGS[4]) : 0.0
     max_slowdown >= 0 || error("max_slowdown must be >= 0")
+    min_tmed >= 0 || error("min_tmed must be >= 0")
 
     base = _load(baseline_csv)
     cand = _load(candidate_csv)
@@ -54,18 +59,21 @@ function main()
 
     by_method = Dict("bsqr_full" => Float64[], "bsqr_rinv" => Float64[])
     violations = Tuple{Tuple{String,String,Int,Int,Float64,Int,String},Float64}[]
+    ngated = 0
     for k in common_keys
         tb = base[k]
         tc = cand[k]
         tb > 0 || error("Non-positive baseline tmed for key=$k")
         slowdown = tc / tb - 1.0
         push!(by_method[k[7]], slowdown)
+        tb >= min_tmed || continue
+        ngated += 1
         if isfinite(slowdown) && slowdown > max_slowdown
             push!(violations, (k, slowdown))
         end
     end
 
-    println("Performance gate compared $(length(common_keys)) rows (threshold $(round(100 * max_slowdown, digits=2))% slowdown).")
+    println("Performance gate compared $(length(common_keys)) rows, $ngated gated (threshold $(round(100 * max_slowdown, digits=2))% slowdown, min_tmed $(min_tmed)s).")
     println("| method | median_slowdown | max_slowdown |")
     println("|---|---:|---:|")
     for m in ["bsqr_full", "bsqr_rinv"]

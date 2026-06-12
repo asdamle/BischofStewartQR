@@ -166,10 +166,12 @@ function bsqr!(
     end
 end
 
-# Prototype dispatch (P3): BS_PANEL_NB >= 2 routes through the panel kernel.
+# Kernel dispatch (P3): the panel kernel is the default for problems above
+# the empirical crossover; BS_PANEL_NB=0|1 forces the unblocked kernel and
+# BS_PANEL_MIN_KN overrides the crossover (see docs/P3_BLOCKED_BSQR.md).
 function _run_kernel!(A, tau, jpvt, ws, k; kwargs...)
     nb = _panel_nb()
-    if nb >= 2
+    if nb >= 2 && k * size(A, 2) >= _panel_min_kn()
         return _bsqr_kernel_panel!(A, tau, jpvt, ws, k, nb; kwargs...)
     end
     return _bsqr_kernel!(A, tau, jpvt, ws, k; kwargs...)

@@ -52,6 +52,8 @@ Publication knobs:
 - `BS_NORM_RECOMP_TOL` (default: `sqrt(eps(Float64))`)
 - `BS_PANEL_NB` (default: `8`; the panel/blocked kernel width — `0` or `1`
   selects the unblocked reference kernel; see `docs/P3_BLOCKED_BSQR.md`)
+- `BS_PANEL_MIN_KN` (default: `24576`; minimum `k*n` for the panel kernel —
+  below the crossover the unblocked kernel is faster and runs instead)
 - `BS_PUB_FIG_FORMATS` (default: `png`; supported: `png,pdf,eps`)
 
 Quality/CI knobs:

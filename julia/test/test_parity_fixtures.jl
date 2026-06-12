@@ -19,12 +19,22 @@ read_fixture(name::AbstractString) =
 
 rel_err(X, Y) = norm(X - Y) / max(norm(Y), eps(Float64))
 
-@testset "Cross-language parity fixtures (vs MATLAB oracle)" begin
+# The fixture zoo sits below the panel kernel's k*n crossover, so the default
+# dispatch runs the unblocked kernel. Each fixture is therefore checked twice:
+# once at defaults and once with the panel kernel forced, keeping both
+# execution paths pinned to the oracle.
+const PANEL_MODES = [
+    ("default", Dict{String,String}()),
+    ("forced panel", Dict("BS_PANEL_NB" => "8", "BS_PANEL_MIN_KN" => "0")),
+]
+
+@testset "Cross-language parity fixtures (vs MATLAB oracle, $mode_name)" for (mode_name, mode_env) in PANEL_MODES
     @test isdir(PARITY_DIR)
 
     manifest = readlines(joinpath(PARITY_DIR, "manifest.csv"))
     @test first(manifest) == "name,m,n,k,rinv_check,gap_min,rtol_R,rtol_rinv,rtol_crit"
 
+    withenv(pairs(mode_env)...) do
     for line in manifest[2:end]
         fields = split(line, ',')
         name = String(fields[1])
@@ -59,5 +69,6 @@ rel_err(X, Y) = norm(X - Y) / max(norm(Y), eps(Float64))
                 @test rel_err(rinv_r12(F), rinv_exp) < rtol_rinv
             end
         end
+    end
     end
 end

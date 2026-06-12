@@ -104,6 +104,8 @@ Environment knobs (optional):
 - `BS_PANEL_NB` (default `8`; panel/blocked MEX kernel width, `0`/`1` selects
   the unblocked kernel — kept in lockstep with the Julia kernel; see
   `docs/P3_BLOCKED_BSQR.md`)
+- `BS_PANEL_MIN_KN` (default `24576`; minimum `k*n` for the panel kernel —
+  below the crossover the unblocked kernel runs instead)
 - `BS_MATLAB_ALLOW_SHARED_OUTDIR` (`0` default). Keep at `0` to prevent MATLAB
   benchmark artifacts from writing into Julia benchmark roots
   (`benchmark/results/*` and `julia/benchmark/results/*`).

@@ -472,21 +472,32 @@ mwSize update_trailing_state(
 
 // The panel kernel is the default (nb = 8, the measured optimum; see
 // docs/P3_BLOCKED_BSQR.md). BS_PANEL_NB overrides the width; 0 or 1
-// selects the unblocked reference kernel. Kept in lockstep with the Julia
-// _panel_nb()/_DEFAULT_PANEL_NB.
+// selects the unblocked reference kernel. Below the empirical k*n
+// crossover the panel bookkeeping outweighs the gemm benefit and the
+// unblocked kernel runs instead (BS_PANEL_MIN_KN overrides). Kept in
+// lockstep with the Julia _panel_nb()/_panel_min_kn().
 constexpr int kDefaultPanelNb = 8;
+constexpr long kDefaultPanelMinKn = 24576;
 
-int panel_nb_from_env() {
-    const char *raw = std::getenv("BS_PANEL_NB");
+long env_long(const char *name, long fallback, const char *errid) {
+    const char *raw = std::getenv(name);
     if (!raw || !*raw) {
-        return kDefaultPanelNb;
+        return fallback;
     }
     char *end = nullptr;
     const long v = std::strtol(raw, &end, 10);
     if (end == raw || *end != '\0') {
-        fail("bsqr:InvalidPanelNb", "BS_PANEL_NB must be an integer.");
+        mexErrMsgIdAndTxt(errid, "%s must be an integer.", name);
     }
-    return static_cast<int>(v);
+    return v;
+}
+
+int panel_nb_from_env() {
+    return static_cast<int>(env_long("BS_PANEL_NB", kDefaultPanelNb, "bsqr:InvalidPanelNb"));
+}
+
+long panel_min_kn_from_env() {
+    return env_long("BS_PANEL_MIN_KN", kDefaultPanelMinKn, "bsqr:InvalidPanelMinKn");
 }
 
 // Pivot exchange i <-> best_j for the panel kernel: stored A column, W prefix
@@ -879,7 +890,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     const int panel_nb = panel_nb_from_env();
-    if (panel_nb >= 2) {
+    const bool use_panel = panel_nb >= 2 &&
+        static_cast<long>(k) * static_cast<long>(n) >= panel_min_kn_from_env();
+    if (use_panel) {
         bsqr_panel_kernel(A, W, wnorm2, s, s_ref, tau, p, ws, m, n, k,
                           static_cast<mwSize>(panel_nb), opt.norm_recomp_tol,
                           opt.trace, trace_crit, trace_nrecomp);
