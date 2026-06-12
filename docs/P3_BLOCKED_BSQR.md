@@ -71,15 +71,20 @@ eagerly to `B` at `O(nb·N)` per step).
 ## Norm-recompute guard
 
 The guard (`s_j ≤ s_ref_j·tol`) needs the *true* tail of column j, which is stale mid-panel.
-Mirror LAPACK's `dlaqps`: when any downdate trips the guard, **end the panel early** at the
-current step, flush the deferred updates, recompute the flagged norms exactly, and start a new
-panel. This preserves the mathematical quantity (the recompute returns the same value either
-way); it changes only rounding/timing of the refresh, which is within the sanctioned
-deviation-#1 envelope. P0 measured 0 recomputes on square gaussian and ~600–900 on short-wide
-(roughly one trip per step at n−i large) — if early termination degenerates panels to width ~1
-in the short-wide regime, the guard policy needs refinement (e.g. batch the flagged columns and
-recompute them against the *flushed* state at panel end, accepting one step of stale `s_ref`);
-decide empirically in the prototype.
+Two policies were evaluated empirically:
+
+1. *Early flush* (`dlaqps`-style): end the panel at the trip, flush, refresh, restart. Refresh
+   timing is step-identical to the unblocked kernel, but recompute-heavy regimes (ill-conditioned
+   short-wide trips nearly every step) degenerate panels to width ~1 — the full publication run
+   showed ill-conditioned short-wide *regressing* 1.72 → 1.97 under this policy.
+2. *Batched refresh* (**adopted**): flag each tripping column once per panel and refresh all
+   flagged columns exactly at the natural panel flush. A flagged column's running `s` is
+   `≤ tol·s_ref`, so its criterion is orders of magnitude too large to win a selection within
+   the remaining `≤ nb−1` panel steps; the refreshed value is the same mathematical quantity
+   either way, so this stays within the sanctioned deviation-#1 envelope (refresh timing moves
+   by at most `nb−1` steps). Pivot parity on the tie-free fixture suite is unchanged. Note the
+   per-step `nrecomp` trace counts one flag per column per panel, unlike the unblocked kernel's
+   per-trip counts — the cross-backend trace test pins `BS_PANEL_NB=0` accordingly.
 
 ## Equivalence and cost
 
@@ -121,12 +126,15 @@ deferred gemms run above `dgeqp3`'s average throughput at these sizes), 15–29%
 despite recompute-triggered early flushes. The ≥20% adoption gate is met with zero parity
 regressions.
 
-## Remaining to land (in order)
+## Landing status
 
-1. Port the identical panel algorithm to the MEX (algorithm-visible change: Julia and MEX move
-   together per the change taxonomy; the m-file stays the unblocked reference).
-2. Flip the default (`nb = 8`, env-overridable) in both, rerun the complete validation
-   harness in both languages.
-3. Regenerate publication benchmark artifacts and run the perf gates; revisit the
-   `BS_PUB_THREADS` grid (gemm now benefits from threads).
-4. Fold this derivation into the writeup as an appendix.
+1. **MEX port — done.** Line-for-line port in `bsqr_mex.cpp` (`bsqr_panel_kernel`), validated
+   by the full MATLAB suite with the flag on (oracle-fixture pivot parity, crit traces,
+   cancellation stress, mfile↔mex parity). MEX timings at nb=8 vs `qr econ`: square
+   2.41→1.28 / 3.76→1.40 / 1.77→1.16; short-wide 1.95→1.64 / 1.94→1.51 / 2.23→1.61.
+2. **Default flip — done.** `nb = 8` default in both languages (`_DEFAULT_PANEL_NB` /
+   `kDefaultPanelNb`, kept in lockstep); `BS_PANEL_NB=0|1` selects the unblocked reference
+   kernel. Both full suites green on the new default; the unblocked kernel stays covered by
+   the direct-call Julia testsets and the m-file backend.
+3. Publication artifacts regenerated post-flip; perf gates run against the pre-panel baselines.
+4. Remaining: fold this derivation into the writeup as an appendix (publication task).

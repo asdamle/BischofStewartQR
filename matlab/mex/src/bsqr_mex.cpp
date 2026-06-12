@@ -43,6 +43,7 @@ struct Workspace {
     std::vector<double> ph;     // nb scratch
     std::vector<double> pq;     // nb scratch
     std::vector<double> py;     // n scratch
+    std::vector<char> flagged;  // columns awaiting exact norm refresh at flush
     std::vector<mwSize> flush_recompute;
 };
 
@@ -469,10 +470,16 @@ mwSize update_trailing_state(
     return nrecomp;
 }
 
+// The panel kernel is the default (nb = 8, the measured optimum; see
+// docs/P3_BLOCKED_BSQR.md). BS_PANEL_NB overrides the width; 0 or 1
+// selects the unblocked reference kernel. Kept in lockstep with the Julia
+// _panel_nb()/_DEFAULT_PANEL_NB.
+constexpr int kDefaultPanelNb = 8;
+
 int panel_nb_from_env() {
     const char *raw = std::getenv("BS_PANEL_NB");
     if (!raw || !*raw) {
-        return 0;
+        return kDefaultPanelNb;
     }
     char *end = nullptr;
     const long v = std::strtol(raw, &end, 10);
@@ -553,6 +560,8 @@ void bsqr_panel_kernel(
     ws.ph.resize(nb);
     ws.pq.resize(nb);
     ws.py.resize(n);
+    ws.flagged.assign(n, 0);
+    ws.flush_recompute.clear();
 
     ptrdiff_t inc1 = 1;
     const double one = 1.0;
@@ -567,7 +576,6 @@ void bsqr_panel_kernel(
     while (s0 < k) {
         const mwSize tmax = std::min(nb, k - s0);
         mwSize tdone = 0;
-        ws.flush_recompute.clear();
 
         for (mwSize t = 0; t < tmax; ++t) {
             const mwSize i = s0 + t;
@@ -684,6 +692,12 @@ void bsqr_panel_kernel(
                 }
 
                 // --- wnorm2 recurrence and norm downdates (as unblocked) ---
+                // Guard trips are batched and refreshed exactly at panel
+                // flush: a flagged column's running s is <= tol * s_ref, so
+                // its criterion cannot win a selection within the remaining
+                // <= nb-1 panel steps. (Per-step early flushing degenerates
+                // panels to width ~1 in recompute-heavy regimes; see
+                // docs/P3_BLOCKED_BSQR.md.) Kept in lockstep with Julia.
                 for (mwSize r = 0; r < nrem; ++r) {
                     const mwSize j = i + 1 + r;
                     const double b = ws.beta_vec[r];
@@ -698,7 +712,8 @@ void bsqr_panel_kernel(
                     const double alpha = AatConst(A, m, i, j);
                     const double sj = std::max(old_s - alpha * alpha, 0.0);
                     s[j] = sj;
-                    if (sj <= s_ref[j] * norm_recomp_tol) {
+                    if (sj <= s_ref[j] * norm_recomp_tol && !ws.flagged[j]) {
+                        ws.flagged[j] = 1;
                         ws.flush_recompute.push_back(j);
                         ++nrecomp_step;
                     }
@@ -709,10 +724,6 @@ void bsqr_panel_kernel(
             }
 
             tdone = t + 1;
-            if (!ws.flush_recompute.empty()) {
-                // Exact refresh needs true columns; flush early (dlaqps-style).
-                break;
-            }
         }
 
         // --- Panel flush: apply the deferred rank-tdone updates ---
@@ -764,7 +775,9 @@ void bsqr_panel_kernel(
                 }
                 s_ref[j] = exact;
                 s[j] = exact;
+                ws.flagged[j] = 0;
             }
+            ws.flush_recompute.clear();
         }
 
         s0 += std::max<mwSize>(tdone, 1);

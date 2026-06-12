@@ -8,7 +8,9 @@
 # end. All selection quantities equal the unblocked ones in exact arithmetic
 # (regrouped sums only); pivot parity is enforced by the fixture suite.
 #
-# Activation: prototype-only, via BS_PANEL_NB >= 2 (checked in bsqr!).
+# The panel kernel is the default (nb = 8, the measured optimum; see
+# docs/P3_BLOCKED_BSQR.md). BS_PANEL_NB overrides the width; 0 or 1
+# selects the unblocked reference kernel.
 
 struct BSPanelWorkspace
     V::Matrix{Float64}      # m x nb reflector vectors (panel-local rows)
@@ -20,6 +22,8 @@ struct BSPanelWorkspace
     q::Vector{Float64}      # nb scratch
     g::Vector{Float64}      # n scratch (criterion dots)
     y::Vector{Float64}      # n scratch (Fa gemv)
+    flagged::Vector{Bool}   # columns awaiting exact norm refresh at flush
+    flush_list::Vector{Int}
 end
 
 function BSPanelWorkspace(m::Int, n::Int, kmax::Int, nb::Int)
@@ -33,12 +37,16 @@ function BSPanelWorkspace(m::Int, n::Int, kmax::Int, nb::Int)
         zeros(nb),
         zeros(n),
         zeros(n),
+        fill(false, n),
+        Int[],
     )
 end
 
+const _DEFAULT_PANEL_NB = 8
+
 @inline function _panel_nb()
     raw = strip(get(ENV, "BS_PANEL_NB", ""))
-    isempty(raw) && return 0
+    isempty(raw) && return _DEFAULT_PANEL_NB
     v = tryparse(Int, raw)
     v === nothing && throw(ArgumentError("BS_PANEL_NB must be an integer"))
     return v
@@ -100,7 +108,6 @@ function _bsqr_kernel_panel!(
     while s <= k
         tmax = min(nb, k - s + 1)
         tdone = 0
-        flush_recompute = Int[]  # columns flagged for exact refresh post-flush
         stopped = false
 
         for t in 1:tmax
@@ -255,8 +262,15 @@ function _bsqr_kernel_panel!(
                 copyto!(view(pws.B, t, (i + 1):n), beta_vec)
 
                 # --- wnorm2 recurrence and norm downdates (as unblocked) ---
+                # Columns whose downdate trips the guard are batched and
+                # refreshed exactly at panel flush: a flagged column's running
+                # s is <= tol * s_ref, so its criterion is far too large to
+                # win a selection within the remaining <= nb-1 panel steps,
+                # and the refreshed value is the same mathematical quantity
+                # either way. (Per-step early flushing degenerates panels to
+                # width ~1 in recompute-heavy regimes; measured in
+                # docs/P3_BLOCKED_BSQR.md.)
                 nrecompute = 0
-                recompute_slots = view(ws.recompute_idx, 1:nrem)
                 @inbounds for r in 1:nrem
                     j = i + r
                     b = beta_vec[r]
@@ -271,20 +285,17 @@ function _bsqr_kernel_panel!(
                     sj = old_s - alpha[r] * alpha[r]
                     sj = sj > 0.0 ? sj : 0.0
                     ws.s[j] = sj
-                    if sj <= ws.s_ref[j] * norm_recomp_tol
+                    if sj <= ws.s_ref[j] * norm_recomp_tol && !pws.flagged[j]
+                        pws.flagged[j] = true
+                        push!(pws.flush_list, j)
                         nrecompute += 1
-                        recompute_slots[nrecompute] = j
                     end
                 end
                 if recomp_history !== nothing
                     push!(recomp_history, nrecompute)
                 end
-                if nrecompute > 0
-                    # Exact refresh needs true columns; flush early (dlaqps-style).
-                    append!(flush_recompute, recompute_slots[1:nrecompute])
-                    if norm_recomp_count !== nothing
-                        norm_recomp_count[] += nrecompute
-                    end
+                if nrecompute > 0 && norm_recomp_count !== nothing
+                    norm_recomp_count[] += nrecompute
                 end
             elseif recomp_history !== nothing
                 push!(recomp_history, 0)
@@ -294,10 +305,6 @@ function _bsqr_kernel_panel!(
             ksteps = i
             if frob_inv_trace !== nothing
                 push!(frob_inv_trace, best_c)
-            end
-
-            if !isempty(flush_recompute)
-                break
             end
         end
 
@@ -327,11 +334,13 @@ function _bsqr_kernel_panel!(
             end
 
             # Exact norm refresh for columns flagged mid-panel (now true).
-            for j in flush_recompute
+            for j in pws.flush_list
                 sj = _tail_colnorm2(A, ie + 1, m, j)
                 ws.s_ref[j] = sj
                 ws.s[j] = sj
+                pws.flagged[j] = false
             end
+            empty!(pws.flush_list)
         end
 
         stopped && break

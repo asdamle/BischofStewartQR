@@ -80,9 +80,15 @@ function testTraceParityBetweenBackends(testCase)
 % Recompute events are threshold crossings on running norms, so equality
 % between the two MATLAB backends pins both the guard logic and the norm
 % downdate arithmetic step by step (measured exactly equal on the zoo).
+% Pinned to the unblocked kernels: the panel kernel batches guard trips
+% per panel (one flag per column), so its counts differ by design — and
+% this keeps the unblocked MEX path covered now that panel is the default.
 if ~bsqr_mex_available()
     return;
 end
+old_nb = getenv('BS_PANEL_NB');
+restore_nb = onCleanup(@() setenv('BS_PANEL_NB', old_nb));
+setenv('BS_PANEL_NB', '0');
 manifest = testCase.TestData.manifest;
 for row = 1:height(manifest)
     name = manifest.name{row};

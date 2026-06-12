@@ -50,6 +50,8 @@ Publication knobs:
 - `BS_PUB_WARMUP` (default: `1`)
 - `BS_PUB_SAMPLES` (default: `30`)
 - `BS_NORM_RECOMP_TOL` (default: `sqrt(eps(Float64))`)
+- `BS_PANEL_NB` (default: `8`; the panel/blocked kernel width — `0` or `1`
+  selects the unblocked reference kernel; see `docs/P3_BLOCKED_BSQR.md`)
 - `BS_PUB_FIG_FORMATS` (default: `png`; supported: `png,pdf,eps`)
 
 Quality/CI knobs:

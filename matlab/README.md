@@ -101,6 +101,9 @@ Environment knobs (optional):
 - `BS_MATLAB_PUB_SAMPLES`
 - `BS_MATLAB_NORM_RECOMP_TOL`
 - `BS_MATLAB_PUB_FIG_FORMATS` (`png` default; supports `png,pdf,eps`)
+- `BS_PANEL_NB` (default `8`; panel/blocked MEX kernel width, `0`/`1` selects
+  the unblocked kernel — kept in lockstep with the Julia kernel; see
+  `docs/P3_BLOCKED_BSQR.md`)
 - `BS_MATLAB_ALLOW_SHARED_OUTDIR` (`0` default). Keep at `0` to prevent MATLAB
   benchmark artifacts from writing into Julia benchmark roots
   (`benchmark/results/*` and `julia/benchmark/results/*`).
