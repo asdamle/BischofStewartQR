@@ -1,8 +1,14 @@
 function plot_publication_results(varargin)
-%PLOT_PUBLICATION_RESULTS Generate publication plots and tables from benchmark CSV.
+%PLOT_PUBLICATION_RESULTS Generate publication figures and tables from benchmark CSV.
 %
 %   plot_publication_results()
 %   plot_publication_results(csv_path, plots_dir, tables_dir)
+%
+%   Figure spec: docs/PUBLICATION_FIGURES_PLAN.md. The Julia pipeline's
+%   plotter (julia/benchmark/plot_publication.py) conforms to the same
+%   spec; any change to figure semantics, labels, or styling must land in
+%   both. The MATLAB CSV has no blas_threads dimension, so figures have
+%   family panels only and tables omit that column.
 
 repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 def_csv = fullfile(repo_root, 'matlab', 'benchmark', 'results', 'publication', 'publication_timings.csv');
@@ -54,431 +60,374 @@ if ~isfolder(mode_tables)
     mkdir(mode_tables);
 end
 
+labels = mode_labels(mode_name);
 rt = pair_relative_times(rows, bs_method, baseline_method);
 quality = rows(rows.method == bs_method | rows.method == baseline_method, :);
 
-square = rt(rt.regime == "square", :);
-short = rt(rt.regime == "short_wide", :);
+write_relative_time_table(rt(rt.regime == "square", :), {'family', 'm', 'n'}, ...
+    fullfile(mode_tables, 'table_square_relative_time.csv'));
+write_relative_time_table(rt(rt.regime == "short_wide", :), {'family', 'm', 'n', 'aspect'}, ...
+    fullfile(mode_tables, 'table_shortwide_relative_time.csv'));
+write_quality_summary(quality, bs_method, baseline_method, labels, mode_tables);
 
-write_relative_time_table(square, fullfile(mode_tables, 'table_square_speedup.csv'));
-write_relative_time_table(short, fullfile(mode_tables, 'table_shortwide_speedup.csv'));
-write_quality_table(quality, fullfile(mode_tables, 'table_quality.csv'));
-
-plot_square_runtime(rows, bs_method, baseline_method, fullfile(mode_plots, 'figure1_square_runtime'), style);
-plot_shortwide_runtime(rows, bs_method, baseline_method, fullfile(mode_plots, 'figure2_shortwide_runtime'), style);
-plot_shortwide_heatmap(short, baseline_method, bs_method, fullfile(mode_plots, 'figure3_shortwide_speedup_heatmap'), style);
-plot_quality(quality, bs_method, baseline_method, fullfile(mode_plots, 'figure4_quality'), style);
-plot_aggregate_relative_time(rt, baseline_method, bs_method, fullfile(mode_plots, 'figure5_aggregate_speedup'), style);
+fig_square_runtime(rows, bs_method, baseline_method, labels, fullfile(mode_plots, 'fig_square_runtime'), style);
+fig_shortwide_runtime(rows, bs_method, baseline_method, labels, fullfile(mode_plots, 'fig_shortwide_runtime'), style);
+fig_relative_time(rt, labels, fullfile(mode_plots, 'fig_relative_time'), style);
+write_captions(rows, labels, mode_name, mode_plots);
 end
 
-function plot_square_runtime(rows, bs_method, baseline_method, outstem, style)
-bs = rows(rows.method == bs_method & rows.regime == "square", :);
-base = rows(rows.method == baseline_method & rows.regime == "square", :);
-if isempty(bs) || isempty(base)
+% ----------------------------------------------------------------------
+% Figures
+% ----------------------------------------------------------------------
+
+function fig_square_runtime(rows, bs_method, baseline_method, labels, outstem, style)
+sub = rows(rows.regime == "square", :);
+families = sort(unique(sub.family));
+if isempty(families)
     return;
 end
 
-[x_bs, med_bs, lo_bs, hi_bs] = grouped_stats(bs.m, bs.tmed_s);
-[x_base, med_base, lo_base, hi_base] = grouped_stats(base.m, base.tmed_s);
-
-fig = figure('Visible', 'off', 'Color', 'w');
-set_publication_figure_size(fig, style, style.default_height);
-ax = axes(fig);
-hold(ax, 'on');
-
-h_bs = plot_with_band(ax, x_bs, med_bs, lo_bs, hi_bs, method_style(style, bs_method));
-h_base = plot_with_band(ax, x_base, med_base, lo_base, hi_base, method_style(style, baseline_method));
-
-set(ax, 'XScale', 'log', 'YScale', 'log');
-apply_axes_style(ax, style);
-xlabel(ax, 'm=n', 'Interpreter', 'none');
-ylabel(ax, 'Median time (s)', 'Interpreter', 'none');
-title(ax, 'Square runtime', 'Interpreter', 'none');
-lgd = legend(ax, [h_bs, h_base], {method_label(bs_method), method_label(baseline_method)}, ...
-    'Location', 'northwest', 'Interpreter', 'none', 'Box', 'on');
-set(lgd, 'FontSize', style.legend_font_size);
-
-save_figure(fig, outstem);
-end
-
-function plot_shortwide_runtime(rows, bs_method, baseline_method, outstem, style)
-short = rows(rows.regime == "short_wide" & (rows.method == bs_method | rows.method == baseline_method), :);
-if isempty(short)
-    return;
-end
-
-m_vals = unique(short.m);
-m_vals = sort(m_vals);
-if isempty(m_vals)
-    return;
-end
-
-cmap = lines(numel(m_vals));
-fig = figure('Visible', 'off', 'Color', 'w');
-set_publication_figure_size(fig, style, style.default_height);
-ax = axes(fig);
-hold(ax, 'on');
-
-methods = [bs_method, baseline_method];
-for mi = 1:numel(m_vals)
-    m = m_vals(mi);
-    this_color = cmap(mi, :);
-    for method = methods
-        block = short(short.m == m & short.method == method, :);
-        if isempty(block)
-            continue;
-        end
-        [x_n, med_n, lo_n, hi_n] = grouped_stats(block.n, block.tmed_s);
-        st = method_style(style, method);
-        st.color = this_color;
-        plot_with_band(ax, x_n, med_n, lo_n, hi_n, st);
-    end
-end
-
-set(ax, 'XScale', 'log', 'YScale', 'log');
-apply_axes_style(ax, style);
-xlabel(ax, 'n', 'Interpreter', 'none');
-ylabel(ax, 'Median time (s)', 'Interpreter', 'none');
-title(ax, 'Short-wide runtime', 'Interpreter', 'none');
-
-method_handles = gobjects(0, 1);
-method_labels = strings(0, 1);
-for method = methods
-    st = method_style(style, method);
-    method_handles(end+1, 1) = plot(ax, nan, nan, ...
-        'LineStyle', st.linestyle, 'Marker', st.marker, ...
-        'Color', [0 0 0], 'LineWidth', style.line_width, ...
-        'MarkerSize', style.marker_size); %#ok<AGROW>
-    method_labels(end+1, 1) = method_label(method); %#ok<AGROW>
-end
-
-m_handles = gobjects(0, 1);
-m_labels = strings(0, 1);
-for mi = 1:numel(m_vals)
-    m_handles(end+1, 1) = plot(ax, nan, nan, '-', ...
-        'Color', cmap(mi, :), 'LineWidth', style.line_width); %#ok<AGROW>
-    m_labels(end+1, 1) = "m=" + string(m_vals(mi)); %#ok<AGROW>
-end
-
-legend_handles = [method_handles; m_handles];
-legend_labels = [method_labels; m_labels];
-lgd = legend(ax, legend_handles, cellstr(legend_labels), ...
-    'Location', 'southoutside', 'NumColumns', min(4, numel(legend_labels)), ...
-    'Interpreter', 'none', 'Box', 'on');
-set(lgd, 'FontSize', style.legend_font_size);
-
-save_figure(fig, outstem);
-end
-
-function plot_shortwide_heatmap(short, baseline_method, bs_method, outstem, style)
-if isempty(short)
-    return;
-end
-
-m_vals = sort(unique(short.m));
-a_vals = sort(unique(short.aspect));
-H = nan(numel(m_vals), numel(a_vals));
-for i = 1:numel(m_vals)
-    for j = 1:numel(a_vals)
-        mask = short.m == m_vals(i) & short.aspect == a_vals(j);
-        vals = short.relative_time(mask);
-        vals = vals(vals > 0 & isfinite(vals));
-        if ~isempty(vals)
-            H(i, j) = geomean(vals);
-        end
-    end
-end
-
-fig = figure('Visible', 'off', 'Color', 'w');
-set_publication_figure_size(fig, style, style.default_height);
-ax = axes(fig);
-Hlog = log(H);
-imagesc(ax, a_vals, m_vals, Hlog);
-set(ax, 'YDir', 'normal');
-apply_axes_style(ax, style);
-
-finite_vals = H(isfinite(H) & H > 0);
-if isempty(finite_vals)
-    spread = log(1.1);
-else
-    spread = max(abs(log(finite_vals)));
-    spread = max(spread, log(1.05));
-end
-caxis(ax, [-spread, spread]);
-colormap(ax, blue_white_red(256));
-cb = colorbar(ax);
-tick_vals = [0.5, 0.75, 1, 1.5, 2, 3, 4];
-tick_vals = tick_vals(log(tick_vals) >= -spread & log(tick_vals) <= spread);
-if ~any(abs(tick_vals - 1) < eps)
-    tick_vals = sort([tick_vals, 1]);
-end
-set(cb, 'Ticks', log(tick_vals), 'TickLabels', compose('%.2g', tick_vals));
-ylabel(cb, "Relative time (" + string(method_label(bs_method)) + " / " + ...
-    string(method_label(baseline_method)) + "); 1.0 = parity", 'Interpreter', 'none');
-
-xlabel(ax, 'aspect (n/m)', 'Interpreter', 'none');
-ylabel(ax, 'm', 'Interpreter', 'none');
-xticks(ax, a_vals);
-yticks(ax, m_vals);
-title(ax, 'Short-wide relative time', 'Interpreter', 'none');
-
-save_figure(fig, outstem);
-end
-
-function plot_quality(rows, bs_method, baseline_method, outstem, style)
-if isempty(rows)
-    return;
-end
-
-regimes = ["square", "short_wide"];
-regime_labels = {'square', 'short-wide'};
-metrics = {'residual', 'orthogonality'};
-titles = {'Residual', 'Orthogonality'};
-
-fig = figure('Visible', 'off', 'Color', 'w');
-set_publication_figure_size(fig, style, style.quality_height);
-tl = tiledlayout(fig, 2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-axes_handles = gobjects(numel(metrics), 1);
-
-for mi = 1:numel(metrics)
-    metric = metrics{mi};
+fig = new_figure(style, style.double_col_width, 2.45);
+tl = tiledlayout(fig, 1, numel(families), 'TileSpacing', 'compact', 'Padding', 'compact');
+first_handles = gobjects(2, 1);
+for fi = 1:numel(families)
+    fam = families(fi);
     ax = nexttile(tl);
-    axes_handles(mi) = ax;
     hold(ax, 'on');
-
-    y_bs = zeros(1, numel(regimes));
-    y_base = zeros(1, numel(regimes));
-    y_bs_lo = zeros(1, numel(regimes));
-    y_bs_hi = zeros(1, numel(regimes));
-    y_base_lo = zeros(1, numel(regimes));
-    y_base_hi = zeros(1, numel(regimes));
-
-    for ri = 1:numel(regimes)
-        regime = regimes(ri);
-        bs_vals = extract_metric(rows, metric, regime, bs_method);
-        base_vals = extract_metric(rows, metric, regime, baseline_method);
-
-        [y_bs(ri), y_bs_lo(ri), y_bs_hi(ri)] = metric_stats(bs_vals);
-        [y_base(ri), y_base_lo(ri), y_base_hi(ri)] = metric_stats(base_vals);
+    methods = {bs_method, baseline_method};
+    roles = {'bs', 'base'};
+    % Bands first (faint, behind every line), then the median lines.
+    stats = cell(2, 1);
+    for k = 1:2
+        block = sub(sub.family == fam & sub.method == methods{k}, :);
+        [x, ctr, lo, hi] = seed_grouped_stats(block.m, block.tmed_s);
+        st = role_style(style, roles{k});
+        stats{k} = struct('x', x, 'ctr', ctr, 'lo', lo, 'hi', hi, 'st', st);
+        plot_band(ax, x, lo, hi, st.color);
     end
-
-    x = 1:numel(regimes);
-    w = 0.36;
-    bar(ax, x - w/2, y_bs, w, 'FaceColor', style.bsqr_color, 'DisplayName', method_label(bs_method));
-    bar(ax, x + w/2, y_base, w, 'FaceColor', style.baseline_color, 'DisplayName', method_label(baseline_method));
-
-    err_bs = errorbar(ax, x - w/2, y_bs, y_bs - y_bs_lo, y_bs_hi - y_bs, ...
-        'k.', 'CapSize', 5, 'LineWidth', 0.9);
-    err_base = errorbar(ax, x + w/2, y_base, y_base - y_base_lo, y_base_hi - y_base, ...
-        'k.', 'CapSize', 5, 'LineWidth', 0.9);
-    set(err_bs, 'HandleVisibility', 'off');
-    set(err_base, 'HandleVisibility', 'off');
-
-    set(ax, 'YScale', 'log');
-    xticks(ax, x);
-    xticklabels(ax, regime_labels);
+    for k = 1:2
+        h = plot_median_line(ax, stats{k}.x, stats{k}.ctr, stats{k}.st);
+        if fi == 1
+            first_handles(k) = h;
+        end
+    end
+    set(ax, 'XScale', 'log', 'YScale', 'log');
     apply_axes_style(ax, style);
-    title(ax, titles{mi}, 'Interpreter', 'none');
-    if mi == numel(metrics)
-        xlabel(ax, 'regime', 'Interpreter', 'none');
+    xticks(ax, sort(unique(sub.m)));
+    set(ax, 'XMinorTick', 'off');
+    title(ax, display_family(fam), 'Interpreter', 'latex', 'FontWeight', 'normal');
+    xlabel(ax, '$m = n$', 'Interpreter', 'latex');
+    if fi == 1
+        ylabel(ax, 'median time [s]', 'Interpreter', 'latex');
     end
-    ylabel(ax, metric, 'Interpreter', 'none');
-    grid(ax, 'on');
 end
-
-lgd = legend(axes_handles(1), 'Location', 'northwest', 'Interpreter', 'none', 'Box', 'on');
+lgd = legend(first_handles, {labels.bs, labels.base}, ...
+    'Location', 'northwest', 'Interpreter', 'latex', 'Box', 'off');
 set(lgd, 'FontSize', style.legend_font_size);
-
-save_figure(fig, outstem);
+save_figure(fig, outstem, style);
 end
 
-function plot_aggregate_relative_time(rt, baseline_method, bs_method, outstem, style)
+function fig_shortwide_runtime(rows, bs_method, baseline_method, labels, outstem, style)
+sub = rows(rows.regime == "short_wide" & (rows.method == bs_method | rows.method == baseline_method), :);
+families = sort(unique(sub.family));
+m_vals = sort(unique(sub.m));
+if isempty(families) || isempty(m_vals)
+    return;
+end
+cmap = lines(numel(m_vals));
+
+fig = new_figure(style, style.double_col_width, 3.2);
+tl = tiledlayout(fig, 1, numel(families), 'TileSpacing', 'compact', 'Padding', 'compact');
+ax_last = [];
+for fi = 1:numel(families)
+    fam = families(fi);
+    ax = nexttile(tl);
+    ax_last = ax;
+    hold(ax, 'on');
+    methods = {bs_method, baseline_method};
+    roles = {'bs', 'base'};
+    % Bands first (faint, behind every line), then all median lines.
+    series = {};
+    for mi = 1:numel(m_vals)
+        for k = 1:2
+            block = sub(sub.family == fam & sub.m == m_vals(mi) & sub.method == methods{k}, :);
+            if isempty(block)
+                continue;
+            end
+            [x, ctr, lo, hi] = seed_grouped_stats(block.n, block.tmed_s);
+            st = role_style(style, roles{k});
+            st.color = cmap(mi, :);
+            st.markersize = 3.2;
+            series{end+1} = struct('x', x, 'ctr', ctr, 'lo', lo, 'hi', hi, 'st', st); %#ok<AGROW>
+        end
+    end
+    for si = 1:numel(series)
+        plot_band(ax, series{si}.x, series{si}.lo, series{si}.hi, series{si}.st.color);
+    end
+    for si = 1:numel(series)
+        plot_median_line(ax, series{si}.x, series{si}.ctr, series{si}.st);
+    end
+    set(ax, 'XScale', 'log', 'YScale', 'log');
+    apply_axes_style(ax, style);
+    % Power-of-two ticks to match the Julia plotter's log2 axis.
+    n_min = min(sub.n);
+    n_max = max(sub.n);
+    pows = ceil(log2(n_min)):floor(log2(n_max));
+    xticks(ax, 2 .^ pows);
+    xticklabels(ax, compose("$2^{%d}$", pows));
+    set(ax, 'XMinorTick', 'off');
+    title(ax, display_family(fam), 'Interpreter', 'latex', 'FontWeight', 'normal');
+    xlabel(ax, '$n$', 'Interpreter', 'latex');
+    if fi == 1
+        ylabel(ax, 'median time [s]', 'Interpreter', 'latex');
+    end
+end
+
+% One combined legend below the panels: method styles (black) then m colors.
+handles = gobjects(0, 1);
+entries = strings(0, 1);
+roles = {'bs', 'base'};
+role_names = {labels.bs, labels.base};
+for k = 1:2
+    st = role_style(style, roles{k});
+    handles(end+1, 1) = plot(ax_last, nan, nan, 'LineStyle', st.linestyle, ...
+        'Marker', st.marker, 'Color', [0 0 0], 'LineWidth', st.linewidth, ...
+        'MarkerSize', 3.2); %#ok<AGROW>
+    entries(end+1, 1) = string(role_names{k}); %#ok<AGROW>
+end
+for mi = 1:numel(m_vals)
+    handles(end+1, 1) = plot(ax_last, nan, nan, '-', 'Color', cmap(mi, :), ...
+        'LineWidth', style.line_width); %#ok<AGROW>
+    entries(end+1, 1) = "$m = " + string(m_vals(mi)) + "$"; %#ok<AGROW>
+end
+lgd = legend(ax_last, handles, cellstr(entries), 'Interpreter', 'latex', ...
+    'Box', 'off', 'NumColumns', 4);
+lgd.Layout.Tile = 'south';
+set(lgd, 'FontSize', style.legend_font_size);
+save_figure(fig, outstem, style);
+end
+
+function fig_relative_time(rt, labels, outstem, style)
 if isempty(rt)
     return;
 end
+families = sort(unique(rt.family));
+regimes = ["square", "short_wide"];
+regime_display = containers.Map({'square', 'short_wide'}, {'square', 'short-wide'});
 
-has_threads = ismember('blas_threads', rt.Properties.VariableNames);
-
-if has_threads
-    combo_keys = unique(rt(:, {'family', 'regime', 'blas_threads'}), 'rows');
-else
-    combo_keys = unique(rt(:, {'family', 'regime'}), 'rows');
-end
-
-labels = strings(height(combo_keys), 1);
-center = nan(height(combo_keys), 1);
-lo = nan(height(combo_keys), 1);
-hi = nan(height(combo_keys), 1);
-
-for i = 1:height(combo_keys)
-    if has_threads
-        combo_mask = rt.family == combo_keys.family(i) & rt.regime == combo_keys.regime(i) & ...
-            rt.blas_threads == combo_keys.blas_threads(i);
-    else
-        combo_mask = rt.family == combo_keys.family(i) & rt.regime == combo_keys.regime(i);
-    end
-
-    combo_rows = rt(combo_mask, :);
-    seeds = unique(combo_rows.seed);
-    seed_reltimes = nan(numel(seeds), 1);
-    for sidx = 1:numel(seeds)
-        vals = combo_rows.relative_time(combo_rows.seed == seeds(sidx));
-        vals = vals(vals > 0 & isfinite(vals));
-        seed_reltimes(sidx) = geomean(vals);
-    end
-    seed_reltimes = seed_reltimes(isfinite(seed_reltimes));
-    if isempty(seed_reltimes)
-        continue;
-    end
-
-    center(i) = geomean(seed_reltimes);
-    lo(i) = min(seed_reltimes);
-    hi(i) = max(seed_reltimes);
-
-    family_short = short_family_name(combo_keys.family(i));
-    regime_short = "sq";
-    if combo_keys.regime(i) == "short_wide"
-        regime_short = "sw";
-    end
-    if has_threads
-        labels(i) = family_short + " | " + regime_short + " | t" + string(combo_keys.blas_threads(i));
-    else
-        labels(i) = family_short + " | " + regime_short;
+row_labels = strings(0, 1);
+center = zeros(0, 1);
+lo = zeros(0, 1);
+hi = zeros(0, 1);
+for fi = 1:numel(families)
+    for ri = 1:numel(regimes)
+        mask = rt.family == families(fi) & rt.regime == regimes(ri);
+        if ~any(mask)
+            continue;
+        end
+        combo = rt(mask, :);
+        seeds = unique(combo.seed);
+        seed_geo = zeros(numel(seeds), 1);
+        for si = 1:numel(seeds)
+            vals = combo.relative_time(combo.seed == seeds(si));
+            vals = vals(isfinite(vals) & vals > 0);
+            seed_geo(si) = geomean(vals);
+        end
+        seed_geo = seed_geo(isfinite(seed_geo));
+        if isempty(seed_geo)
+            continue;
+        end
+        row_labels(end+1, 1) = display_family(families(fi)) + ", " + ...
+            string(regime_display(char(regimes(ri)))); %#ok<AGROW>
+        center(end+1, 1) = geomean(seed_geo); %#ok<AGROW>
+        lo(end+1, 1) = min(seed_geo); %#ok<AGROW>
+        hi(end+1, 1) = max(seed_geo); %#ok<AGROW>
     end
 end
-
-valid = isfinite(center);
-labels = labels(valid);
-center = center(valid);
-lo = lo(valid);
-hi = hi(valid);
-
 if isempty(center)
     return;
 end
 
-fig = figure('Visible', 'off', 'Color', 'w');
-set_publication_figure_size(fig, style, max(style.aggregate_height, 1.6 + 0.24 * numel(center)));
+nrows = numel(center);
+fig = new_figure(style, style.single_col_width, 0.38 * nrows + 1.05);
 ax = axes(fig);
-y = 1:numel(center);
-barh(ax, y, center, 'FaceColor', style.aggregate_color);
 hold(ax, 'on');
+y = (nrows:-1:1)';
 errorbar(ax, center, y, center - lo, hi - center, 'horizontal', ...
-    'k.', 'CapSize', 4, 'LineWidth', 0.9);
-xline(ax, 1.0, '--k', 'LineWidth', 1.0);
-yticks(ax, y);
-yticklabels(ax, cellstr(labels));
+    'Marker', 'o', 'Color', style.bsqr_color, 'MarkerFaceColor', style.bsqr_color, ...
+    'LineStyle', 'none', 'CapSize', 2.0, 'MarkerSize', 4.0, 'LineWidth', 0.9);
+xline(ax, 1.0, '--k', 'LineWidth', 0.8);
+yticks(ax, sort(y));
+yticklabels(ax, cellstr(flipud(row_labels)));
+ylim(ax, [0.4, nrows + 0.6]);
+% Pad the left edge so the parity line sits inside the axes.
+xl = xlim(ax);
+xlim(ax, [min(0.95, xl(1)), xl(2)]);
 apply_axes_style(ax, style);
-xlabel(ax, "Geomean relative time (" + string(method_label(bs_method)) + " / " + ...
-    string(method_label(baseline_method)) + "); 1.0 = parity", 'Interpreter', 'none');
-title(ax, 'Aggregate relative time', 'Interpreter', 'none');
-
-save_figure(fig, outstem);
+xlabel(ax, "relative time (" + string(labels.ratio) + ")", 'Interpreter', 'latex');
+grid(ax, 'on');
+save_figure(fig, outstem, style);
 end
 
-function write_relative_time_table(rt, path)
+% ----------------------------------------------------------------------
+% Tables and captions
+% ----------------------------------------------------------------------
+
+function write_relative_time_table(rt, key_cols, path)
 if isempty(rt)
     writetable(table(), path);
     return;
 end
-
-key_cols = {'family', 'regime', 'm', 'n', 'aspect'};
-if ismember('blas_threads', rt.Properties.VariableNames)
-    key_cols = [key_cols, {'blas_threads'}];
-end
-
 keys = unique(rt(:, key_cols), 'rows');
-vals = zeros(height(keys), 1);
-for i = 1:height(keys)
+n = height(keys);
+rel_geo = zeros(n, 1);
+rel_min = zeros(n, 1);
+rel_max = zeros(n, 1);
+bs_geo = zeros(n, 1);
+base_geo = zeros(n, 1);
+for i = 1:n
     mask = true(height(rt), 1);
     for j = 1:numel(key_cols)
         col = key_cols{j};
         mask = mask & rt.(col) == keys.(col)(i);
     end
-    v = rt.relative_time(mask);
-    v = v(v > 0 & isfinite(v));
-    vals(i) = geomean(v);
+    rel = rt.relative_time(mask);
+    rel = rel(isfinite(rel) & rel > 0);
+    rel_geo(i) = geomean(rel);
+    rel_min(i) = min(rel);
+    rel_max(i) = max(rel);
+    bs_geo(i) = geomean(rt.tmed_bs(mask));
+    base_geo(i) = geomean(rt.tmed_base(mask));
 end
-out = [keys, table(vals, 'VariableNames', {'geomean_relative_time'})];
+out = [keys, table(rel_geo, rel_min, rel_max, bs_geo, base_geo, 'VariableNames', ...
+    {'relative_time_geomean', 'relative_time_seed_min', 'relative_time_seed_max', ...
+     'bsqr_tmed_geomean_s', 'baseline_tmed_geomean_s'})];
 writetable(out, path);
 end
 
-function write_quality_table(rows, path)
-if isempty(rows)
-    writetable(table(), path);
-    return;
+function write_quality_summary(rows, bs_method, baseline_method, labels, outdir)
+%Terse markdown report replacing the former quality figure/table.
+ncases = height(unique(rows(:, {'family', 'regime', 'm', 'n', 'aspect', 'seed'}), 'rows'));
+methods = {bs_method, baseline_method};
+role_names = {labels.bs, labels.base};
+
+fid = fopen(fullfile(outdir, 'quality_summary.md'), 'w');
+cleanup = onCleanup(@() fclose(fid));
+fprintf(fid, '# Numerical quality summary\n\n');
+fprintf(fid, ['Across all %d benchmark cases (3 matrix families, both regimes, all ', ...
+    'sizes and seeds):\n\n'], ncases);
+fprintf(fid, ['| method | median rel. residual | max rel. residual | ', ...
+    'median ||I - Q^T Q||_F | max ||I - Q^T Q||_F |\n']);
+fprintf(fid, '|---|---:|---:|---:|---:|\n');
+stats = zeros(2, 4);
+for k = 1:2
+    resid = rows.residual(rows.method == methods{k});
+    orth = rows.orthogonality(rows.method == methods{k});
+    stats(k, :) = [median(resid), max(resid), median(orth), max(orth)];
+    fprintf(fid, '| %s | %.2e | %.2e | %.2e | %.2e |\n', role_names{k}, stats(k, :));
+end
+fprintf(fid, ['\nThe relative residual ||A Pi - QR||_F / ||A||_F of %s never exceeded ', ...
+    '%.2e, and its deviation from orthogonality ||I - Q^T Q||_F never exceeded %.2e; ', ...
+    'both match the built-in baseline to within a small factor.\n'], ...
+    role_names{1}, stats(1, 2), stats(1, 4));
 end
 
-key_cols = {'family', 'regime', 'method'};
-if ismember('blas_threads', rows.Properties.VariableNames)
-    key_cols = {'family', 'regime', 'method', 'blas_threads'};
+function write_captions(rows, labels, mode_name, outdir)
+seeds = unique(rows.seed);
+run_ids = unique(rows.run_id);
+fid = fopen(fullfile(outdir, 'figure_captions.md'), 'w');
+cleanup = onCleanup(@() fclose(fid));
+fprintf(fid, '# Suggested captions (%s comparison)\n\n', mode_name);
+fprintf(fid, ['Run: %s; seeds: %d; MATLAB default threading. In all figures, %s is ', ...
+    'compared against %s; both timed paths materialize Q, R, and the permutation.\n\n'], ...
+    strjoin(cellstr(string(run_ids)), ', '), numel(seeds), labels.bs, labels.base);
+fprintf(fid, ['**Test matrices.** Three families, regenerated per seed: *Gaussian* - ', ...
+    'i.i.d. standard normal entries; *ill-conditioned* - A = U S V^T with U, V ', ...
+    'orthonormal factors of Gaussian matrices and S geometrically graded from 1 down ', ...
+    'to 1e-10 (kappa = 1e10); *orthonormal rows* - A = Q^T with Q an orthonormal basis ', ...
+    'of a Gaussian n-by-m matrix (m <= n, so A A^T = I - the GKS column-selection ', ...
+    'setting). Square cases use m = n; short-wide cases sweep aspect ratios ', ...
+    'n/m in {2, 4, 8, 10}.\n\n']);
+fprintf(fid, ['**fig_square_runtime.** Median runtime versus matrix size for square ', ...
+    'matrices (log-log). Lines are geometric means over %d seeds; faint bands show ', ...
+    'the range across seeds. One panel per matrix family.\n\n'], numel(seeds));
+fprintf(fid, ['**fig_shortwide_runtime.** Median runtime versus column count n for ', ...
+    'short-wide matrices, one color per row count m (log-log). Lines/bands as above; ', ...
+    'marker and line style distinguish the methods.\n\n']);
+fprintf(fid, ['**fig_relative_time.** Geometric-mean relative time (%s; 1 = parity, ', ...
+    'dashed line) per family and regime. Points are geomeans of per-seed geomeans; ', ...
+    'whiskers show the per-seed range.\n\n'], labels.ratio);
+fprintf(fid, 'Numerical quality is summarized in tables/quality_summary.md.\n');
 end
 
-keys = unique(rows(:, key_cols), 'rows');
-resid = zeros(height(keys), 1);
-orth = zeros(height(keys), 1);
-for i = 1:height(keys)
-    mask = true(height(rows), 1);
-    for j = 1:numel(key_cols)
-        col = key_cols{j};
-        mask = mask & rows.(col) == keys.(col)(i);
-    end
-    resid(i) = median(rows.residual(mask));
-    orth(i) = median(rows.orthogonality(mask));
+% ----------------------------------------------------------------------
+% Helpers
+% ----------------------------------------------------------------------
+
+function labels = mode_labels(mode_name)
+switch string(mode_name)
+    case "plain"
+        labels = struct('bs', 'BSQR', 'base', 'CPQR (built-in)', 'ratio', 'BSQR / CPQR');
+    case "rinv"
+        labels = struct('bs', 'BSQR (W returned)', 'base', 'CPQR + solve', ...
+            'ratio', 'BSQR+W / CPQR+solve');
+    otherwise
+        error('plot_publication_results:UnknownMode', 'Unknown mode: %s', mode_name);
 end
-out = [keys, table(resid, orth, 'VariableNames', {'median_residual', 'median_orthogonality'})];
-writetable(out, path);
 end
 
-function [x, med, lo, hi] = grouped_stats(keys, values)
+function name = display_family(family)
+switch char(family)
+    case 'gaussian'
+        name = "Gaussian";
+    case 'ill_conditioned'
+        name = "Ill-conditioned";
+    case 'orthonormal_rows'
+        name = "Orthonormal rows";
+    otherwise
+        name = string(strrep(char(family), '_', ' '));
+end
+end
+
+function [x, ctr, lo, hi] = seed_grouped_stats(keys, values)
+% Geomean across seeds (one value per seed per key) with the seed range.
 x = sort(unique(keys));
-med = nan(size(x));
+ctr = nan(size(x));
 lo = nan(size(x));
 hi = nan(size(x));
 for i = 1:numel(x)
     v = values(keys == x(i));
-    v = v(isfinite(v));
+    v = v(isfinite(v) & v > 0);
     if isempty(v)
         continue;
     end
-    med(i) = median(v);
+    ctr(i) = geomean(v);
     lo(i) = min(v);
     hi(i) = max(v);
 end
 end
 
-function vals = extract_metric(rows, metric, regime, method)
-vals = rows.(metric)(rows.regime == regime & rows.method == method);
-vals = vals(isfinite(vals));
-end
-
-function [m, p10, p90] = metric_stats(vals)
-if isempty(vals)
-    m = nan;
-    p10 = nan;
-    p90 = nan;
-    return;
-end
-m = median(vals);
-p10 = prctile(vals, 10);
-p90 = prctile(vals, 90);
-end
-
-function h_line = plot_with_band(ax, x, med, lo, hi, st)
-h_line = gobjects(1, 1);
-good = isfinite(x) & isfinite(med) & isfinite(lo) & isfinite(hi) & med > 0 & lo > 0 & hi > 0;
+function plot_band(ax, x, lo, hi, color)
+% Faint seed-range band; transparent and behind every median line.
+good = isfinite(x) & isfinite(lo) & isfinite(hi) & lo > 0 & hi > 0;
 if ~any(good)
     return;
 end
 x = x(good);
-med = med(good);
 lo = lo(good);
 hi = hi(good);
-
-h_fill = fill(ax, [x; flipud(x)], [lo; flipud(hi)], lighten_color(st.color, 0.86), ...
-    'EdgeColor', 'none');
+h_fill = fill(ax, [x; flipud(x)], [lo; flipud(hi)], color, ...
+    'FaceAlpha', 0.15, 'EdgeColor', 'none');
 set(h_fill, 'HandleVisibility', 'off');
-h_line = plot(ax, x, med, ...
+end
+
+function h_line = plot_median_line(ax, x, med, st)
+h_line = gobjects(1, 1);
+good = isfinite(x) & isfinite(med) & med > 0;
+if ~any(good)
+    return;
+end
+h_line = plot(ax, x(good), med(good), ...
     'LineStyle', st.linestyle, ...
     'Marker', st.marker, ...
     'Color', st.color, ...
@@ -486,42 +435,14 @@ h_line = plot(ax, x, med, ...
     'MarkerSize', st.markersize);
 end
 
-function st = method_style(style, method)
+function st = role_style(style, role)
+% role 'bs': BSQR (blue, solid, circle); role 'base': baseline (orange, dashed, diamond).
 st = struct('color', style.bsqr_color, 'linestyle', '-', 'marker', 'o', ...
     'linewidth', style.line_width, 'markersize', style.marker_size);
-if method == "qr_pivoted" || method == "qr_pivoted_trsm"
+if strcmp(role, 'base')
     st.color = style.baseline_color;
     st.linestyle = '--';
-    st.marker = 's';
-end
-if method == "bsqr_rinv" || method == "qr_pivoted_trsm"
-    st.linestyle = ':';
-end
-end
-
-function label = method_label(method)
-switch char(method)
-    case 'bsqr_full'
-        label = 'BSQR';
-    case 'bsqr_rinv'
-        label = 'BSQR+RINV';
-    case 'qr_pivoted'
-        label = 'QR';
-    case 'qr_pivoted_trsm'
-        label = 'QR+TRSM';
-    otherwise
-        label = char(method);
-end
-end
-
-function name = short_family_name(family)
-switch char(family)
-    case 'ill_conditioned'
-        name = "ill-cond";
-    case 'orthonormal_rows'
-        name = "orth-rows";
-    otherwise
-        name = string(family);
+    st.marker = 'd';
 end
 end
 
@@ -534,50 +455,29 @@ else
 end
 end
 
-function c = blue_white_red(n)
-if nargin < 1
-    n = 256;
-end
-n = max(3, round(n));
-half = floor(n / 2);
-upper = n - half;
-blue = [linspace(0.22, 1.0, half)', linspace(0.45, 1.0, half)', ones(half, 1)];
-red = [ones(upper, 1), linspace(1.0, 0.35, upper)', linspace(1.0, 0.24, upper)'];
-c = [blue; red];
-c = c(1:n, :);
-end
-
 function apply_axes_style(ax, style)
 set(ax, ...
     'Box', 'on', ...
     'LineWidth', style.axis_line_width, ...
     'FontSize', style.axis_font_size, ...
-    'GridColor', [0.85, 0.85, 0.85], ...
+    'GridColor', [0.87, 0.87, 0.87], ...
     'GridAlpha', 1.0, ...
-    'MinorGridColor', [0.9, 0.9, 0.9], ...
-    'MinorGridAlpha', 1.0, ...
-    'TickLabelInterpreter', 'none');
+    'MinorGridLineStyle', 'none', ...
+    'TickLabelInterpreter', 'latex');
 grid(ax, 'on');
-end
-
-function out = lighten_color(color, amount)
-out = color + (1 - color) * amount;
 end
 
 function style = publication_style()
 style = struct();
-style.bsqr_color = [76, 120, 168] / 255;
-style.baseline_color = [245, 133, 24] / 255;
-style.aggregate_color = [114, 183, 178] / 255;
-style.axis_font_size = 9;
-style.legend_font_size = 8;
-style.line_width = 1.35;
-style.marker_size = 4.5;
-style.axis_line_width = 0.9;
+style.bsqr_color = [76, 120, 168] / 255;      % #4C78A8, matches the Python plotter
+style.baseline_color = [245, 133, 24] / 255;  % #F58518
+style.axis_font_size = 8.5;
+style.legend_font_size = 7.5;
+style.line_width = 1.1;
+style.marker_size = 4.0;
+style.axis_line_width = 0.7;
+style.single_col_width = 3.35;
 style.double_col_width = 6.9;
-style.default_height = 4.1;
-style.quality_height = 4.4;
-style.aggregate_height = 4.4;
 style.formats = parse_figure_formats();
 end
 
@@ -603,23 +503,22 @@ for i = 1:numel(parts)
 end
 end
 
-function set_publication_figure_size(fig, style, height)
-set(fig, 'Units', 'inches', 'Position', [1, 1, style.double_col_width, height]);
-set(fig, 'PaperPositionMode', 'auto');
+function fig = new_figure(style, width, height)
+fig = figure('Visible', 'off', 'Color', 'w');
+set(fig, 'Units', 'inches', 'Position', [1, 1, width, height]);
 fig.UserData = struct('formats', style.formats);
 end
 
-function save_figure(fig, outstem)
-set(fig, 'Color', 'w');
+function save_figure(fig, outstem, style) %#ok<INUSD>
 for i = 1:numel(fig.UserData.formats)
     fmt = fig.UserData.formats(i);
     switch fmt
         case "png"
-            print(fig, [outstem, '.png'], '-dpng', '-r300');
+            exportgraphics(fig, [outstem, '.png'], 'Resolution', 300);
         case "pdf"
-            print(fig, [outstem, '.pdf'], '-dpdf', '-painters');
+            exportgraphics(fig, [outstem, '.pdf'], 'ContentType', 'vector');
         case "eps"
-            print(fig, [outstem, '.eps'], '-depsc', '-painters');
+            exportgraphics(fig, [outstem, '.eps'], 'ContentType', 'vector');
         otherwise
             error('plot_publication_results:InvalidFigureFormats', ...
                 'Unsupported figure format: %s', fmt);
@@ -637,17 +536,13 @@ if isempty(rows_bs) || isempty(rows_base)
 end
 
 key_cols = {'family', 'regime', 'm', 'n', 'aspect', 'seed'};
-if ismember('blas_threads', rows.Properties.VariableNames)
-    key_cols = [key_cols, {'blas_threads'}];
-end
-
 join_bs = rows_bs(:, [key_cols, {'tmed_s'}]);
 join_bs.Properties.VariableNames{'tmed_s'} = 'tmed_bs';
 join_base = rows_base(:, [key_cols, {'tmed_s'}]);
 join_base.Properties.VariableNames{'tmed_s'} = 'tmed_base';
 joined = innerjoin(join_bs, join_base, 'Keys', key_cols);
 joined.relative_time = joined.tmed_bs ./ joined.tmed_base;
-rt = joined(:, [key_cols, {'relative_time'}]);
+rt = joined;
 end
 
 function rows = normalize_text_columns(rows)

@@ -43,7 +43,9 @@ Publication knobs:
 - `BS_PUB_OUTDIR` (default: `julia/benchmark/results/publication`)
 - `BS_PUB_THREADS` (default: `1,4`)
 - `BS_PUB_SEEDS` (default: `20260310,20260311`)
-- `BS_PUB_FAMILIES` (default: `gaussian,ill_conditioned,orthonormal_rows`)
+- `BS_PUB_FAMILIES` (default: `gaussian,ill_conditioned,orthonormal_rows`; constructions
+  are defined in `docs/PUBLICATION_FIGURES_PLAN.md` and implemented in
+  `julia/benchmark/matrix_generators.jl`)
 - `BS_PUB_SQUARE_MS` (default: `64,128,256,384,512`)
 - `BS_PUB_SHORT_MS` (default: `32,64,128,256,512`)
 - `BS_PUB_SHORT_ASPECTS` (default: `2.0,4.0,8.0,10.0`)

@@ -148,13 +148,14 @@ run_publication_smoke_benchmark(cfg);
 verifyTrue(testCase, isfile(fullfile(outdir, 'publication_timings.csv')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'publication_summary.md')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'metadata.txt')));
-verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'plain', 'figure1_square_runtime.png')));
-verifyTrue(testCase, isfile(fullfile(outdir, 'tables', 'plain', 'table_square_speedup.csv')));
-verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'figure5_aggregate_speedup.pdf')));
-verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'figure5_aggregate_speedup.eps')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'plain', 'fig_square_runtime.png')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'plain', 'figure_captions.md')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'tables', 'plain', 'table_square_relative_time.csv')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'fig_relative_time.pdf')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'fig_relative_time.eps')));
 
-tbl = readtable(fullfile(outdir, 'tables', 'plain', 'table_square_speedup.csv'));
-verifyTrue(testCase, ismember('geomean_relative_time', tbl.Properties.VariableNames));
+tbl = readtable(fullfile(outdir, 'tables', 'plain', 'table_square_relative_time.csv'));
+verifyTrue(testCase, ismember('relative_time_geomean', tbl.Properties.VariableNames));
 end
 
 function testBenchmarkRejectsBackendField(testCase)

@@ -93,7 +93,8 @@ Environment knobs (optional):
 
 - `BS_MATLAB_PUB_OUTDIR`
 - `BS_MATLAB_PUB_SEEDS`
-- `BS_MATLAB_PUB_FAMILIES`
+- `BS_MATLAB_PUB_FAMILIES` (constructions defined in `docs/PUBLICATION_FIGURES_PLAN.md`,
+  identical to the Julia generators)
 - `BS_MATLAB_PUB_SQUARE_MS`
 - `BS_MATLAB_PUB_SHORT_MS`
 - `BS_MATLAB_PUB_SHORT_ASPECTS`
