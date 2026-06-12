@@ -80,6 +80,52 @@ W_true(s:i-1, j) = B(1:t-1, j)                                (panel rows, curre
 7. **Eager panel-row updates of W**: record `Bsel(t, rem) = β`; apply
    `B(1:t-1, rem) -= q_t·βᵀ`; append `B(t, rem) = β`.
 
+### 3.1 The O(1) running-norm recurrence: provenance and its role here
+
+The Householder reduction itself costs `Θ(mnk)` flops regardless of pivoting policy
+(`Θ(nk²)` in the writeup's `k×n` GKS setting, where `m = k`). On top of that, the criterion
+needs `||w_j||²` for every remaining column at every step, and the cost of *maintaining the
+selection quantities* has a ladder worth making explicit in the appendix:
+
+- **Naive**: recompute `w_j = R11^{-1}r_j` by triangular solve — `O(i²)` per column per
+  step, `Θ(nk³)` for the maintenance over the whole factorization, which would dominate the
+  `Θ(mnk)` reduction (the writeup already rejects this).
+- **Stewart (1990), Fig. 2.2**: maintain `S = R11^{-1}R12` incrementally (`O(i)` per column
+  per step, `Θ(nk²)` total — at most the reduction's own cost, and equal to it when
+  `m = k`), then recompute `σ_j = ||s_j||` *directly from the updated column* each step —
+  asymptotically free (another `O(i)` pass per column) but operationally a second full sweep
+  over the prefix block per step.
+- **Bischof (1990)** sidesteps exact maintenance entirely: his incremental condition
+  estimator carries an approximate singular vector updated by a 2×2 eigenproblem per step —
+  `O(n)` per step, but it yields an *estimate* of `σ_min`, not the exact Frobenius quantity
+  the selection rule here minimizes.
+- **The writeup's eq. (wnorm-update)**, which both kernels implement: expand
+  `||s_j − β_j s_k||² + β_j²` once and update
+  `wnorm2_j ← wnorm2_j − 2β_j d_j + β_j²(1 + ||w*||²)` with `d_j = w_jᵀw*` — `O(1)` per
+  column given the dot products, so the norm tracking rides along with the same `Θ(nk²)`
+  S-maintenance term instead of adding a pass. This recurrence is **not in Stewart**; it is
+  a derived, exact-arithmetic-equivalent refinement of his direct recomputation (recorded as
+  deviation #9 in `docs/VALIDATION.md`, pinned by the oracle tests; the V2 stress analysis
+  bounds its rounding drift, with the structural protection that the selection rule never
+  picks a large-`||w*||` pivot).
+
+Every exact variant therefore runs at `Θ(mnk + nk²) = Θ(mnk)` overall — the policies differ
+in the constant and in memory passes, not in the exponent; only the naive policy breaks the
+order.
+
+In the *unblocked* kernel the refinement is roughly cost-neutral: the dots are one gemv over
+the W prefix, replacing Stewart's strided column-norm sweep over the same block — one
+optimized BLAS-2 pass either way. Its real payoff is that it is **what makes the panel kernel
+possible**. The recurrence needs only the scalars `d_j`, and step 6 above shows `d_j` is
+computable from the *deferred* representation (`W₀`, `Ω`, `Bsel`, `B`) at the cost of one
+read-only gemv plus `O(nb·N)` corrections — the updated W columns never need to exist
+mid-panel. Stewart's direct `σ_j = ||s_j||` recomputation, by contrast, requires the updated
+column itself, which would force a flush at every step and defeat the deferral entirely. The
+O(1) recurrence is therefore the hinge that decouples "selection scalars current" (every
+step) from "W block current" (once per panel) — without it, the W side of BSQR has no blocked
+formulation, and the short-wide regime would be stuck at the unblocked flop floor measured in
+P0.
+
 ## 4. Panel flush (after nb steps, or fewer at `rank_stop`/end)
 
 - `A(ie+1:m, rem) -= V(ie+1:m, 1:tdone)·Fa(rem, 1:tdone)ᵀ` — one gemm (rows `s..ie` were
