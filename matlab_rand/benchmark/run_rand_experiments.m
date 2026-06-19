@@ -63,6 +63,12 @@ for fi = 1:numel(families)
                 rows(end+1, :) = {fam, k, n, s, 'rand', modes{mi}, 'uniform', 16, ...
                     r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
             end
+            % R12 desired: same selection (running_mean, uniform) plus the final
+            % Q'-apply to the leftover columns. Quantifies the advantage lost
+            % when R12 cannot be skipped.
+            r = measure_rand(M, k, 'running_mean', 'uniform', 16, 1000 * fi + s, true);
+            rows(end+1, :) = {fam, k, n, s, 'rand_r12', 'running_mean', 'uniform', 16, ...
+                r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
         end
         fprintf('  scaling %-16s n=%-6d done\n', fam, n);
     end
@@ -116,11 +122,22 @@ write_rows(rows, fullfile(opt.outdir, 'exp_sampling.csv'));
 end
 
 % ===========================================================================
-function out = measure_rand(M, k, mode, sampling, block, seed)
-f = @() bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
-    'threshold_mode', mode, 'sampling', sampling, 'seed', seed);
-out.time = timeit(f, 3);
-[~, ~, ~, st] = f();
+function out = measure_rand(M, k, mode, sampling, block, seed, return_r12)
+if nargin < 7; return_r12 = false; end
+if return_r12
+    % R12 desired: the kernel must apply the accumulated Q' to the leftover
+    % columns (one O(n k^2) pass). Time the full 5-output call.
+    f = @() bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
+        'threshold_mode', mode, 'sampling', sampling, 'return_r12', true, 'seed', seed);
+    out.time = timeit(f, 5);
+    [~, ~, ~, st] = bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
+        'threshold_mode', mode, 'sampling', sampling, 'return_r12', true, 'seed', seed);
+else
+    f = @() bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
+        'threshold_mode', mode, 'sampling', sampling, 'seed', seed);
+    out.time = timeit(f, 3);
+    [~, ~, ~, st] = f();
+end
 out.frobinv = st.frob_inv;
 out.osinsky = st.osinsky_bound;
 out.tested_per_k = st.total_tested / k;

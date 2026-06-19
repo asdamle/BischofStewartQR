@@ -204,9 +204,9 @@ columns), `coherent` (clustered/redundant columns), `needle` (~k useful columns
 hidden among n near-null ones — hardest for uniform sampling). The sampler's cost
 is set by how concentrated the leverage `ell_j = ||M(:,j)||^2` is.
 
-1. **`fig_scaling`** — time, speedup `t_det/t_rand`, and conditioning
-   `||R11^{-1}||_F / sqrt(k(n-k+1))` vs `n` (per family), deterministic vs both
-   threshold modes.
+1. **`fig_scaling`** — time, speedup `t_det/t_rand` (log-y), and conditioning
+   `||R11^{-1}||_F / sqrt(k(n-k+1))` vs `n` (per family): deterministic vs both
+   threshold modes vs the **R12-desired** randomized path (`rand + R12`).
 2. **`fig_blocksize`** — time, columns tested/`k`, and conditioning vs block
    size, uniform vs norm-weighted sampling.
 3. **`fig_sampling`** — uniform vs norm-weighted across all families
@@ -220,6 +220,17 @@ is set by how concentrated the leverage `ell_j = ||M(:,j)||^2` is.
   `1000 → 8000 → 32000 → 64000`. On the stress families with *uniform* sampling
   the win is smaller (≈6–10× at n=64000) because the sampler tests many columns —
   fixed by norm-weighted sampling (below).
+- **When R12 *is* needed** (the `rand_r12` series / `fig_scaling` purple line),
+  the randomized method must apply the accumulated `Q'` to the `n-k` leftover
+  columns — one `O(nk^2)` BLAS-3 pass, the same order as the deterministic
+  kernel's total work. The dramatic n-scaling therefore collapses to a constant
+  factor: `gaussian` `t_det/t_rand` settles at `~6× → 10× → 14×` over
+  `n = 1000 → 8000 → 64000` (vs `7× → 34× → 517×` without R12), and the stress
+  families to ~4–6×. It still wins because it does one clean `Q'`-apply instead of
+  the deterministic kernel's per-step W-maintenance over every column — but this
+  is the regime where the advantage is a modest constant, not orders of magnitude.
+  Bottom line: the big win is specifically the *R12-not-needed* (subset +
+  reflectors + R11) use case.
 - **Conditioning.** `running_mean` keeps `||R11^{-1}||_F` far under the bound on
   *all* families (ratio 0.06–0.32) and ~1.7–2× the deterministic value. The bound
   is never violated — the stress matrices stress the *sample count*, not quality.

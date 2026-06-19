@@ -29,6 +29,7 @@ end
 if ~isfolder(opt.plotdir); mkdir(opt.plotdir); end
 
 C = struct('det', [0 0 0], 'rm', [0.00 0.45 0.74], 'wc', [0.85 0.33 0.10], ...
+    'r12', [0.49 0.18 0.56], ...
     'uniform', [0.00 0.45 0.74], 'normweighted', [0.47 0.67 0.19]);
 
 plot_scaling(opt, C);
@@ -53,14 +54,16 @@ for fi = 1:numel(fams)
     band_line(ax, T, base & T.method == "det", 'n', 'time_s', C.det, 'deterministic');
     band_line(ax, T, base & T.method == "rand" & T.mode == "running_mean", 'n', 'time_s', C.rm, 'rand running\_mean');
     band_line(ax, T, base & T.method == "rand" & T.mode == "worstcase_allowance", 'n', 'time_s', C.wc, 'rand worstcase');
+    band_line(ax, T, base & T.method == "rand_r12", 'n', 'time_s', C.r12, 'rand + R_{12}');
     grid(ax, 'on'); xlabel(ax, 'n'); ylabel(ax, 'time (s)');
     title(ax, sprintf('%s: runtime', fam), 'Interpreter', 'none');
     if fi == 1; legend(ax, 'Location', 'northwest'); end
 
     % (2) speedup vs n (per seed det/rand ratio)
-    ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log');
-    speedup_line(ax, T, base, 'running_mean', C.rm, 'running\_mean');
-    speedup_line(ax, T, base, 'worstcase_allowance', C.wc, 'worstcase');
+    ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log', 'YScale', 'log');
+    speedup_line(ax, T, base, 'rand', 'running_mean', C.rm, 'running\_mean');
+    speedup_line(ax, T, base, 'rand', 'worstcase_allowance', C.wc, 'worstcase');
+    speedup_line(ax, T, base, 'rand_r12', 'running_mean', C.r12, 'rand + R_{12}');
     yline(ax, 1, 'k--', 'HandleVisibility', 'off');
     grid(ax, 'on'); xlabel(ax, 'n'); ylabel(ax, 'speedup (t_{det}/t_{rand})');
     title(ax, sprintf('%s: speedup', fam), 'Interpreter', 'none');
@@ -74,7 +77,7 @@ for fi = 1:numel(fams)
     grid(ax, 'on'); xlabel(ax, 'n'); ylabel(ax, '||R_{11}^{-1}||_F / Osinsky');
     title(ax, sprintf('%s: conditioning', fam), 'Interpreter', 'none');
 end
-title(tl, 'Randomized vs deterministic BSQR (R_{12} not needed)');
+title(tl, 'Randomized vs deterministic BSQR (with and without R_{12})');
 save_fig(fig, fullfile(opt.plotdir, 'fig_scaling'), opt.formats);
 end
 
@@ -168,7 +171,7 @@ plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, ...
     'LineWidth', 1.5, 'MarkerSize', 4, 'DisplayName', name);
 end
 
-function speedup_line(ax, T, base, mode, color, name)
+function speedup_line(ax, T, base, method, mode, color, name)
 ns = unique(T.n(base));
 x = ns; ym = zeros(size(x)); ylo = ym; yhi = ym;
 for i = 1:numel(ns)
@@ -176,7 +179,7 @@ for i = 1:numel(ns)
     sp = [];
     for s = sd'
         td = T.time_s(base & T.method == "det" & T.n == ns(i) & T.seed == s);
-        tr = T.time_s(base & T.method == "rand" & T.mode == string(mode) & T.n == ns(i) & T.seed == s);
+        tr = T.time_s(base & T.method == string(method) & T.mode == string(mode) & T.n == ns(i) & T.seed == s);
         if ~isempty(td) && ~isempty(tr); sp(end+1) = td(1) / tr(1); end %#ok<AGROW>
     end
     ym(i) = mean(sp); ylo(i) = min(sp); yhi(i) = max(sp);
