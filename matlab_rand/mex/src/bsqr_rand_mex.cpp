@@ -40,7 +40,7 @@ enum class Pick { BestInBlock, First };
 
 struct Options {
     mwSize k = 0;
-    mwSize block_size = 16;
+    mwSize block_size = 0;   // 0 = auto (set to rand_default_block(k) once k is known)
     ThresholdMode threshold_mode = ThresholdMode::RunningMean;
     double slack = 1.0;
     Sampling sampling = Sampling::Uniform;
@@ -260,6 +260,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     const mwSize k = opt.k;
+    if (opt.block_size == 0) {   // auto: mirrors rand_default_block.m = ceil(k/2) in [16,128]
+        opt.block_size = std::min<mwSize>(128, std::max<mwSize>(16, (k + 1) / 2));
+    }
     const mwSize block = std::min(opt.block_size, std::max<mwSize>(n, 1));
     const bool weighted = (opt.sampling == Sampling::NormWeighted);
 
@@ -438,6 +441,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         bool fallback = false;
         if (!accepted) {
             accept_id = best_id; accept_c = best_c; accept_pos = best_pos; fallback = true;
+        }
+
+        // Rank guard: a non-finite increment means every remaining column had a
+        // ~zero residual (rho^2 = 0) -- the input is rank-deficient for this k.
+        // Fail loudly rather than propagate Inf into f2/R11 (the bound cannot be
+        // maintained past the numerical rank; targets the full-rank GKS setting).
+        if (!std::isfinite(accept_c)) {
+            fail("bsqr_rand:RankDeficient",
+                 "All remaining columns have ~zero residual; the input appears "
+                 "rank-deficient for the requested k. Reduce k to the numerical rank.");
         }
 
         // Reduce the accepted column. If it was accepted from the last block its

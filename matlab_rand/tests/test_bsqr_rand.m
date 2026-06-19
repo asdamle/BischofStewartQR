@@ -150,3 +150,46 @@ M = rand_test_matrix('needle', k, n, 23);
 check_factorization(testCase, M, p, reflectors, R11, k);
 verifyLessThanOrEqual(testCase, stats.f2(end), k * (n - k + 1) * (1 + 1e-8));
 end
+
+function testMexReturnR12(testCase)
+% The MEX R12 path (compact-WY apply of Q' to the leftover columns) must match
+% Q(:,1:k)' * A(:,P(k+1:n)).
+if ~bsqr_rand_mex_available()
+    return;
+end
+k = 14; n = 80;
+M = orthonormal_rows(k, n, 19);
+[p, reflectors, R11, ~, R12] = bsqr_rand(M, 'backend', 'mex', 'seed', 7, 'return_r12', true);
+check_factorization(testCase, M, p, reflectors, R11, k);
+Qk = bsqr_rand_formQ(reflectors, k);
+verifySize(testCase, R12, [k, n - k]);
+verifyLessThan(testCase, norm(Qk' * M(:, p(k+1:n)) - R12, 'fro') / max(1, norm(R12, 'fro')), 1e-10);
+end
+
+function testMexPickFirst(testCase)
+% pick='first' on the MEX must still factor exactly and respect the bound.
+if ~bsqr_rand_mex_available()
+    return;
+end
+k = 16; n = 100;
+M = orthonormal_rows(k, n, 23);
+[p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 3, 'pick', 'first');
+check_factorization(testCase, M, p, reflectors, R11, k);
+tol = 1e-9 * max(1, stats.Fhat(end));
+verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
+end
+
+function testRankDeficientErrors(testCase)
+% k beyond the (exact) rank: only k-1 nonzero columns, the rest literally zero,
+% so at step k every remaining residual is exactly zero and the rank guard must
+% fire rather than propagate Inf into f2/R11. (Near-rank-deficiency where the
+% residual is ~eps rather than exactly 0 is a documented precondition, not a
+% guarded case.)
+rng(31);
+k = 6; n = 40;
+M = [randn(k, k - 1), zeros(k, n - (k - 1))];   % exact rank k-1 < k
+verifyError(testCase, @() bsqr_rand(M, 'k', k, 'backend', 'mfile'), 'bsqr_rand:RankDeficient');
+if bsqr_rand_mex_available()
+    verifyError(testCase, @() bsqr_rand(M, 'k', k, 'backend', 'mex'), 'bsqr_rand:RankDeficient');
+end
+end

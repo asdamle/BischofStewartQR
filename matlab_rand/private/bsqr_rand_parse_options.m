@@ -15,7 +15,7 @@ kmax = min(m, n);
 parser = inputParser;
 parser.FunctionName = 'bsqr_rand';
 addParameter(parser, 'k', [], @(x) isnumeric(x) && isscalar(x) && isfinite(x));
-addParameter(parser, 'block_size', 16, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1);
+addParameter(parser, 'block_size', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1));
 addParameter(parser, 'threshold_mode', 'running_mean', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'slack', 1.0, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1);
 addParameter(parser, 'sampling', 'uniform', @(x) ischar(x) || isstring(x));
@@ -41,7 +41,11 @@ if opts.k < 0 || opts.k > kmax
     error('bsqr_rand:InvalidK', 'k must satisfy 0 <= k <= min(size(A)).');
 end
 
-opts.block_size = max(1, round(double(opts.block_size)));
+if isempty(opts.block_size)
+    opts.block_size = rand_default_block(opts.k);   % ceil(k/2) clamped to [16,128]
+else
+    opts.block_size = max(1, round(double(opts.block_size)));
+end
 opts.slack = double(opts.slack);
 
 opts.threshold_mode = char(lower(string(opts.threshold_mode)));

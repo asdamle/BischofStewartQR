@@ -104,6 +104,17 @@ for nsel = 0:k-1
         fallback = true;
     end
 
+    % Rank guard: a non-finite increment means every remaining column had a
+    % ~zero residual (rho^2 = 0), i.e. the input is rank-deficient for this k.
+    % The bound cannot be maintained past the numerical rank; fail loudly rather
+    % than propagate Inf into f2/R11. (Randomized BSQR targets the full-rank GKS
+    % setting; the deterministic kernel's rank_stop has no analogue here.)
+    if ~isfinite(accept_c)
+        error('bsqr_rand:RankDeficient', ...
+            ['At step %d all remaining columns have ~zero residual; the input ', ...
+             'appears rank-deficient for k=%d. Reduce k to the numerical rank.'], step, k);
+    end
+
     % Reduce the accepted column and append its reflector / R11 column.
     xred = bsqr_rand_apply_reflectors(Awork(:, accept_id), V, tau, nsel, m);
     R11(1:nsel, step) = xred(1:nsel);

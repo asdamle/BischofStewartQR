@@ -14,13 +14,22 @@ function varargout = bsqr_rand(A, varargin)
 %
 % Name-value options:
 %   'k'              - number of columns to select (default min(m,n))
-%   'block_size'     - candidates tested per sampling round (default 16)
+%   'block_size'     - candidates tested per sampling round (default
+%                      ceil(k/2) clamped to [16,128]; see RAND_DEFAULT_BLOCK).
+%                      Larger blocks improve realized selection quality (the
+%                      per-step minimum is taken over more candidates) at higher
+%                      cost; the guaranteed bound is unchanged.
 %   'threshold_mode' - 'running_mean' (default, per-singular-value control) or
-%                      'worstcase_allowance' (more permissive, fewer samples)
-%   'slack'          - multiplier (>=1) loosening the threshold (default 1.0)
+%                      'worstcase_allowance' (more permissive, fewer samples,
+%                      only the final Frobenius bound -- not the per-step bound)
+%   'slack'          - multiplier (>=1) loosening the threshold (default 1.0;
+%                      values >1 trade conditioning for fewer samples and no
+%                      longer guarantee the Osinsky bound -- experimental)
 %   'sampling'       - 'uniform' (default) or 'normweighted' (by starting
 %                      squared column norms; adds an O(m*n) precompute)
-%   'pick'           - 'best_in_block' (default) or 'first'
+%   'pick'           - 'best_in_block' (default): accept the minimum-criterion
+%                      column in the block when it meets the threshold (all c are
+%                      computed anyway). 'first': accept the first that meets it.
 %   'seed'           - RNG seed for reproducibility (default [], leaves rng)
 %   'return_r12'     - logical, compute R12 as a 5th output (default false)
 %   'backend'        - 'auto' (default), 'mfile', or 'mex'

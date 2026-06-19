@@ -52,8 +52,8 @@ end
 function exp_scaling(opt)
 families = {'gaussian', 'spiked_leverage', 'needle'};
 k = opt.k;
+db = rand_default_block(k);   % default block size for this k
 ns = [1000, 2000, 4000, 8000, 16000, 32000, 64000];
-modes = {'running_mean', 'worstcase_allowance'};
 rows = {};
 for fi = 1:numel(families)
     fam = families{fi};
@@ -62,16 +62,17 @@ for fi = 1:numel(families)
             M = rand_test_matrix(fam, k, n, 1000 * fi + s);
             d = measure_det(M, k);
             rows(end+1, :) = {fam, k, n, s, 'det', 'na', 'na', 0, d.time, d.frobinv, d.osinsky, NaN}; %#ok<AGROW>
-            for mi = 1:numel(modes)
-                r = measure_rand(M, k, modes{mi}, 'uniform', 16, 1000 * fi + s);
-                rows(end+1, :) = {fam, k, n, s, 'rand', modes{mi}, 'uniform', 16, ...
-                    r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
-            end
-            % R12 desired: same selection (running_mean, uniform) plus the final
-            % Q'-apply to the leftover columns. Quantifies the advantage lost
-            % when R12 cannot be skipped.
-            r = measure_rand(M, k, 'running_mean', 'uniform', 16, 1000 * fi + s, true);
-            rows(end+1, :) = {fam, k, n, s, 'rand_r12', 'running_mean', 'uniform', 16, ...
+            b = measure_builtin(M, k);
+            rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, b.time, b.frobinv, b.osinsky, NaN}; %#ok<AGROW>
+            % Randomized (running_mean is the default; worstcase_allowance is a
+            % documented option but kept out of the plots for a cleaner narrative).
+            r = measure_rand(M, k, 'running_mean', 'uniform', db, 1000 * fi + s);
+            rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', 'uniform', db, ...
+                r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
+            % R12 desired: same selection plus the final Q'-apply to the leftover
+            % columns. Quantifies the advantage lost when R12 cannot be skipped.
+            r = measure_rand(M, k, 'running_mean', 'uniform', db, 1000 * fi + s, true);
+            rows(end+1, :) = {fam, k, n, s, 'rand_r12', 'running_mean', 'uniform', db, ...
                 r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
         end
         fprintf('  scaling %-16s n=%-6d done\n', fam, n);
@@ -91,6 +92,9 @@ for fi = 1:numel(families)
     fam = families{fi};
     for s = 1:opt.trials
         M = rand_test_matrix(fam, k, n, 2000 * fi + s);
+        b = measure_builtin(M, k);   % vendor-qr reference (constant across block size)
+        rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, ...
+            b.time, b.frobinv, b.osinsky, NaN}; %#ok<AGROW>
         for bi = 1:numel(blocks)
             for si = 1:numel(samplings)
                 r = measure_rand(M, k, 'running_mean', samplings{si}, blocks(bi), 2000 * fi + s);
@@ -107,13 +111,16 @@ end
 % ===========================================================================
 function exp_sampling(opt)
 families = {'gaussian', 'graded_leverage', 'spiked_leverage', 'coherent', 'needle'};
-k = opt.k; n = 32000; block = 16;
+k = opt.k; n = 32000; block = rand_default_block(k);
 samplings = {'uniform', 'normweighted'};
 rows = {};
 for fi = 1:numel(families)
     fam = families{fi};
     for s = 1:opt.trials
         M = rand_test_matrix(fam, k, n, 3000 * fi + s);
+        b = measure_builtin(M, k);   % vendor-qr reference (constant across sampling)
+        rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, ...
+            b.time, b.frobinv, b.osinsky, NaN}; %#ok<AGROW>
         for si = 1:numel(samplings)
             r = measure_rand(M, k, 'running_mean', samplings{si}, block, 3000 * fi + s);
             rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', samplings{si}, block, ...
@@ -150,6 +157,19 @@ end
 function out = measure_det(M, k)
 out.time = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
 R = bsqr_mex(M, 'k', k, 'check_finite', false);
+out.frobinv = norm(inv(triu(R(1:k, 1:k))), 'fro');
+out.osinsky = sqrt(k * (size(M, 2) - k + 1));
+end
+
+function out = measure_builtin(M, k)
+% Built-in column-pivoted QR (LAPACK dgeqp3 via MATLAB qr) -- a different,
+% vendor-tuned classical algorithm (Businger-Golub max-norm pivoting). It is the
+% natural "can the randomized method beat the library?" baseline. Requesting the
+% pivot vector forces the full [Q,R,e] factorization (MATLAB has no pivoted-QR
+% interface that skips Q), so this is the standard library call a user would make
+% to get a column selection.
+out.time = timeit(@() qr(M, 'econ', 'vector'), 3);
+[~, R, ~] = qr(M, 'econ', 'vector');
 out.frobinv = norm(inv(triu(R(1:k, 1:k))), 'fro');
 out.osinsky = sqrt(k * (size(M, 2) - k + 1));
 end
