@@ -307,6 +307,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         bool accepted = false;
         mwSize accept_id = 0;
         double accept_c = std::numeric_limits<double>::infinity();
+        mwSize accept_local = 0;   // column index of the accepted pivot within the last block
         mwSize tested = 0, rounds = 0;
 
         for (mwSize pos = 0; pos < rem_count && !accepted; pos += block) {
@@ -381,6 +382,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                     if (cbuf[t] <= theta) {
                         accept_id = visit[pos + t];
                         accept_c = cbuf[t];
+                        accept_local = t;
                         accepted = true;
                         break;
                     }
@@ -388,6 +390,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             } else if (blk_best_c <= theta) {
                 accept_id = visit[pos + blk_best];
                 accept_c = blk_best_c;
+                accept_local = blk_best;
                 accepted = true;
             }
         }
@@ -399,17 +402,25 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             fallback = true;
         }
 
-        // Reduce the accepted column and append its reflector / R11 column.
-        std::copy(&A[static_cast<size_t>(accept_id) * m], &A[static_cast<size_t>(accept_id) * m] + m,
-                  xcol.data());
-        for (mwSize s = 0; s < nsel; ++s) {
-            if (tau[s] == 0.0) {
-                continue;
+        // Reduce the accepted column and append its reflector / R11 column. When
+        // the pivot was accepted from a sampled block its reduced form already
+        // sits in X (the reflectors were applied there) -- reuse it. Only the
+        // exhaustive-fallback case (X overwritten) needs a fresh apply.
+        if (accepted) {
+            const double *xsrc = &X[static_cast<size_t>(accept_local) * m];
+            std::copy(xsrc, xsrc + m, xcol.data());
+        } else {
+            std::copy(&A[static_cast<size_t>(accept_id) * m],
+                      &A[static_cast<size_t>(accept_id) * m] + m, xcol.data());
+            for (mwSize s = 0; s < nsel; ++s) {
+                if (tau[s] == 0.0) {
+                    continue;
+                }
+                ptrdiff_t mm = ldA;
+                const double d = ddot(&mm, &V[static_cast<size_t>(s) * m], &inc1, xcol.data(), &inc1);
+                const double coef = -tau[s] * d;
+                daxpy(&mm, &coef, &V[static_cast<size_t>(s) * m], &inc1, xcol.data(), &inc1);
             }
-            ptrdiff_t mm = ldA;
-            const double d = ddot(&mm, &V[static_cast<size_t>(s) * m], &inc1, xcol.data(), &inc1);
-            const double coef = -tau[s] * d;
-            daxpy(&mm, &coef, &V[static_cast<size_t>(s) * m], &inc1, xcol.data(), &inc1);
         }
         for (mwSize r = 0; r < nsel; ++r) {
             R11[r + static_cast<size_t>(nsel) * k] = xcol[r];

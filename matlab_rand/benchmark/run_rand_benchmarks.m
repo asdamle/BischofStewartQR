@@ -1,88 +1,82 @@
 function results = run_rand_benchmarks(varargin)
-%RUN_RAND_BENCHMARKS Compare randomized vs deterministic BSQR selection.
+%RUN_RAND_BENCHMARKS Fair randomized-vs-deterministic BSQR timing (no R12).
 %
-%   Measures, on short-wide orthonormal-row matrices (the GKS regime where
-%   randomization should help most):
-%     * t_rand  - bsqr_rand returning only [p, reflectors, R11] (no R12)
-%     * t_det   - deterministic bsqr returning R (selection + full factor;
-%                 it must maintain R11^{-1}R12 for every column, which is the
-%                 O(n k^2) cost the randomized variant avoids)
-%   and reports speedup = t_det / t_rand alongside the two quality metrics:
-%     * ratio        = ||R11^{-1}||_F / sqrt(k(n-k+1))   (Osinsky bound = 1)
-%     * tested_per_k = total candidate columns evaluated / k
+%   Fairness/measurement discipline (both methods, identical conditions):
+%     * The compiled MEX kernels are called DIRECTLY (bsqr_mex, bsqr_rand_mex),
+%       so the m-file dispatcher and its inputParser are never timed.
+%     * 'check_finite', false on both -- the O(m*n) finiteness scan is identical
+%       overhead for both and is not part of either algorithm.
+%     * timeit() handles warm-up and returns a robust median; only the kernel
+%       call is inside the timed thunk (matrix generation is outside).
+%     * Deterministic baseline: bsqr_mex(M,'k',k) with ONE output (R only).
+%       That is the cheapest deterministic call that still performs the column
+%       selection; it forms R12 as an unavoidable byproduct (the O(n*k^2) work
+%       the randomized variant skips) but does NOT materialize Q.
+%     * Randomized: bsqr_rand_mex(...) with THREE outputs [p, reflectors, R11]
+%       -- the "R12 not needed" product. No Q, no R12.
 %
-% Name-value options:
-%   'sizes'   - cell array of [k n] pairs (default short-wide grid)
-%   'seed'    - base RNG seed (default 1)
-%   'block_size' - candidates per round (default 16)
-%   'outdir'  - directory for the CSV (default matlab_rand/benchmark/results)
+% Name-value options: 'sizes' (cell of [k n]), 'seed', 'block_size',
+%   'family' (see rand_test_matrix), 'outdir'.
 
 ip = inputParser;
-addParameter(ip, 'sizes', default_sizes());
+addParameter(ip, 'sizes', {[32, 2000], [64, 4000], [64, 8000], [128, 8000], [128, 16000]});
 addParameter(ip, 'seed', 1);
 addParameter(ip, 'block_size', 16);
+addParameter(ip, 'family', 'gaussian');
 addParameter(ip, 'outdir', '');
 parse(ip, varargin{:});
 opt = ip.Results;
 
 repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo_root, 'matlab_rand'));
+addpath(fullfile(repo_root, 'matlab_rand', 'mex'));
+addpath(fullfile(repo_root, 'matlab_rand', 'benchmark'));
 addpath(fullfile(repo_root, 'matlab'));
+addpath(fullfile(repo_root, 'matlab', 'mex'));
 if isempty(opt.outdir)
     opt.outdir = fullfile(repo_root, 'matlab_rand', 'benchmark', 'results');
 end
-if ~isfolder(opt.outdir)
-    mkdir(opt.outdir);
-end
+if ~isfolder(opt.outdir); mkdir(opt.outdir); end
 
-if ~bsqr_rand_mex_available()
-    error('run_rand_benchmarks:NoMex', ...
-        'bsqr_rand_mex not built. Run matlab_rand/build_bsqr_rand_mex.m first.');
-end
-det_backend = 'mfile';
-if exist('bsqr_mex_available', 'file') && bsqr_mex_available()
-    det_backend = 'mex';
-end
+assert(exist('bsqr_rand_mex', 'file') == 3, ...
+    'bsqr_rand_mex not built. Run matlab_rand/build_bsqr_rand_mex.m first.');
+assert(exist('bsqr_mex', 'file') == 3, ...
+    'bsqr_mex (deterministic) not built. Run matlab/build_bsqr_mex.m first.');
 
 modes = {'running_mean', 'worstcase_allowance'};
 rows = {};
-fprintf('%-14s %-20s %10s %10s %9s %8s %9s\n', ...
-    'size', 'mode', 't_rand(ms)', 't_det(ms)', 'speedup', 'ratio', 'tested/k');
+fprintf('family=%s  block_size=%d  BLAS threads=%d\n', opt.family, opt.block_size, maxNumCompThreads);
+fprintf('%-12s %-20s %11s %11s %8s %8s %9s\n', ...
+    'size', 'mode', 't_rand(ms)', 't_det(ms)', 'speedup', 'cond', 'tested/k');
 
 for ci = 1:numel(opt.sizes)
-    k = opt.sizes{ci}(1);
-    n = opt.sizes{ci}(2);
-    rng(opt.seed + ci);
-    M = orth(randn(n, k))';
+    k = opt.sizes{ci}(1); n = opt.sizes{ci}(2);
+    M = rand_test_matrix(opt.family, k, n, opt.seed + ci);
 
-    % deterministic selection cost: factor only (R, k-by-n), no Q.
-    t_det = timeit(@() bsqr(M, 'k', k, 'backend', det_backend), 1);
+    t_det = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
+    Rdet = bsqr_mex(M, 'k', k, 'check_finite', false);
+    frobinv_det = norm(inv(triu(Rdet(1:k, 1:k))), 'fro');
 
     for mi = 1:numel(modes)
         mode = modes{mi};
-        f = @() bsqr_rand(M, 'k', k, 'backend', 'mex', 'block_size', opt.block_size, ...
-            'threshold_mode', mode, 'seed', opt.seed + ci);
-        t_rand = timeit(f, 3);  % time only [p, reflectors, R11]
-        [~, ~, ~, st] = bsqr_rand(M, 'k', k, 'backend', 'mex', 'block_size', opt.block_size, ...
-            'threshold_mode', mode, 'seed', opt.seed + ci);
-        ratio = st.frob_inv / st.osinsky_bound;
-        tested_per_k = st.total_tested / k;
+        t_rand = timeit(@() bsqr_rand_mex(M, 'k', k, 'check_finite', false, ...
+            'block_size', opt.block_size, 'threshold_mode', mode, ...
+            'seed', opt.seed + ci), 3);
+        [~, ~, ~, st] = bsqr_rand_mex(M, 'k', k, 'check_finite', false, ...
+            'block_size', opt.block_size, 'threshold_mode', mode, 'seed', opt.seed + ci);
+        cond_ratio = st.frob_inv / frobinv_det;     % >1 means worse conditioned than deterministic
         speedup = t_det / t_rand;
-
-        fprintf('%-14s %-20s %10.3f %10.3f %9.2f %8.3f %9.1f\n', ...
-            sprintf('%dx%d', k, n), mode, t_rand * 1e3, t_det * 1e3, ...
-            speedup, ratio, tested_per_k);
-        rows(end+1, :) = {k, n, mode, t_rand, t_det, speedup, ratio, tested_per_k}; %#ok<AGROW>
+        fprintf('%-12s %-20s %11.3f %11.3f %8.2f %8.2f %9.1f\n', ...
+            sprintf('%dx%d', k, n), mode, t_rand*1e3, t_det*1e3, speedup, cond_ratio, st.total_tested/k);
+        rows(end+1, :) = {opt.family, k, n, mode, t_rand, t_det, speedup, ...
+            st.frob_inv, frobinv_det, st.osinsky_bound, st.total_tested/k}; %#ok<AGROW>
     end
 end
 
-results = cell2table(rows, 'VariableNames', ...
-    {'k', 'n', 'mode', 't_rand_s', 't_det_s', 'speedup', 'ratio', 'tested_per_k'});
+results = cell2table(rows, 'VariableNames', {'family', 'k', 'n', 'mode', ...
+    't_rand_s', 't_det_s', 'speedup', 'frobinv_rand', 'frobinv_det', ...
+    'osinsky', 'tested_per_k'});
 csv = fullfile(opt.outdir, 'rand_timings.csv');
 writetable(results, csv);
 fprintf('\nWrote %s\n', csv);
-end
-
-function sizes = default_sizes()
-sizes = {[32, 2000], [64, 4000], [64, 8000], [128, 8000], [32, 16000], [128, 16000]};
 end

@@ -147,14 +147,88 @@ Run: `matlab -batch "addpath('matlab_rand'); run('matlab_rand/tests/run_rand_tes
   if `running_mean` ever yields a negative threshold (impossible for orthonormal
   input), the exhaustive global-min fallback fires and is flagged in `stats`.
 
-## 10. Future work / not yet done
+## 10. Performance-measurement discipline
 
-- **Blocked WY apply.** The candidate-apply is currently a per-reflector BLAS-2
-  loop; accumulating reflectors in a compact-WY block and applying a panel to a
-  candidate block via `dgemm` (mirroring `docs/P3_BLOCKED_BSQR.md`) would cut the
-  apply traffic further. The current speedups are already with the simple form.
+The timing harness (`benchmark/run_rand_benchmarks.m`, `run_rand_experiments.m`)
+is built to time the *kernels* and nothing else, and to compare fairly:
+
+- The compiled MEX kernels are called **directly** (`bsqr_mex`,
+  `bsqr_rand_mex`) — the m-file dispatcher and its `inputParser` are never in the
+  timed path.
+- `'check_finite', false` on both methods — the `O(mn)` finiteness scan is
+  identical overhead for both and is not part of either algorithm.
+- Only the kernel call is inside the `timeit` thunk; matrix generation is
+  outside. `timeit` supplies warm-up and a robust median.
+- **Deterministic baseline:** `bsqr_mex(M,'k',k)` with one output (R only). This
+  is the cheapest deterministic call that still performs the selection; it forms
+  R12 as an unavoidable byproduct (the `O(nk^2)` work the randomized variant
+  skips) but does **not** materialize Q.
+- **Randomized:** `bsqr_rand_mex(...)` with three outputs `[p, reflectors, R11]`
+  — the "R12 not needed" product. No Q, no R12.
+
+Kernel optimization landed: when a pivot is accepted from a sampled block its
+reduced form already sits in the test buffer, so it is reused instead of
+re-applying all reflectors (only the rare exhaustive-fallback re-applies).
+
+## 11. Experiment & plot suite (R12 not needed)
+
+`run_rand_experiments.m` → CSVs in `benchmark/results/`; `plot_rand_experiments.m`
+→ banded figures in `benchmark/plots/` (line = seed mean, shaded band = seed
+min/max). Stress families are in `rand_test_matrix.m`: `gaussian` (benign,
+near-uniform leverage), `graded_leverage`, `spiked_leverage` (few high-leverage
+columns), `coherent` (clustered/redundant columns), `needle` (~k useful columns
+hidden among n near-null ones — hardest for uniform sampling). The sampler's cost
+is set by how concentrated the leverage `ell_j = ||M(:,j)||^2` is.
+
+1. **`fig_scaling`** — time, speedup `t_det/t_rand`, and conditioning
+   `||R11^{-1}||_F / sqrt(k(n-k+1))` vs `n` (per family), deterministic vs both
+   threshold modes.
+2. **`fig_blocksize`** — time, columns tested/`k`, and conditioning vs block
+   size, uniform vs norm-weighted sampling.
+3. **`fig_sampling`** — uniform vs norm-weighted across all families
+   (columns tested/`k`, `||R11^{-1}||_F`, time).
+
+### Findings (Apple Silicon, MEX, k=64; 5 seeds)
+
+- **Speed & scaling.** Randomized beats the deterministic factor path on every
+  family; speedup grows with `n` (≈4× on `gaussian` at n=16000). On the stress
+  families the win is smaller (≈1.3–1.9×) because the sampler tests more columns.
+- **Conditioning.** `running_mean` keeps `||R11^{-1}||_F` far under the bound on
+  *all* families (ratio 0.06–0.32). The bound is never violated — the stress
+  matrices stress the *sample count*, not selection quality.
+- **`worstcase_allowance` is risky under stress.** It is fine on benign inputs
+  but spends slack aggressively: on `spiked_leverage` it rides to ~0.8 of the
+  Osinsky bound (vs ~0.1 for `running_mean`). Keep `running_mean` the default;
+  use `worstcase_allowance` only when you know the input is benign.
+- **Block size has a family-dependent sweet spot.** Benign (`gaussian`): small
+  blocks (2–8) are fastest (best-in-block tests the whole block, so larger blocks
+  waste tests; conditioning still improves with block size). Stressed
+  (`spiked`/`needle`): small blocks are *much* slower (block=1 needs ~130–190
+  rounds of tiny BLAS calls — 35–53 ms); ~16–32 amortizes the round overhead
+  (best ~9–12 ms). A reasonable default is 16; an adaptive block (grow on misses)
+  would dominate both regimes.
+- **Norm-weighted sampling helps the count and the quality, but not (yet) the
+  clock.** On concentrated-leverage families it cuts columns tested ~9–12×
+  (spiked 151→16, needle 187→16 per k) and improves conditioning 3–5×, because
+  it samples the high-leverage useful columns first. But the current
+  implementation pays an `O(mn)` norm precompute plus an `O(n log n)`
+  Efraimidis–Spirakis sort **every step**, which makes it 2–5× slower in
+  wall-clock despite the sample savings. On benign families it is pure overhead.
+
+## 12. Future work / not yet done
+
+- **Fast weighted sampler.** Convert the norm-weighted sample savings into time
+  savings: replace the per-step full sort with an `O(b)`-per-draw weighted
+  sampler (alias table or a Fenwick/BIT supporting `O(log n)` weight removal),
+  and draw blocks lazily so early acceptance avoids touching all `n`. This is the
+  single highest-value perf item for the stress regime.
+- **Adaptive block size.** Start small and grow the block on consecutive misses
+  to get the best of both regimes (small-block efficiency when columns are easy,
+  large-block amortization when they are scarce).
+- **Blocked WY apply.** The candidate-apply is a per-reflector BLAS-2 loop;
+  accumulating reflectors in compact-WY and applying a panel to a candidate block
+  via `dgemm` (mirroring `docs/P3_BLOCKED_BSQR.md`) would cut apply traffic.
 - **Current-`rho^2` importance sampling.** `normweighted` uses *starting* column
   norms (the only weights available without touching all columns); the
-  theory-clean weight is the current `rho_j^2`, which is unavailable cheaply.
-  Worth measuring how much the starting-norm proxy helps `tested/k`.
-- A perf gate / publication-style plot script if this graduates from experiment.
+  theory-clean weight is the current `rho_j^2`, unavailable cheaply.
+- A perf gate if this graduates from experiment.
