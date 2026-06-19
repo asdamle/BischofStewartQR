@@ -8,6 +8,8 @@ Two parallel implementations of Bischof-Stewart column-pivoted QR (BSQR), built 
 
 The two implementations are intentionally kept algorithmically identical: same pivot criterion `(1 + ||w_j||^2) / ||a_j||^2` with strict `<` tie-breaking (first minimum wins), same running column-norm downdates with a recompute tolerance (default `sqrt(eps)`), same workspace layout. Changes to kernel behavior in one language generally need a matching change in the other.
 
+There is also an **experimental randomized variant** in `matlab_rand/` (`bsqr_rand`, a pure `.m` kernel plus a `bsqr_rand_mex` C++ backend). It selects columns by a sampling/acceptance rule that maintains the same `||R11^{-1}||_F` guarantee without computing the full pivot criterion for every column at every step — different pivots, same theoretical bound. It is self-contained and must **not** be coupled to the deterministic kernels (it deliberately keeps its own copies of helpers rather than sharing their tested code). See `docs/RANDOMIZED_BSQR_PLAN.md` and `matlab_rand/README.md`.
+
 ## Commands
 
 ### Julia
