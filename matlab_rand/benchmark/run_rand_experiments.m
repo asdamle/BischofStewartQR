@@ -48,7 +48,7 @@ end
 function exp_scaling(opt)
 families = {'gaussian', 'spiked_leverage', 'needle'};
 k = 64;
-ns = [1000, 2000, 4000, 8000, 16000];
+ns = [1000, 2000, 4000, 8000, 16000, 32000, 64000];
 modes = {'running_mean', 'worstcase_allowance'};
 rows = {};
 for fi = 1:numel(families)
@@ -97,7 +97,7 @@ end
 % ===========================================================================
 function exp_sampling(opt)
 families = {'gaussian', 'graded_leverage', 'spiked_leverage', 'coherent', 'needle'};
-k = 64; n = 8000; block = 16;
+k = 64; n = 32000; block = 16;
 samplings = {'uniform', 'normweighted'};
 rows = {};
 for fi = 1:numel(families)

@@ -1,11 +1,19 @@
 // Randomized Bischof-Stewart column selection -- MEX backend.
 //
-// Mirrors matlab_rand/private/bsqr_rand_mfile.m. The kernel never maintains
-// R11^{-1}R12 or column norms for every column; it tracks only the running
-// squared inverse Frobenius norm f2 = ||R11^{-1}||_F^2 and, per step, samples
-// candidate columns in blocks, brings each into the current reduced frame with
-// the accumulated reflectors (BLAS-2/3), and accepts the first/best one whose
-// increment keeps f2 under the per-step threshold.
+// Mirrors matlab_rand/private/bsqr_rand_mfile.m in behaviour (not RNG). The
+// kernel never maintains R11^{-1}R12 or column norms for every column; it tracks
+// only the running squared inverse Frobenius norm f2 = ||R11^{-1}||_F^2 and, per
+// step, samples candidate columns in blocks, brings each into the current
+// reduced frame with the accumulated reflectors, and accepts the first/best one
+// whose increment keeps f2 under the per-step threshold.
+//
+// Performance design (see docs/RANDOMIZED_BSQR_PLAN.md):
+//   * Block apply is BLAS-3 via the compact-WY form Q_nsel' = I - V T' V'
+//     (one gemm + trmm + gemm), not a loop of nsel rank-1 updates -- this is
+//     what makes the k<<n win materialize.
+//   * Sampling touches only the columns actually tested: uniform uses a partial
+//     Fisher-Yates with O(1) pivot removal; norm-weighted uses a Fenwick tree
+//     so a step costs O(tested * log n) instead of an O(n log n) sort.
 //
 // The RNG is independent of MATLAB's, so pivot sequences need not match the
 // m-file backend; both satisfy the same guarantees on orthonormal-row input.
@@ -158,7 +166,6 @@ void parse_options(const mxArray *A, int nrhs, const mxArray *prhs[], Options &o
         } else if (name == "return_r12") {
             opt.return_r12 = scalar_to_bool(val, "bsqr_rand:InvalidReturnR12");
         } else if (name == "backend") {
-            // Accepted for API compatibility; ignored inside the MEX.
             const std::string b = to_lower(get_string(val, "bsqr_rand:InvalidBackend"));
             if (!(b == "auto" || b == "mfile" || b == "mex")) {
                 fail("bsqr_rand:InvalidBackend", "backend must be \"auto\", \"mfile\", or \"mex\".");
@@ -181,6 +188,41 @@ double threshold_value(ThresholdMode mode, double f2, mwSize nsel, mwSize k, mwS
     const double Fhat_next = (di + 1.0) * (dn - di) / (dk - di);
     return Fhat_next - f2;
 }
+
+// Fenwick (BIT) for weighted sampling without replacement: sample an index with
+// probability proportional to its current weight in O(log n), remove/restore a
+// weight in O(log n). Used only for norm-weighted sampling.
+struct Fenwick {
+    std::vector<double> t;
+    mwSize n = 0;
+    int LOG = 0;
+    double cur_total = 0.0;
+
+    void init(const std::vector<double> &w) {
+        n = static_cast<mwSize>(w.size());
+        t.assign(n + 1, 0.0);
+        LOG = 0;
+        while ((static_cast<mwSize>(1) << (LOG + 1)) <= n) ++LOG;
+        cur_total = 0.0;
+        for (mwSize i = 0; i < n; ++i) add(i, w[i]);
+    }
+    void add(mwSize i, double d) {
+        cur_total += d;
+        for (mwSize j = i + 1; j <= n; j += j & (~j + 1)) t[j] += d;
+    }
+    // Smallest 0-based index whose cumulative weight exceeds x (0 <= x < total).
+    mwSize find(double x) const {
+        mwSize pos = 0;
+        for (int pw = LOG; pw >= 0; --pw) {
+            mwSize nx = pos + (static_cast<mwSize>(1) << pw);
+            if (nx <= n && t[nx] <= x) {
+                pos = nx;
+                x -= t[nx];
+            }
+        }
+        return pos;  // 0-based
+    }
+};
 
 }  // namespace
 
@@ -219,39 +261,48 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     const mwSize k = opt.k;
     const mwSize block = std::min(opt.block_size, std::max<mwSize>(n, 1));
+    const bool weighted = (opt.sampling == Sampling::NormWeighted);
 
     // --- State -------------------------------------------------------------
-    std::vector<double> V(static_cast<size_t>(m) * k, 0.0);       // reflector store (unit diag)
-    std::vector<double> R11(static_cast<size_t>(k) * k, 0.0);     // k x k, lda = k
+    std::vector<double> V(static_cast<size_t>(m) * k, 0.0);    // reflector store (unit diag)
+    std::vector<double> T(static_cast<size_t>(k) * k, 0.0);    // compact-WY factor, lda=k
+    std::vector<double> R11(static_cast<size_t>(k) * k, 0.0);  // k x k, lda=k
     std::vector<double> tau(k, 0.0);
     std::vector<mwSize> selected(k, 0);
-    std::vector<mwSize> remaining(n);
-    std::iota(remaining.begin(), remaining.end(), static_cast<mwSize>(0));
+    std::vector<unsigned char> taken(n, 0);
     double f2 = 0.0;
 
-    // --- Stats -------------------------------------------------------------
+    // Stats
     std::vector<double> st_f2(k, 0.0), st_crit(k, 0.0), st_thr(k, 0.0), st_Fhat(k, 0.0);
     std::vector<double> st_samples(k, 0.0), st_rounds(k, 0.0), st_fallback(k, 0.0);
 
-    // --- Scratch -----------------------------------------------------------
+    // Scratch
     std::vector<double> X(static_cast<size_t>(m) * std::max<mwSize>(block, 1), 0.0);
+    std::vector<double> WB(static_cast<size_t>(std::max<mwSize>(k, 1)) * std::max<mwSize>(block, 1), 0.0);
     std::vector<double> Xtop(static_cast<size_t>(std::max<mwSize>(k, 1)) * std::max<mwSize>(block, 1), 0.0);
-    std::vector<double> wbuf(std::max<mwSize>(block, 1), 0.0);
     std::vector<double> cbuf(std::max<mwSize>(block, 1), 0.0);
+    std::vector<double> tcol(std::max<mwSize>(k, 1), 0.0);
     std::vector<double> xcol(m, 0.0);
-    std::vector<mwSize> visit(n, 0);
-    std::vector<double> keys;
-    std::vector<mwSize> g_order;
-    std::vector<double> g;  // starting squared column norms (normweighted only)
+    std::vector<mwSize> ids(std::max<mwSize>(block, 1), 0);
 
-    if (opt.sampling == Sampling::NormWeighted) {
+    // Uniform sampling pool (partial Fisher-Yates with O(1) removal).
+    std::vector<mwSize> remaining;
+    // Norm-weighted sampling (Fenwick over squared column norms).
+    Fenwick bit;
+    std::vector<double> g;          // original squared column norms
+    std::vector<mwSize> drawn;      // columns drawn (and zeroed) within a step
+    if (weighted) {
         g.assign(n, 0.0);
-        ptrdiff_t mm = static_cast<ptrdiff_t>(m);
-        ptrdiff_t inc1 = 1;
+        ptrdiff_t mm = static_cast<ptrdiff_t>(m), inc1 = 1;
         for (mwSize j = 0; j < n; ++j) {
             const double nrm = dnrm2(&mm, const_cast<double *>(&A[static_cast<size_t>(j) * m]), &inc1);
             g[j] = nrm * nrm;
         }
+        bit.init(g);
+        drawn.reserve(n);
+    } else {
+        remaining.resize(n);
+        std::iota(remaining.begin(), remaining.end(), static_cast<mwSize>(0));
     }
 
     std::mt19937_64 rng;
@@ -261,89 +312,88 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         std::random_device rd;
         rng.seed((static_cast<unsigned long long>(rd()) << 32) ^ rd());
     }
-    std::uniform_real_distribution<double> unif01(std::numeric_limits<double>::min(), 1.0);
+    std::uniform_real_distribution<double> unif01(0.0, 1.0);
 
     const double one = 1.0, zero = 0.0;
     ptrdiff_t inc1 = 1;
     const ptrdiff_t ldA = static_cast<ptrdiff_t>(m);
     const ptrdiff_t ldR = static_cast<ptrdiff_t>(k);
 
+    mwSize rem_count = n;  // pool size at the start of the current step
+
     for (mwSize nsel = 0; nsel < k; ++nsel) {
-        const mwSize rem_count = n - nsel;
-        const double theta =
-            threshold_value(opt.threshold_mode, f2, nsel, k, n) * opt.slack;
-        const double Fhat_next =
-            (static_cast<double>(nsel) + 1.0) * (static_cast<double>(n) - nsel) /
-            (static_cast<double>(k) - nsel);
+        const double theta = threshold_value(opt.threshold_mode, f2, nsel, k, n) * opt.slack;
+        const double Fhat_next = (static_cast<double>(nsel) + 1.0) *
+            (static_cast<double>(n) - nsel) / (static_cast<double>(k) - nsel);
         st_thr[nsel] = theta;
         st_Fhat[nsel] = Fhat_next;
 
-        // Visiting order over the remaining columns.
-        for (mwSize t = 0; t < rem_count; ++t) {
-            visit[t] = remaining[t];
-        }
-        if (opt.sampling == Sampling::Uniform) {
-            for (mwSize i = rem_count; i > 1; --i) {  // Fisher-Yates
-                std::uniform_int_distribution<mwSize> d(0, i - 1);
-                std::swap(visit[i - 1], visit[d(rng)]);
-            }
-        } else {
-            keys.assign(rem_count, 0.0);
-            g_order.assign(rem_count, 0);
-            for (mwSize t = 0; t < rem_count; ++t) {
-                const double w = std::max(g[remaining[t]], std::numeric_limits<double>::min());
-                keys[t] = -std::log(unif01(rng)) / w;  // Efraimidis-Spirakis
-                g_order[t] = t;
-            }
-            std::sort(g_order.begin(), g_order.end(),
-                      [&keys](mwSize a, mwSize b) { return keys[a] < keys[b]; });
-            for (mwSize t = 0; t < rem_count; ++t) {
-                visit[t] = remaining[g_order[t]];
-            }
-        }
+        if (weighted) drawn.clear();
 
         double best_c = std::numeric_limits<double>::infinity();
-        mwSize best_id = visit[0];
+        mwSize best_id = 0, best_pos = 0;     // best_pos: position in `remaining` (uniform only)
         bool accepted = false;
-        mwSize accept_id = 0;
+        mwSize accept_id = 0, accept_c_local = 0, accept_pos = 0;
         double accept_c = std::numeric_limits<double>::infinity();
-        mwSize accept_local = 0;   // column index of the accepted pivot within the last block
         mwSize tested = 0, rounds = 0;
 
         for (mwSize pos = 0; pos < rem_count && !accepted; pos += block) {
             const mwSize bcount = std::min(block, rem_count - pos);
 
-            // Gather candidate columns into X (m x bcount).
+            // Draw bcount candidates and gather them into X (m x bcount).
             for (mwSize t = 0; t < bcount; ++t) {
-                const double *src = &A[static_cast<size_t>(visit[pos + t]) * m];
+                mwSize id;
+                if (!weighted) {
+                    const mwSize p = pos + t;  // partial Fisher-Yates: freeze position p
+                    std::uniform_int_distribution<mwSize> d(p, rem_count - 1);
+                    std::swap(remaining[p], remaining[d(rng)]);
+                    id = remaining[p];
+                } else {
+                    double total = bit.cur_total;
+                    if (total <= 0.0) {  // degenerate: all remaining weights ~0
+                        id = n;          // sentinel -> linear fallback below
+                        for (mwSize j = 0; j < n; ++j) {
+                            if (!taken[j]) { id = j; break; }
+                        }
+                    } else {
+                        double x = unif01(rng) * total;
+                        if (x >= total) x = std::nextafter(total, 0.0);
+                        id = bit.find(x);
+                    }
+                    bit.add(id, -g[id]);   // remove for without-replacement draws
+                    drawn.push_back(id);
+                }
+                ids[t] = id;
+                const double *src = &A[static_cast<size_t>(id) * m];
                 std::copy(src, src + m, &X[static_cast<size_t>(t) * m]);
             }
 
-            // Apply the nsel accumulated reflectors: X <- Q_nsel * X.
-            for (mwSize s = 0; s < nsel; ++s) {
-                if (tau[s] == 0.0) {
-                    continue;
-                }
-                const char trT = 'T';
-                ptrdiff_t mm = ldA, nn = static_cast<ptrdiff_t>(bcount);
-                dgemv(&trT, &mm, &nn, &one, X.data(), &ldA, &V[static_cast<size_t>(s) * m],
-                      &inc1, &zero, wbuf.data(), &inc1);
-                const double negtau = -tau[s];
-                dger(&mm, &nn, &negtau, &V[static_cast<size_t>(s) * m], &inc1, wbuf.data(),
-                     &inc1, X.data(), &ldA);
+            // Apply the accumulated reflectors as a block: X <- Q_nsel' X
+            //   = (I - V T' V') X  (compact-WY, BLAS-3).
+            if (nsel > 0) {
+                const ptrdiff_t ns = static_cast<ptrdiff_t>(nsel);
+                const ptrdiff_t bc = static_cast<ptrdiff_t>(bcount);
+                const ptrdiff_t mm = ldA;
+                char tT = 'T', tN = 'N';
+                dgemm(&tT, &tN, &ns, &bc, &mm, &one, V.data(), &ldA, X.data(), &ldA,
+                      &zero, WB.data(), &ns);
+                char side = 'L', uplo = 'U', tr = 'T', diag = 'N';
+                dtrmm(&side, &uplo, &tr, &diag, &ns, &bc, &one, T.data(), &ldR, WB.data(), &ns);
+                const double neg1 = -1.0;
+                dgemm(&tN, &tN, &mm, &bc, &ns, &neg1, V.data(), &ldA, WB.data(), &ns,
+                      &one, X.data(), &ldA);
             }
 
             // wn2 = column norms of R11^{-1} * (top nsel rows of X).
             if (nsel > 0) {
                 for (mwSize t = 0; t < bcount; ++t) {
-                    std::copy(&X[static_cast<size_t>(t) * m],
-                              &X[static_cast<size_t>(t) * m] + nsel,
+                    std::copy(&X[static_cast<size_t>(t) * m], &X[static_cast<size_t>(t) * m] + nsel,
                               &Xtop[static_cast<size_t>(t) * nsel]);
                 }
-                const char side = 'L', uplo = 'U', tr = 'N', diag = 'N';
-                ptrdiff_t mm = static_cast<ptrdiff_t>(nsel), nn = static_cast<ptrdiff_t>(bcount);
+                char side = 'L', uplo = 'U', tr = 'N', diag = 'N';
+                ptrdiff_t ns = static_cast<ptrdiff_t>(nsel), bc = static_cast<ptrdiff_t>(bcount);
                 ptrdiff_t ldb = static_cast<ptrdiff_t>(nsel);
-                dtrsm(&side, &uplo, &tr, &diag, &mm, &nn, &one, R11.data(), &ldR, Xtop.data(), &ldb);
+                dtrsm(&side, &uplo, &tr, &diag, &ns, &bc, &one, R11.data(), &ldR, Xtop.data(), &ldb);
             }
 
             mwSize blk_best = 0;
@@ -351,103 +401,102 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             for (mwSize t = 0; t < bcount; ++t) {
                 double rho2 = 0.0;
                 const double *xc = &X[static_cast<size_t>(t) * m];
-                for (mwSize r = nsel; r < m; ++r) {
-                    rho2 = std::fma(xc[r], xc[r], rho2);
-                }
+                for (mwSize r = nsel; r < m; ++r) rho2 = std::fma(xc[r], xc[r], rho2);
                 double wn2 = 0.0;
                 if (nsel > 0) {
                     const double *wc = &Xtop[static_cast<size_t>(t) * nsel];
-                    for (mwSize r = 0; r < nsel; ++r) {
-                        wn2 = std::fma(wc[r], wc[r], wn2);
-                    }
+                    for (mwSize r = 0; r < nsel; ++r) wn2 = std::fma(wc[r], wc[r], wn2);
                 }
                 const double c = (rho2 > 0.0) ? (1.0 + wn2) / rho2
                                               : std::numeric_limits<double>::infinity();
                 cbuf[t] = c;
-                if (c < blk_best_c) {
-                    blk_best_c = c;
-                    blk_best = t;
-                }
+                if (c < blk_best_c) { blk_best_c = c; blk_best = t; }
             }
 
             tested += bcount;
             ++rounds;
             if (blk_best_c < best_c) {
                 best_c = blk_best_c;
-                best_id = visit[pos + blk_best];
+                best_id = ids[blk_best];
+                best_pos = pos + blk_best;
             }
 
             if (opt.pick == Pick::First) {
                 for (mwSize t = 0; t < bcount; ++t) {
                     if (cbuf[t] <= theta) {
-                        accept_id = visit[pos + t];
-                        accept_c = cbuf[t];
-                        accept_local = t;
-                        accepted = true;
+                        accept_id = ids[t]; accept_c = cbuf[t];
+                        accept_c_local = t; accept_pos = pos + t; accepted = true;
                         break;
                     }
                 }
             } else if (blk_best_c <= theta) {
-                accept_id = visit[pos + blk_best];
-                accept_c = blk_best_c;
-                accept_local = blk_best;
-                accepted = true;
+                accept_id = ids[blk_best]; accept_c = blk_best_c;
+                accept_c_local = blk_best; accept_pos = pos + blk_best; accepted = true;
             }
         }
 
         bool fallback = false;
         if (!accepted) {
-            accept_id = best_id;
-            accept_c = best_c;
-            fallback = true;
+            accept_id = best_id; accept_c = best_c; accept_pos = best_pos; fallback = true;
         }
 
-        // Reduce the accepted column and append its reflector / R11 column. When
-        // the pivot was accepted from a sampled block its reduced form already
-        // sits in X (the reflectors were applied there) -- reuse it. Only the
-        // exhaustive-fallback case (X overwritten) needs a fresh apply.
+        // Reduce the accepted column. If it was accepted from the last block its
+        // reduced form is still in X (col accept_c_local); otherwise re-apply.
         if (accepted) {
-            const double *xsrc = &X[static_cast<size_t>(accept_local) * m];
+            const double *xsrc = &X[static_cast<size_t>(accept_c_local) * m];
             std::copy(xsrc, xsrc + m, xcol.data());
         } else {
             std::copy(&A[static_cast<size_t>(accept_id) * m],
                       &A[static_cast<size_t>(accept_id) * m] + m, xcol.data());
-            for (mwSize s = 0; s < nsel; ++s) {
-                if (tau[s] == 0.0) {
-                    continue;
-                }
-                ptrdiff_t mm = ldA;
-                const double d = ddot(&mm, &V[static_cast<size_t>(s) * m], &inc1, xcol.data(), &inc1);
-                const double coef = -tau[s] * d;
-                daxpy(&mm, &coef, &V[static_cast<size_t>(s) * m], &inc1, xcol.data(), &inc1);
+            if (nsel > 0) {  // single-column compact-WY apply
+                const ptrdiff_t ns = static_cast<ptrdiff_t>(nsel), mm = ldA;
+                char tT = 'T', tN = 'N';
+                dgemv(&tT, &mm, &ns, &one, V.data(), &ldA, xcol.data(), &inc1, &zero, tcol.data(), &inc1);
+                char uplo = 'U', diag = 'N';
+                dtrmv(&uplo, &tT, &diag, &ns, T.data(), &ldR, tcol.data(), &inc1);
+                const double neg1 = -1.0;
+                dgemv(&tN, &mm, &ns, &neg1, V.data(), &ldA, tcol.data(), &inc1, &one, xcol.data(), &inc1);
             }
         }
-        for (mwSize r = 0; r < nsel; ++r) {
-            R11[r + static_cast<size_t>(nsel) * k] = xcol[r];
-        }
+
+        // R11 column (top nsel) and the new reflector / diagonal.
+        for (mwSize r = 0; r < nsel; ++r) R11[r + static_cast<size_t>(nsel) * k] = xcol[r];
         double tau_i = 0.0;
         ptrdiff_t len = static_cast<ptrdiff_t>(m - nsel);
-        if (len > 1) {
-            dlarfg(&len, &xcol[nsel], &xcol[nsel + 1], &inc1, &tau_i);
-        }
-        const double beta_i = xcol[nsel];
-        R11[nsel + static_cast<size_t>(nsel) * k] = beta_i;
+        if (len > 1) dlarfg(&len, &xcol[nsel], &xcol[nsel + 1], &inc1, &tau_i);
+        R11[nsel + static_cast<size_t>(nsel) * k] = xcol[nsel];
         V[nsel + static_cast<size_t>(nsel) * m] = 1.0;
-        for (mwSize r = nsel + 1; r < m; ++r) {
-            V[r + static_cast<size_t>(nsel) * m] = xcol[r];
-        }
+        for (mwSize r = nsel + 1; r < m; ++r) V[r + static_cast<size_t>(nsel) * m] = xcol[r];
         tau[nsel] = tau_i;
+
+        // Incremental compact-WY update: new column of T (dlarft, forward).
+        if (nsel > 0) {
+            const ptrdiff_t ns = static_cast<ptrdiff_t>(nsel), mm = ldA;
+            char tT = 'T';
+            dgemv(&tT, &mm, &ns, &one, V.data(), &ldA, &V[static_cast<size_t>(nsel) * m], &inc1,
+                  &zero, tcol.data(), &inc1);
+            const double negtau = -tau_i;
+            for (mwSize r = 0; r < nsel; ++r) tcol[r] *= negtau;
+            char uplo = 'U', tN = 'N', diag = 'N';
+            dtrmv(&uplo, &tN, &diag, &ns, T.data(), &ldR, tcol.data(), &inc1);
+            for (mwSize r = 0; r < nsel; ++r) T[r + static_cast<size_t>(nsel) * k] = tcol[r];
+        }
+        T[nsel + static_cast<size_t>(nsel) * k] = tau_i;
 
         f2 += accept_c;
         selected[nsel] = accept_id;
-        // Remove accept_id from remaining (order irrelevant; reshuffled each step).
-        for (mwSize t = 0; t < rem_count; ++t) {
-            if (remaining[t] == accept_id) {
-                remaining[t] = remaining[rem_count - 1];
-                remaining.pop_back();
-                break;
+        taken[accept_id] = 1;
+
+        // Remove the pivot from the pool; restore the other drawn weights.
+        if (!weighted) {
+            remaining[accept_pos] = remaining[rem_count - 1];  // O(1) swap-pop
+        } else {
+            for (mwSize id : drawn) {
+                if (id != accept_id) bit.add(id, g[id]);  // restore non-selected draws
             }
+            // accept_id stays removed (taken).
         }
+        --rem_count;
 
         st_f2[nsel] = f2;
         st_crit[nsel] = accept_c;
@@ -457,25 +506,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     // --- Outputs -----------------------------------------------------------
-    if (nlhs == 0) {
-        return;
-    }
+    if (nlhs == 0) return;
 
-    // p (1 x n): selected first, then the leftover columns.
     mxArray *pArr = mxCreateDoubleMatrix(1, n, mxREAL);
     double *pp = mxGetPr(pArr);
-    for (mwSize j = 0; j < k; ++j) {
-        pp[j] = static_cast<double>(selected[j] + 1);
-    }
-    for (mwSize j = 0; j < remaining.size(); ++j) {
-        pp[k + j] = static_cast<double>(remaining[j] + 1);
+    for (mwSize j = 0; j < k; ++j) pp[j] = static_cast<double>(selected[j] + 1);
+    mwSize w = k;
+    for (mwSize j = 0; j < n; ++j) {
+        if (!taken[j]) pp[w++] = static_cast<double>(j + 1);
     }
     plhs[0] = pArr;
-    if (nlhs == 1) {
-        return;
-    }
+    if (nlhs == 1) return;
 
-    // reflectors struct.
     const char *rfields[] = {"V", "tau", "m", "k"};
     mxArray *refl = mxCreateStructMatrix(1, 1, 4, rfields);
     mxArray *Vm = mxCreateDoubleMatrix(m, k, mxREAL);
@@ -487,9 +529,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     mxSetField(refl, 0, "m", mxCreateDoubleScalar(static_cast<double>(m)));
     mxSetField(refl, 0, "k", mxCreateDoubleScalar(static_cast<double>(k)));
     plhs[1] = refl;
-    if (nlhs == 2) {
-        return;
-    }
+    if (nlhs == 2) return;
 
     mxArray *R11m = mxCreateDoubleMatrix(k, k, mxREAL);
     double *rptr = mxGetPr(R11m);
@@ -499,11 +539,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         }
     }
     plhs[2] = R11m;
-    if (nlhs == 3) {
-        return;
-    }
+    if (nlhs == 3) return;
 
-    // stats struct.
     const char *sfields[] = {"f2", "crit", "threshold", "Fhat", "samples_tested",
                              "rounds", "fallback", "frob_inv", "osinsky_bound", "total_tested"};
     mxArray *stats = mxCreateStructMatrix(1, 1, 10, sfields);
@@ -525,33 +562,29 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                mxCreateDoubleScalar(std::sqrt(static_cast<double>(k) * (n - k + 1))));
     mxSetField(stats, 0, "total_tested", mxCreateDoubleScalar(total_tested));
     plhs[3] = stats;
-    if (nlhs == 4) {
-        return;
-    }
+    if (nlhs == 4) return;
 
-    // R12 (optional): Q(:,1:k)' * A(:,remaining), top k rows.
+    // R12 (optional): Q(:,1:k)' * A(:,leftover), top k rows, via compact-WY.
     mwSize n12 = (k < n) ? (n - k) : 0;
     mxArray *R12m = mxCreateDoubleMatrix(k, n12, mxREAL);
     if (opt.return_r12 && k > 0 && n12 > 0) {
         double *r12 = mxGetPr(R12m);
         std::vector<double> Xr(static_cast<size_t>(m) * n12);
-        for (mwSize j = 0; j < n12; ++j) {
-            const double *src = &A[static_cast<size_t>(remaining[j]) * m];
-            std::copy(src, src + m, &Xr[static_cast<size_t>(j) * m]);
-        }
-        for (mwSize s = 0; s < k; ++s) {
-            if (tau[s] == 0.0) {
-                continue;
+        mwSize col = 0;
+        for (mwSize j = 0; j < n; ++j) {
+            if (!taken[j]) {
+                const double *src = &A[static_cast<size_t>(j) * m];
+                std::copy(src, src + m, &Xr[static_cast<size_t>(col++) * m]);
             }
-            const char trT = 'T';
-            ptrdiff_t mm = ldA, nn = static_cast<ptrdiff_t>(n12);
-            std::vector<double> w(n12);
-            dgemv(&trT, &mm, &nn, &one, Xr.data(), &ldA, &V[static_cast<size_t>(s) * m], &inc1,
-                  &zero, w.data(), &inc1);
-            const double negtau = -tau[s];
-            dger(&mm, &nn, &negtau, &V[static_cast<size_t>(s) * m], &inc1, w.data(), &inc1,
-                 Xr.data(), &ldA);
         }
+        std::vector<double> WBr(static_cast<size_t>(k) * n12);
+        const ptrdiff_t kk = static_cast<ptrdiff_t>(k), nn = static_cast<ptrdiff_t>(n12), mm = ldA;
+        char tT = 'T', tN = 'N';
+        dgemm(&tT, &tN, &kk, &nn, &mm, &one, V.data(), &ldA, Xr.data(), &ldA, &zero, WBr.data(), &kk);
+        char side = 'L', uplo = 'U', tr = 'T', diag = 'N';
+        dtrmm(&side, &uplo, &tr, &diag, &kk, &nn, &one, T.data(), &ldR, WBr.data(), &kk);
+        const double neg1 = -1.0;
+        dgemm(&tN, &tN, &mm, &nn, &kk, &neg1, V.data(), &ldA, WBr.data(), &kk, &one, Xr.data(), &ldA);
         for (mwSize j = 0; j < n12; ++j) {
             std::copy(&Xr[static_cast<size_t>(j) * m], &Xr[static_cast<size_t>(j) * m] + k,
                       &r12[static_cast<size_t>(j) * k]);

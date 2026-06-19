@@ -142,7 +142,8 @@ for mi = 1:size(metrics, 1)
     if mi == 1; legend(ax, {'uniform', 'normweighted'}, 'Location', 'northwest'); end
     if strcmp(metrics{mi, 1}, 'tested_per_k'); set(ax, 'YScale', 'log'); end
 end
-title(tl, 'Uniform vs norm-weighted sampling across families (k=64, n=8000, block=16)');
+title(tl, sprintf('Uniform vs norm-weighted sampling across families (k=%d, n=%d, block=%d)', ...
+    T.k(1), T.n(1), T.block_size(1)));
 save_fig(fig, fullfile(opt.plotdir, 'fig_sampling'), opt.formats);
 end
 

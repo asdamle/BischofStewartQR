@@ -114,14 +114,39 @@ end
 
 function testMexAgreesOnInvariants(testCase)
 % MEX uses its own RNG, so pivots need not match the m-file; both must
-% nonetheless produce a valid factorization and respect the bound.
+% nonetheless produce a valid factorization and respect the bound. Exercise
+% both sampling schemes (uniform / Fenwick-based norm-weighted) and both
+% threshold modes.
 if ~bsqr_rand_mex_available()
     return;  % nothing to check until the MEX is built
 end
 k = 24; n = 150;
 M = orthonormal_rows(k, n, 17);
-[p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 4);
+for sampling = ["uniform", "normweighted"]
+    for mode = ["running_mean", "worstcase_allowance"]
+        for bs = [1, 7, 32]
+            [p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 4, ...
+                'sampling', char(sampling), 'threshold_mode', char(mode), 'block_size', bs);
+            check_factorization(testCase, M, p, reflectors, R11, k);
+            tol = 1e-9 * max(1, stats.Fhat(end));
+            verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
+        end
+    end
+end
+end
+
+function testMexWeightedConcentratedLeverage(testCase)
+% On concentrated-leverage input the Fenwick weighted sampler must still
+% produce an exact factorization and respect the bound.
+if ~bsqr_rand_mex_available()
+    return;
+end
+repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+addpath(fullfile(repo_root, 'matlab_rand', 'benchmark'));
+k = 16; n = 400;
+M = rand_test_matrix('needle', k, n, 23);
+[p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 2, ...
+    'sampling', 'normweighted');
 check_factorization(testCase, M, p, reflectors, R11, k);
-tol = 1e-9 * max(1, stats.Fhat(end));
-verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
+verifyLessThanOrEqual(testCase, stats.f2(end), k * (n - k + 1) * (1 + 1e-8));
 end

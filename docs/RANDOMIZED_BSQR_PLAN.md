@@ -69,21 +69,33 @@ breaks the exact bound proportionally).
 
 Per accepted pivot, with `S_i` candidates tested at step `i`:
 
-- apply the accumulated reflectors to the sampled block — `O(k i)` per candidate
-  (BLAS-2 `dgemv`/`dger`, or one `dtrsm` for the whole block's `w`-solve);
-- reduce the one chosen column — `O(k(k-i))` amortized.
+- apply the accumulated reflectors to the sampled block — done as one BLAS-3
+  compact-WY block (`Q_i' = I - V T' V'`: gemm + trmm + gemm) plus one `dtrsm`
+  for the block's `w`-solve;
+- reduce the one chosen column — reused from the test block (no re-apply).
 
-Total `~ O(sum_i S_i k i) + O(k^3) + O(nk)` (the last to read columns / seed
-weights), versus the deterministic `O(nk^2)`. With the threshold keeping
-`S_i = O(1)`, that is `O(nk + k^3)` — a ~`k×` win when `k^2 << n`.
+The MEX touches only the columns it actually tests: there is **no** `O(n)`
+per-step pass. Total `~ O(sum_i S_i k i) + O(k^3) + O(n)` (the `O(n)` is a single
+pool init; norm-weighted sampling adds a one-time `O(mn)` for column norms),
+versus the deterministic `O(nk^2)`. With the threshold keeping `S_i = O(1)`, the
+randomized kernel is essentially **n-independent**, so the speedup grows linearly
+in `n` for `k << n`.
 
-Measured (Apple Silicon, MEX, short-wide orthonormal rows, block_size 16):
+Measured (Apple Silicon, MEX, k=64, `gaussian` orthonormal rows, block 16,
+uniform sampling, `t_rand` is `[p,reflectors,R11]` only):
 
-| size       | t_rand (ms) | t_det (ms) | speedup | ratio (||Rinv||/Osinsky) | tested/k |
-|------------|------------:|-----------:|--------:|-------------------------:|---------:|
-| 64×4000    | 4.1         | 12.9       | 3.2×    | 0.29                     | 16       |
-| 64×8000    | 5.9         | 33.2       | 5.6×    | 0.32                     | 16       |
-| 128×16000  | 23.7        | 112.1      | 4.7×    | 0.29                     | 16       |
+| size       | t_rand (ms) | t_det (ms) | speedup | ||Rinv|| rand/det |
+|------------|------------:|-----------:|--------:|------------------:|
+| 64×8000    | 0.11        | 6.6        | 42×     | ~1.9              |
+| 64×32000   | 0.39        | 95.8       | 238×    | ~1.7              |
+| 64×64000   | 0.40        | 220        | 475×    | ~1.9              |
+
+`t_rand` is flat across `n` while `t_det` grows `O(nk^2)`. On concentrated-
+leverage inputs (where uniform sampling tests many columns) use `normweighted`
+sampling to keep `tested/k ≈ block` and recover the same scaling (§11).
+
+These numbers reflect three landed optimizations (earlier BLAS-2 / `O(n)`-shuffle
+versions were ~3–6× only): see §10.
 
 The speedup grows with `n`, exactly as the cost model predicts; the conditioning
 stays far under the guarantee.
@@ -166,9 +178,21 @@ is built to time the *kernels* and nothing else, and to compare fairly:
 - **Randomized:** `bsqr_rand_mex(...)` with three outputs `[p, reflectors, R11]`
   — the "R12 not needed" product. No Q, no R12.
 
-Kernel optimization landed: when a pivot is accepted from a sampled block its
-reduced form already sits in the test buffer, so it is reused instead of
-re-applying all reflectors (only the rare exhaustive-fallback re-applies).
+Kernel optimizations landed (MEX), in order of impact for `k << n`:
+
+1. **BLAS-3 compact-WY block apply.** The candidate block is reduced with the
+   compact-WY form `Q_i' = I - V T' V'` (one `dgemm` + `dtrmm` + `dgemm`), with
+   `T` maintained incrementally (`dlarft` forward recurrence). This replaces the
+   previous loop of `nsel` tiny BLAS-2 rank-1 updates.
+2. **O(tested) sampling, O(1) removal.** Uniform sampling uses a *partial*
+   Fisher–Yates that only shuffles the columns actually drawn, and removes the
+   pivot from the pool by swap-and-pop — eliminating the `O(n)` per-step shuffle
+   that previously reintroduced an `O(nk)` term and capped the `k << n` speedup.
+3. **Reuse the accepted column.** Its reduced form already sits in the test block,
+   so it is not re-applied (only the rare exhaustive-fallback re-applies).
+
+Together these moved `gaussian` k=64 from ~5× to **475×** at n=64000 (§4): the
+kernel is now n-independent while the deterministic baseline grows `O(nk^2)`.
 
 ## 11. Experiment & plot suite (R12 not needed)
 
@@ -190,45 +214,49 @@ is set by how concentrated the leverage `ell_j = ||M(:,j)||^2` is.
 
 ### Findings (Apple Silicon, MEX, k=64; 5 seeds)
 
-- **Speed & scaling.** Randomized beats the deterministic factor path on every
-  family; speedup grows with `n` (≈4× on `gaussian` at n=16000). On the stress
-  families the win is smaller (≈1.3–1.9×) because the sampler tests more columns.
+- **Speed & scaling.** With the optimized kernel the randomized method is
+  essentially n-independent. On `gaussian` (uniform sampling) the speedup over the
+  deterministic factor path grows `9× → 42× → 238× → 475×` as `n` goes
+  `1000 → 8000 → 32000 → 64000`. On the stress families with *uniform* sampling
+  the win is smaller (≈6–10× at n=64000) because the sampler tests many columns —
+  fixed by norm-weighted sampling (below).
 - **Conditioning.** `running_mean` keeps `||R11^{-1}||_F` far under the bound on
-  *all* families (ratio 0.06–0.32). The bound is never violated — the stress
-  matrices stress the *sample count*, not selection quality.
-- **`worstcase_allowance` is risky under stress.** It is fine on benign inputs
-  but spends slack aggressively: on `spiked_leverage` it rides to ~0.8 of the
-  Osinsky bound (vs ~0.1 for `running_mean`). Keep `running_mean` the default;
-  use `worstcase_allowance` only when you know the input is benign.
+  *all* families (ratio 0.06–0.32) and ~1.7–2× the deterministic value. The bound
+  is never violated — the stress matrices stress the *sample count*, not quality.
+- **`worstcase_allowance` is risky under stress.** Fine on benign inputs, but it
+  spends slack aggressively: on `spiked_leverage` it rides to ~0.8 of the Osinsky
+  bound (vs ~0.1 for `running_mean`). Keep `running_mean` the default; use
+  `worstcase_allowance` only when the input is known benign.
 - **Block size has a family-dependent sweet spot.** Benign (`gaussian`): small
-  blocks (2–8) are fastest (best-in-block tests the whole block, so larger blocks
-  waste tests; conditioning still improves with block size). Stressed
-  (`spiked`/`needle`): small blocks are *much* slower (block=1 needs ~130–190
-  rounds of tiny BLAS calls — 35–53 ms); ~16–32 amortizes the round overhead
-  (best ~9–12 ms). A reasonable default is 16; an adaptive block (grow on misses)
-  would dominate both regimes.
-- **Norm-weighted sampling helps the count and the quality, but not (yet) the
-  clock.** On concentrated-leverage families it cuts columns tested ~9–12×
-  (spiked 151→16, needle 187→16 per k) and improves conditioning 3–5×, because
-  it samples the high-leverage useful columns first. But the current
-  implementation pays an `O(mn)` norm precompute plus an `O(n log n)`
-  Efraimidis–Spirakis sort **every step**, which makes it 2–5× slower in
-  wall-clock despite the sample savings. On benign families it is pure overhead.
+  blocks (2–8) are fastest (best-in-block tests the whole block; conditioning
+  still improves with block size). Stressed (`spiked`/`needle`) with *uniform*
+  sampling: small blocks are much slower (block=1 → ~130–190 rounds); ~16–32
+  amortizes the round overhead. Default 16; an adaptive block would dominate both.
+- **Norm-weighted sampling — now performant, and decisive under stress.** Backed
+  by a Fenwick tree (sample ∝ weight and remove in `O(log n)`; without-replacement
+  via zero/restore), a step costs `O(tested · log n)` with no full sort. On
+  concentrated-leverage families at n=32000 it cuts columns tested dramatically
+  (spiked 519→16, needle 765→16 per k), improves conditioning 3–6×, **and** is now
+  11–16× faster than uniform in wall-clock (needle: 17.7 ms → 1.1 ms; spiked:
+  12.3 ms → 1.1 ms) — i.e. ~88× over the deterministic baseline. Its only cost is
+  the one-time `O(mn)` norm precompute, which makes it ~3× slower than uniform on
+  *benign* families (where uniform already accepts in one block). **Rule of thumb:
+  uniform for benign/unknown-uniform leverage, norm-weighted when leverage is (or
+  may be) concentrated.**
 
 ## 12. Future work / not yet done
 
-- **Fast weighted sampler.** Convert the norm-weighted sample savings into time
-  savings: replace the per-step full sort with an `O(b)`-per-draw weighted
-  sampler (alias table or a Fenwick/BIT supporting `O(log n)` weight removal),
-  and draw blocks lazily so early acceptance avoids touching all `n`. This is the
-  single highest-value perf item for the stress regime.
 - **Adaptive block size.** Start small and grow the block on consecutive misses
   to get the best of both regimes (small-block efficiency when columns are easy,
-  large-block amortization when they are scarce).
-- **Blocked WY apply.** The candidate-apply is a per-reflector BLAS-2 loop;
-  accumulating reflectors in compact-WY and applying a panel to a candidate block
-  via `dgemm` (mirroring `docs/P3_BLOCKED_BSQR.md`) would cut apply traffic.
+  large-block amortization when they are scarce) — would remove the need to pick
+  uniform-vs-stress block sizes by hand.
+- **Auto sampling selection.** Cheaply estimate leverage concentration (e.g. from
+  a small sample of column norms) and pick uniform vs norm-weighted automatically,
+  so the benign-case `O(mn)` precompute is only paid when it pays off.
 - **Current-`rho^2` importance sampling.** `normweighted` uses *starting* column
   norms (the only weights available without touching all columns); the
   theory-clean weight is the current `rho_j^2`, unavailable cheaply.
 - A perf gate if this graduates from experiment.
+
+(Done, see §10: BLAS-3 compact-WY block apply, `O(tested)` sampling, and a
+Fenwick-tree weighted sampler.)
