@@ -1,23 +1,26 @@
 function plot_rand_experiments(varargin)
 %PLOT_RAND_EXPERIMENTS Publication plots from run_rand_experiments CSVs.
 %
-%   Reads exp_scaling.csv / exp_blocksize.csv / exp_sampling.csv from the
-%   results dir and writes figures to matlab_rand/benchmark/plots/:
-%     fig_scaling.png   - time, speedup, and conditioning vs n (per family),
-%                         deterministic vs randomized (both threshold modes).
-%     fig_blocksize.png - time, columns sampled, and conditioning vs block size
-%                         (per family), uniform vs norm-weighted sampling.
-%     fig_sampling.png   - uniform vs norm-weighted across families.
+%   Reads the k-tagged exp_*_k<K>.csv from the results dir and writes k-tagged
+%   figures fig_*_k<K>.png to matlab_rand/benchmark/plots/:
+%     fig_scaling_k<K>.png   - time, speedup, conditioning vs n (per family),
+%                              deterministic vs randomized (both modes + R12).
+%     fig_blocksize_k<K>.png - time, columns sampled, conditioning vs block size
+%                              (per family), uniform vs norm-weighted sampling.
+%     fig_sampling_k<K>.png  - uniform vs norm-weighted across families.
 %   Each line is the seed mean; the shaded band spans the seed min/max.
 %
-% Options: 'resultsdir', 'plotdir', 'formats' (cellstr, default {'png'}).
+% Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats'
+%   (cellstr, default {'png'}).
 
 ip = inputParser;
+addParameter(ip, 'k', 64);
 addParameter(ip, 'resultsdir', '');
 addParameter(ip, 'plotdir', '');
 addParameter(ip, 'formats', {'png'});
 parse(ip, varargin{:});
 opt = ip.Results;
+opt.tag = sprintf('_k%d', opt.k);
 
 repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 if isempty(opt.resultsdir)
@@ -39,7 +42,7 @@ end
 
 % ===========================================================================
 function plot_scaling(opt, C)
-f = fullfile(opt.resultsdir, 'exp_scaling.csv');
+f = fullfile(opt.resultsdir, ['exp_scaling' opt.tag '.csv']);
 if ~isfile(f); warning('missing %s', f); return; end
 T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
@@ -77,13 +80,13 @@ for fi = 1:numel(fams)
     grid(ax, 'on'); xlabel(ax, 'n'); ylabel(ax, '||R_{11}^{-1}||_F / Osinsky');
     title(ax, sprintf('%s: conditioning', fam), 'Interpreter', 'none');
 end
-title(tl, 'Randomized vs deterministic BSQR (with and without R_{12})');
-save_fig(fig, fullfile(opt.plotdir, 'fig_scaling'), opt.formats);
+title(tl, sprintf('Randomized vs deterministic BSQR, k=%d (with and without R_{12})', opt.k));
+save_fig(fig, fullfile(opt.plotdir, ['fig_scaling' opt.tag]), opt.formats);
 end
 
 % ===========================================================================
 function plot_blocksize(opt, C)
-f = fullfile(opt.resultsdir, 'exp_blocksize.csv');
+f = fullfile(opt.resultsdir, ['exp_blocksize' opt.tag '.csv']);
 if ~isfile(f); warning('missing %s', f); return; end
 T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
@@ -112,13 +115,13 @@ for fi = 1:numel(fams)
     grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, '||R_{11}^{-1}||_F / Osinsky');
     title(ax, sprintf('%s: conditioning', fam), 'Interpreter', 'none');
 end
-title(tl, 'Effect of block size (running\_mean threshold, k=64, n=8000)');
-save_fig(fig, fullfile(opt.plotdir, 'fig_blocksize'), opt.formats);
+title(tl, sprintf('Effect of block size (running\\_mean threshold, k=%d, n=%d)', T.k(1), T.n(1)));
+save_fig(fig, fullfile(opt.plotdir, ['fig_blocksize' opt.tag]), opt.formats);
 end
 
 % ===========================================================================
 function plot_sampling(opt, C)
-f = fullfile(opt.resultsdir, 'exp_sampling.csv');
+f = fullfile(opt.resultsdir, ['exp_sampling' opt.tag '.csv']);
 if ~isfile(f); warning('missing %s', f); return; end
 T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
@@ -147,7 +150,7 @@ for mi = 1:size(metrics, 1)
 end
 title(tl, sprintf('Uniform vs norm-weighted sampling across families (k=%d, n=%d, block=%d)', ...
     T.k(1), T.n(1), T.block_size(1)));
-save_fig(fig, fullfile(opt.plotdir, 'fig_sampling'), opt.formats);
+save_fig(fig, fullfile(opt.plotdir, ['fig_sampling' opt.tag]), opt.formats);
 end
 
 % ===========================================================================

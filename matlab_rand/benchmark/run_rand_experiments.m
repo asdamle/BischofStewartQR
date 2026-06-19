@@ -1,28 +1,32 @@
 function run_rand_experiments(varargin)
 %RUN_RAND_EXPERIMENTS Generate the data behind the publication plots.
 %
-%   Writes three tidy CSVs under matlab_rand/benchmark/results/:
-%     exp_scaling.csv   - time / conditioning / samples vs n, per family,
-%                         deterministic vs randomized (both threshold modes).
-%     exp_blocksize.csv - effect of block_size on time / samples / conditioning,
-%                         uniform vs norm-weighted sampling.
-%     exp_sampling.csv   - uniform vs norm-weighted sampling across families.
+%   Writes three tidy CSVs under matlab_rand/benchmark/results/, tagged by k
+%   (e.g. exp_scaling_k64.csv, exp_scaling_k128.csv, ...):
+%     exp_scaling_k<K>.csv   - time / conditioning / samples vs n, per family,
+%                              deterministic vs randomized (both modes + R12).
+%     exp_blocksize_k<K>.csv - effect of block_size on time / samples / cond,
+%                              uniform vs norm-weighted sampling.
+%     exp_sampling_k<K>.csv  - uniform vs norm-weighted sampling across families.
 %
 %   All randomized timing uses the MEX kernel called directly with
 %   check_finite=false (see run_rand_benchmarks for the fairness rationale).
 %   Each configuration is repeated over several seeds so the plotter can draw
-%   confidence bands. Plot with plot_rand_experiments.
+%   confidence bands. Plot with plot_rand_experiments('k', K).
 %
-% Options: 'trials' (seeds, default 5), 'which' (cellstr subset of
-%   {'scaling','blocksize','sampling'}, default all), 'outdir'.
+% Options: 'k' (rows to select, default 64), 'trials' (seeds, default 5),
+%   'which' (cellstr subset of {'scaling','blocksize','sampling'}, default all),
+%   'outdir'.
 
 ip = inputParser;
+addParameter(ip, 'k', 64);
 addParameter(ip, 'trials', 5);
 addParameter(ip, 'which', {'scaling', 'blocksize', 'sampling'});
 addParameter(ip, 'outdir', '');
 parse(ip, varargin{:});
 opt = ip.Results;
 if ischar(opt.which) || isstring(opt.which); opt.which = cellstr(opt.which); end
+opt.tag = sprintf('_k%d', opt.k);
 
 repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo_root, 'matlab_rand'));
@@ -47,7 +51,7 @@ end
 % ===========================================================================
 function exp_scaling(opt)
 families = {'gaussian', 'spiked_leverage', 'needle'};
-k = 64;
+k = opt.k;
 ns = [1000, 2000, 4000, 8000, 16000, 32000, 64000];
 modes = {'running_mean', 'worstcase_allowance'};
 rows = {};
@@ -73,13 +77,13 @@ for fi = 1:numel(families)
         fprintf('  scaling %-16s n=%-6d done\n', fam, n);
     end
 end
-write_rows(rows, fullfile(opt.outdir, 'exp_scaling.csv'));
+write_rows(rows, fullfile(opt.outdir, ['exp_scaling' opt.tag '.csv']));
 end
 
 % ===========================================================================
 function exp_blocksize(opt)
 families = {'gaussian', 'spiked_leverage', 'needle'};
-k = 64; n = 8000;
+k = opt.k; n = 8000;
 blocks = [1, 2, 4, 8, 16, 32, 64, 128];
 samplings = {'uniform', 'normweighted'};
 rows = {};
@@ -97,13 +101,13 @@ for fi = 1:numel(families)
     end
     fprintf('  blocksize %-16s done\n', fam);
 end
-write_rows(rows, fullfile(opt.outdir, 'exp_blocksize.csv'));
+write_rows(rows, fullfile(opt.outdir, ['exp_blocksize' opt.tag '.csv']));
 end
 
 % ===========================================================================
 function exp_sampling(opt)
 families = {'gaussian', 'graded_leverage', 'spiked_leverage', 'coherent', 'needle'};
-k = 64; n = 32000; block = 16;
+k = opt.k; n = 32000; block = 16;
 samplings = {'uniform', 'normweighted'};
 rows = {};
 for fi = 1:numel(families)
@@ -118,7 +122,7 @@ for fi = 1:numel(families)
     end
     fprintf('  sampling %-16s done\n', fam);
 end
-write_rows(rows, fullfile(opt.outdir, 'exp_sampling.csv'));
+write_rows(rows, fullfile(opt.outdir, ['exp_sampling' opt.tag '.csv']));
 end
 
 % ===========================================================================

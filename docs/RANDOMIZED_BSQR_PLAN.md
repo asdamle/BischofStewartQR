@@ -198,11 +198,15 @@ kernel is now n-independent while the deterministic baseline grows `O(nk^2)`.
 
 `run_rand_experiments.m` → CSVs in `benchmark/results/`; `plot_rand_experiments.m`
 → banded figures in `benchmark/plots/` (line = seed mean, shaded band = seed
-min/max). Stress families are in `rand_test_matrix.m`: `gaussian` (benign,
-near-uniform leverage), `graded_leverage`, `spiked_leverage` (few high-leverage
-columns), `coherent` (clustered/redundant columns), `needle` (~k useful columns
-hidden among n near-null ones — hardest for uniform sampling). The sampler's cost
-is set by how concentrated the leverage `ell_j = ||M(:,j)||^2` is.
+min/max). Both are parameterized by `k` and the committed sweep covers
+`k ∈ {64, 128, 256}`, written to `k`-tagged files (`exp_*_k<K>.csv`,
+`fig_*_k<K>.png`). Stress families are in `rand_test_matrix.m`: `gaussian`
+(benign, near-uniform leverage), `graded_leverage`, `spiked_leverage` (few
+high-leverage columns), `coherent` (clustered/redundant columns), `needle`
+(~k useful columns hidden among n near-null ones — hardest for uniform sampling).
+The sampler's cost is set by how concentrated the leverage `ell_j = ||M(:,j)||^2`
+is. Peak memory is modest (one `k×n` double is ~0.13 GB at k=256, n=64000; a
+handful coexist → ~1 GB peak), so the full grid runs comfortably on 16 GB.
 
 1. **`fig_scaling`** — time, speedup `t_det/t_rand` (log-y), and conditioning
    `||R11^{-1}||_F / sqrt(k(n-k+1))` vs `n` (per family): deterministic vs both
@@ -212,7 +216,7 @@ is set by how concentrated the leverage `ell_j = ||M(:,j)||^2` is.
 3. **`fig_sampling`** — uniform vs norm-weighted across all families
    (columns tested/`k`, `||R11^{-1}||_F`, time).
 
-### Findings (Apple Silicon, MEX, k=64; 5 seeds)
+### Findings (Apple Silicon, MEX, 5 seeds; numbers below are k=64 unless noted)
 
 - **Speed & scaling.** With the optimized kernel the randomized method is
   essentially n-independent. On `gaussian` (uniform sampling) the speedup over the
@@ -254,6 +258,20 @@ is set by how concentrated the leverage `ell_j = ||M(:,j)||^2` is.
   *benign* families (where uniform already accepts in one block). **Rule of thumb:
   uniform for benign/unknown-uniform leverage, norm-weighted when leverage is (or
   may be) concentrated.**
+- **Across k (k ∈ {64, 128, 256}, n=64000).** The story holds at every k; the
+  numbers shift as the cost model predicts:
+  - *No-R12 gaussian speedup* shrinks with k — `545× → 345× → 184×` — because the
+    randomized kernel's apply grows ~`k²` (and `k³` over the run) while the
+    deterministic baseline grows `O(nk²)`; the ratio is `~n/k`. Still 184× at k=256.
+  - *R12-desired gaussian speedup* is essentially k-flat at `~14–15×` (both sides
+    are then `O(nk^2)`; the randomized constant is just smaller).
+  - *Stress families* (uniform) actually improve slightly with k (`needle`
+    `5× → 6× → 8×`), because the useful set `ng ≈ 1.25k` grows with k so the good
+    fraction `ng/n` rises and fewer samples are wasted.
+  - *Conditioning* stays `~0.29–0.33` (gaussian) and lower for stress at all k —
+    the Osinsky bound is respected throughout.
+  - *Norm-weighted sampling* wins at every k: e.g. `needle` k=256 cuts tested/k
+    `207 → 16` and time `105 ms → 10 ms` (~10×).
 
 ## 12. Future work / not yet done
 

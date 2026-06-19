@@ -60,6 +60,18 @@ deterministic factor path and reports speedup, the conditioning ratio
 `||R11^{-1}||_F / sqrt(k(n-k+1))`, and candidate columns tested per pivot. Writes
 `benchmark/results/rand_timings.csv`.
 
+The full publication study (scaling, block size, sampling — with confidence
+bands) is generated per `k` and written to `k`-tagged files:
+
+```matlab
+% one k value
+run_rand_experiments('k', 128); plot_rand_experiments('k', 128);
+% the committed sweep
+for K = [64 128 256]; run_rand_experiments('k', K); plot_rand_experiments('k', K); end
+```
+
+This writes `benchmark/results/exp_*_k<K>.csv` and `benchmark/plots/fig_*_k<K>.png`.
+
 ## Options (`bsqr_rand(A, 'name', value, ...)`)
 
 | option | default | meaning |
