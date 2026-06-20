@@ -20,7 +20,7 @@ function run_rand_experiments(varargin)
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
-addParameter(ip, 'trials', 5);
+addParameter(ip, 'trials', 30);
 addParameter(ip, 'which', {'scaling', 'blocksize', 'sampling'});
 addParameter(ip, 'outdir', '');
 parse(ip, varargin{:});
@@ -61,9 +61,9 @@ for fi = 1:numel(families)
         for s = 1:opt.trials
             M = rand_test_matrix(fam, k, n, 1000 * fi + s);
             d = measure_det(M, k);
-            rows(end+1, :) = {fam, k, n, s, 'det', 'na', 'na', 0, d.time, d.frobinv, d.osinsky, NaN}; %#ok<AGROW>
+            rows(end+1, :) = {fam, k, n, s, 'det', 'na', 'na', 0, d.time, d.frobinv, d.osinsky, NaN, d.sigma_min}; %#ok<AGROW>
             b = measure_builtin(M, k);
-            rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, b.time, b.frobinv, b.osinsky, NaN}; %#ok<AGROW>
+            rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, b.time, b.frobinv, b.osinsky, NaN, b.sigma_min}; %#ok<AGROW>
             % Randomized BSQR. Norm-weighted (column-norm) sampling is the standard
             % choice for cross-method comparisons -- robust across leverage profiles
             % and matching the sampling used by the rejection_rpqr comparison.
@@ -71,12 +71,12 @@ for fi = 1:numel(families)
             % documented option kept out of the plots for a cleaner narrative.
             r = measure_rand(M, k, 'running_mean', 'normweighted', db, 1000 * fi + s);
             rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', 'normweighted', db, ...
-                r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
+                r.time, r.frobinv, r.osinsky, r.tested_per_k, r.sigma_min}; %#ok<AGROW>
             % R12 desired: same selection plus the final Q'-apply to the leftover
             % columns. Quantifies the advantage lost when R12 cannot be skipped.
             r = measure_rand(M, k, 'running_mean', 'normweighted', db, 1000 * fi + s, true);
             rows(end+1, :) = {fam, k, n, s, 'rand_r12', 'running_mean', 'normweighted', db, ...
-                r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
+                r.time, r.frobinv, r.osinsky, r.tested_per_k, r.sigma_min}; %#ok<AGROW>
         end
         fprintf('  scaling %-16s n=%-6d done\n', fam, n);
     end
@@ -97,12 +97,12 @@ for fi = 1:numel(families)
         M = rand_test_matrix(fam, k, n, 2000 * fi + s);
         b = measure_builtin(M, k);   % vendor-qr reference (constant across block size)
         rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, ...
-            b.time, b.frobinv, b.osinsky, NaN}; %#ok<AGROW>
+            b.time, b.frobinv, b.osinsky, NaN, b.sigma_min}; %#ok<AGROW>
         for bi = 1:numel(blocks)
             for si = 1:numel(samplings)
                 r = measure_rand(M, k, 'running_mean', samplings{si}, blocks(bi), 2000 * fi + s);
                 rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', samplings{si}, blocks(bi), ...
-                    r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
+                    r.time, r.frobinv, r.osinsky, r.tested_per_k, r.sigma_min}; %#ok<AGROW>
             end
         end
     end
@@ -123,11 +123,11 @@ for fi = 1:numel(families)
         M = rand_test_matrix(fam, k, n, 3000 * fi + s);
         b = measure_builtin(M, k);   % vendor-qr reference (constant across sampling)
         rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, ...
-            b.time, b.frobinv, b.osinsky, NaN}; %#ok<AGROW>
+            b.time, b.frobinv, b.osinsky, NaN, b.sigma_min}; %#ok<AGROW>
         for si = 1:numel(samplings)
             r = measure_rand(M, k, 'running_mean', samplings{si}, block, 3000 * fi + s);
             rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', samplings{si}, block, ...
-                r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
+                r.time, r.frobinv, r.osinsky, r.tested_per_k, r.sigma_min}; %#ok<AGROW>
         end
     end
     fprintf('  sampling %-16s done\n', fam);
@@ -144,15 +144,15 @@ if return_r12
     f = @() bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
         'threshold_mode', mode, 'sampling', sampling, 'return_r12', true, 'seed', seed);
     out.time = timeit(f, 5);
-    [~, ~, ~, st] = bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
+    [~, ~, R11, st] = bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
         'threshold_mode', mode, 'sampling', sampling, 'return_r12', true, 'seed', seed);
 else
     f = @() bsqr_rand_mex(M, 'k', k, 'check_finite', false, 'block_size', block, ...
         'threshold_mode', mode, 'sampling', sampling, 'seed', seed);
     out.time = timeit(f, 3);
-    [~, ~, ~, st] = f();
+    [~, ~, R11, st] = f();
 end
-out.frobinv = st.frob_inv;
+[out.frobinv, out.sigma_min] = svd_quality(triu(R11));
 out.osinsky = st.osinsky_bound;
 out.tested_per_k = st.total_tested / k;
 end
@@ -160,7 +160,7 @@ end
 function out = measure_det(M, k)
 out.time = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
 R = bsqr_mex(M, 'k', k, 'check_finite', false);
-out.frobinv = norm(1 ./ svd(triu(R(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
+[out.frobinv, out.sigma_min] = svd_quality(triu(R(1:k, 1:k)));
 out.osinsky = sqrt(k * (size(M, 2) - k + 1));
 end
 
@@ -173,13 +173,21 @@ function out = measure_builtin(M, k)
 % to get a column selection.
 out.time = timeit(@() qr(M, 'econ', 'vector'), 3);
 [~, R, ~] = qr(M, 'econ', 'vector');
-out.frobinv = norm(1 ./ svd(triu(R(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
+[out.frobinv, out.sigma_min] = svd_quality(triu(R(1:k, 1:k)));
 out.osinsky = sqrt(k * (size(M, 2) - k + 1));
+end
+
+function [fr, sm] = svd_quality(R11)
+% Both selection-quality metrics from a single SVD of R11 (no inv):
+%   fr = ||R11^{-1}||_F = sqrt(sum 1/sigma_i^2),  sm = sigma_min(R11).
+s = svd(R11);
+fr = norm(1 ./ s);
+sm = min(s);
 end
 
 function write_rows(rows, path)
 T = cell2table(rows, 'VariableNames', {'family', 'k', 'n', 'seed', 'method', ...
-    'mode', 'sampling', 'block_size', 'time_s', 'frobinv', 'osinsky', 'tested_per_k'});
+    'mode', 'sampling', 'block_size', 'time_s', 'frobinv', 'osinsky', 'tested_per_k', 'sigma_min'});
 writetable(T, path);
 fprintf('Wrote %s (%d rows)\n', path, height(T));
 end

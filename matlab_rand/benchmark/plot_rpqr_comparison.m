@@ -2,10 +2,11 @@ function plot_rpqr_comparison(varargin)
 %PLOT_RPQR_COMPARISON Plots for the bsqr_rand vs rejection_rpqr comparison.
 %
 %   Reads results/exp_rpqr_k<K>.csv (from run_rpqr_comparison) and writes three
-%   single-metric figures to benchmark/plots/:
+%   figures to benchmark/plots/:
 %     fig_rpqr_time_k<K>.png    - runtime vs n (both methods, per family)
 %     fig_rpqr_speedup_k<K>.png - speedup t_rpqr / t_bsqr vs n
-%     fig_rpqr_quality_k<K>.png - ||R11^{-1}||_F / Osinsky bound vs n
+%     fig_rpqr_quality_k<K>.png - two rows: ||R11^{-1}||_F / bound (<=1) and
+%                                 sigma_min(R11) / bound (>=1), vs n
 %   Line = seed mean; shaded band = seed min/max.
 %
 % Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats'.
@@ -36,7 +37,7 @@ C = struct('bsqr', [0.00 0.45 0.74], 'rpqr', [0.85 0.33 0.10]);
 
 rpqr_figure(opt, C, T, fams, 'time');
 rpqr_figure(opt, C, T, fams, 'speedup');
-rpqr_figure(opt, C, T, fams, 'quality');
+quality_figure(opt, C, T, fams);
 end
 
 % ===========================================================================
@@ -59,12 +60,6 @@ for fi = 1:nf
             speedup_line(ax, T, base, C.bsqr);
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');
             ylabel(ax, 'speedup (t_{rejection\_rpqr} / t_{BSQR})');
-        case 'quality'
-            set(ax, 'XScale', 'log');
-            cond_line(ax, T, base & T.method == "bsqr", C.bsqr, 'randomized BSQR');
-            cond_line(ax, T, base & T.method == "rejection_rpqr", C.rpqr, 'rejection\_rpqr');
-            yline(ax, 1, 'k--', 'HandleVisibility', 'off');   % Osinsky bound
-            ylabel(ax, '||R_{11}^{-1}||_F / Osinsky bound');
     end
     grid(ax, 'on'); xlabel(ax, 'n'); title(ax, fam, 'Interpreter', 'none');
 end
@@ -72,40 +67,72 @@ if ~strcmp(which, 'speedup')
     lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
 end
 heads = struct('time', 'Runtime vs n', ...
-    'speedup', 'Speedup of randomized BSQR over rejection\_rpqr (t_{rpqr}/t_{BSQR})', ...
-    'quality', 'Selection quality: ||R_{11}^{-1}||_F relative to the Osinsky bound (lower = better)');
+    'speedup', 'Speedup of randomized BSQR over rejection\_rpqr (t_{rpqr}/t_{BSQR})');
 title(tl, sprintf('%s   (k=%d)', heads.(which), opt.k));
 save_fig(fig, fullfile(opt.plotdir, ['fig_rpqr_' which opt.tag]), opt.formats);
 end
 
 % ===========================================================================
-function [x, ym, ylo, yhi] = agg(T, mask, yname)
-sub = T(mask, :);
-x = unique(sub.n);
-ym = zeros(size(x)); ylo = ym; yhi = ym;
-for i = 1:numel(x)
-    v = sub.(yname)(sub.n == x(i));
-    v = v(isfinite(v));
-    if isempty(v); ym(i) = NaN; ylo(i) = NaN; yhi(i) = NaN; continue; end
-    ym(i) = mean(v); ylo(i) = min(v); yhi(i) = max(v);
+function quality_figure(opt, C, T, fams)
+% Two rows: Frobenius ratio ||R11^{-1}||_F / bound (<=1, lower better), and
+% spectral ratio sigma_min(R11) / bound (>=1, higher better).
+nf = numel(fams);
+fig = figure('Position', [100 100 max(440 * nf, 720) 760], 'Color', 'w');
+tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
+methods = {'bsqr', 'randomized BSQR', C.bsqr; 'rejection_rpqr', 'rejection\_rpqr', C.rpqr};
+ax = [];
+for row = {'frob', 'smin'}
+    for fi = 1:nf
+        fam = fams(fi); base = T.family == fam;
+        ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log');
+        for mi = 1:size(methods, 1)
+            ratio_line(ax, T, base & T.method == methods{mi, 1}, row{1}, methods{mi, 3}, methods{mi, 2});
+        end
+        yline(ax, 1, 'k--', 'HandleVisibility', 'off');   % the bound
+        grid(ax, 'on');
+        if strcmp(row{1}, 'frob')
+            title(ax, fam, 'Interpreter', 'none');
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_F / bound   (\leq 1)'); end
+        else
+            xlabel(ax, 'n');
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_2 / bound   (\leq 1)'); end
+        end
+    end
 end
+lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
+title(tl, sprintf(['Selection quality vs the bounds (k=%d, lower = better): ', ...
+    'Frobenius ||R_{11}^{-1}||_F (top), spectral ||R_{11}^{-1}||_2 (bottom)'], opt.k));
+save_fig(fig, fullfile(opt.plotdir, ['fig_rpqr_quality' opt.tag]), opt.formats);
 end
 
-function band_line(ax, T, mask, yname, color, name)
+% ===========================================================================
+function ratio_line(ax, T, mask, which, color, name)
+% Both rows are (inverse-norm / bound) <= 1, lower = better:
+%   'frob' -> ||R11^{-1}||_F / sqrt(k(n-k+1));
+%   'smin' -> ||R11^{-1}||_2 / sqrt(1+k(n-k)) = bound / sigma_min (lower better).
 if ~any(mask); return; end
-[x, ym, ylo, yhi] = agg(T, mask, yname);
+sub = T(mask, :);
+if strcmp(which, 'frob')
+    sub.r = sub.frobinv ./ sub.osinsky;
+else
+    sub.r = 1 ./ (sub.sigma_min .* sqrt(1 + sub.k .* (sub.n - sub.k)));
+end
+x = unique(sub.n); ym = zeros(size(x)); ylo = ym; yhi = ym;
+for i = 1:numel(x)
+    v = sub.r(sub.n == x(i)); v = v(isfinite(v));
+    ym(i) = mean(v); ylo(i) = min(v); yhi(i) = max(v);
+end
 fill(ax, [x; flipud(x)], [ylo; flipud(yhi)], color, 'FaceAlpha', 0.15, ...
     'EdgeColor', 'none', 'HandleVisibility', 'off');
 plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, ...
     'LineWidth', 1.5, 'MarkerSize', 4, 'DisplayName', name);
 end
 
-function cond_line(ax, T, mask, color, name)
+function band_line(ax, T, mask, yname, color, name)
 if ~any(mask); return; end
-sub = T(mask, :); sub.ratio = sub.frobinv ./ sub.osinsky;
-x = unique(sub.n); ym = zeros(size(x)); ylo = ym; yhi = ym;
+sub = T(mask, :); x = unique(sub.n); ym = zeros(size(x)); ylo = ym; yhi = ym;
 for i = 1:numel(x)
-    v = sub.ratio(sub.n == x(i)); v = v(isfinite(v));
+    v = sub.(yname)(sub.n == x(i)); v = v(isfinite(v));
     ym(i) = mean(v); ylo(i) = min(v); yhi(i) = max(v);
 end
 fill(ax, [x; flipud(x)], [ylo; flipud(yhi)], color, 'FaceAlpha', 0.15, ...

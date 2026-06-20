@@ -6,7 +6,8 @@ function plot_rand_experiments(varargin)
 %     fig_scaling_time_k<K>.png    - runtime vs n (per family): deterministic
 %                                    BSQR, built-in qr, randomized, randomized+R12.
 %     fig_scaling_speedup_k<K>.png - randomized speedup over each baseline vs n.
-%     fig_scaling_quality_k<K>.png - ||R11^{-1}||_F / Osinsky bound vs n.
+%     fig_scaling_quality_k<K>.png - two rows vs n: ||R11^{-1}||_F / bound and
+%                                    sigma_min(R11) / bound.
 %     fig_blocksize_k<K>.png       - time, columns sampled, conditioning vs block
 %                                    size (per family), uniform vs norm-weighted.
 %     fig_sampling_k<K>.png        - uniform vs norm-weighted across families.
@@ -54,7 +55,7 @@ T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
 scaling_figure(opt, C, T, fams, 'time');
 scaling_figure(opt, C, T, fams, 'speedup');
-scaling_figure(opt, C, T, fams, 'quality');
+scaling_quality_figure(opt, C, T, fams);
 end
 
 function scaling_figure(opt, C, T, fams, which)
@@ -80,23 +81,74 @@ for fi = 1:nf
             speedup_line(ax, T, base, 'builtin', 'na', 'rand_r12', 'running_mean', C.r12, 'randomized + R_{12} vs built-in qr');
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');
             ylabel(ax, 'speedup (t_{baseline} / t_{rand})');
-        case 'quality'
-            set(ax, 'XScale', 'log');
-            cond_ratio_line(ax, T, base & T.method == "builtin", C.builtin, 'built-in qr');
-            cond_ratio_line(ax, T, base & T.method == "det", C.det, 'deterministic BSQR');
-            cond_ratio_line(ax, T, base & T.method == "rand" & T.mode == "running_mean", C.rm, 'randomized BSQR');
-            yline(ax, 1, 'k--', 'HandleVisibility', 'off');  % Osinsky bound
-            ylabel(ax, '||R_{11}^{-1}||_F / Osinsky bound');
     end
     grid(ax, 'on'); xlabel(ax, 'n'); title(ax, fam, 'Interpreter', 'none');
 end
 lg = legend(ax, 'Orientation', 'horizontal');   % shared: every panel has the same lines
 lg.Layout.Tile = 'south';
 heads = struct('time', 'Runtime vs n', ...
-    'speedup', 'Speedup over baselines (t_{baseline} / t_{rand}; higher = randomized faster)', ...
-    'quality', 'Selection quality: ||R_{11}^{-1}||_F relative to the Osinsky bound (lower = better)');
+    'speedup', 'Speedup over baselines (t_{baseline} / t_{rand}; higher = randomized faster)');
 title(tl, sprintf('%s   (k=%d)', heads.(which), opt.k));
 save_fig(fig, fullfile(opt.plotdir, ['fig_scaling_' which opt.tag]), opt.formats);
+end
+
+function scaling_quality_figure(opt, C, T, fams)
+% Two rows of selection quality: Frobenius ||R11^{-1}||_F / bound (<=1, lower
+% better) and spectral sigma_min(R11) / bound (>=1, higher better).
+nf = numel(fams);
+fig = figure('Position', [100 100 max(440 * nf, 720) 760], 'Color', 'w');
+tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
+methods = {"builtin", 'na', 'built-in qr', C.builtin; ...
+           "det", 'na', 'deterministic BSQR', C.det; ...
+           "rand", 'running_mean', 'randomized BSQR', C.rm};
+ax = [];
+for row = {'frob', 'smin'}
+    for fi = 1:nf
+        fam = fams(fi); base = T.family == fam;
+        ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log');
+        for mi = 1:size(methods, 1)
+            mask = base & T.method == methods{mi, 1} & ...
+                (methods{mi, 2} == "na" | T.mode == methods{mi, 2});
+            quality_ratio_line(ax, T, mask, row{1}, methods{mi, 4}, methods{mi, 3});
+        end
+        yline(ax, 1, 'k--', 'HandleVisibility', 'off');   % the bound
+        grid(ax, 'on');
+        if strcmp(row{1}, 'frob')
+            title(ax, fam, 'Interpreter', 'none');
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_F / bound   (\leq 1)'); end
+        else
+            xlabel(ax, 'n');
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_2 / bound   (\leq 1)'); end
+        end
+    end
+end
+lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
+title(tl, sprintf(['Selection quality vs the bounds (k=%d, lower = better): ', ...
+    'Frobenius ||R_{11}^{-1}||_F (top), spectral ||R_{11}^{-1}||_2 (bottom)'], opt.k));
+save_fig(fig, fullfile(opt.plotdir, ['fig_scaling_quality' opt.tag]), opt.formats);
+end
+
+function quality_ratio_line(ax, T, mask, which, color, name)
+% Both rows are (inverse-norm / bound) <= 1, lower = better:
+%   'frob' -> ||R11^{-1}||_F / sqrt(k(n-k+1));
+%   'smin' -> ||R11^{-1}||_2 / sqrt(1+k(n-k)) = 1/(sigma_min*sqrt(1+k(n-k)))
+%             = bound / sigma_min, where bound = 1/sqrt(1+k(n-k)).
+if ~any(mask); return; end
+sub = T(mask, :);
+if strcmp(which, 'frob')
+    sub.r = sub.frobinv ./ sub.osinsky;
+else
+    sub.r = 1 ./ (sub.sigma_min .* sqrt(1 + sub.k .* (sub.n - sub.k)));
+end
+x = unique(sub.n); ym = zeros(size(x)); ylo = ym; yhi = ym;
+for i = 1:numel(x)
+    v = sub.r(sub.n == x(i)); v = v(isfinite(v));
+    ym(i) = mean(v); ylo(i) = min(v); yhi(i) = max(v);
+end
+fill(ax, [x; flipud(x)], [ylo; flipud(yhi)], color, 'FaceAlpha', 0.15, ...
+    'EdgeColor', 'none', 'HandleVisibility', 'off');
+plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, ...
+    'LineWidth', 1.5, 'MarkerSize', 4, 'DisplayName', name);
 end
 
 % ===========================================================================
@@ -131,7 +183,7 @@ for fi = 1:numel(fams)
     cond_ratio_line2(ax, T, base & T.sampling == "uniform", 'block_size', C.uniform, 'uniform');
     cond_ratio_line2(ax, T, base & T.sampling == "normweighted", 'block_size', C.normweighted, 'normweighted');
     yline(ax, 1, 'k--', 'HandleVisibility', 'off');
-    grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, '||R_{11}^{-1}||_F / Osinsky');
+    grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, '||R_{11}^{-1}||_F / bound');
     title(ax, sprintf('%s: conditioning', fam), 'Interpreter', 'none');
 end
 title(tl, sprintf('Effect of block size (running\\_mean threshold, k=%d, n=%d)', T.k(1), T.n(1)));
@@ -175,7 +227,14 @@ for mi = 1:size(metrics, 1)
     ylabel(ax, metrics{mi, 2}); grid(ax, 'on');
     title(ax, metrics{mi, 2});
     if show_legend; legend(ax, 'Location', 'best'); end
-    if strcmp(metrics{mi, 1}, 'tested_per_k'); set(ax, 'YScale', 'log'); end
+    if strcmp(metrics{mi, 1}, 'tested_per_k')
+        % Log y-axis: keep the (small, ~block) norm-weighted bars visible by
+        % putting the bar baseline and the lower y-limit below the data minimum.
+        set(ax, 'YScale', 'log');
+        lo = min(mu(mu > 0)) / 4; hi = max(mu(:)) * 1.6;
+        for si = 1:2; b(si).BaseValue = lo; end
+        ylim(ax, [lo, hi]);
+    end
 end
 title(tl, sprintf('Uniform vs norm-weighted sampling across families (k=%d, n=%d, block=%d)', ...
     T.k(1), T.n(1), max(T.block_size)));
@@ -222,10 +281,6 @@ fill(ax, [x; flipud(x)], [ylo; flipud(yhi)], color, 'FaceAlpha', 0.15, ...
     'EdgeColor', 'none', 'HandleVisibility', 'off');
 plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, ...
     'LineWidth', 1.5, 'MarkerSize', 4, 'DisplayName', name);
-end
-
-function cond_ratio_line(ax, T, mask, color, name)
-cond_ratio_line2(ax, T, mask, 'n', color, name);
 end
 
 function cond_ratio_line2(ax, T, mask, xname, color, name)

@@ -23,7 +23,7 @@ function run_rpqr_comparison(varargin)
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
-addParameter(ip, 'trials', 5);
+addParameter(ip, 'trials', 30);
 addParameter(ip, 'ns', [1000, 2000, 4000, 8000, 16000, 32000]);
 addParameter(ip, 'families', {'gaussian', 'spiked_leverage', 'needle'});
 addParameter(ip, 'outdir', '');
@@ -66,36 +66,40 @@ for fi = 1:numel(opt.families)
                 'sampling', 'normweighted', 'seed', seed), 3);
             pb = bsqr_rand_mex(M, 'k', k, 'check_finite', false, ...
                 'sampling', 'normweighted', 'seed', seed);
-            fr_b = quality(M, pb(1:k));
-            rows(end+1, :) = {fam, k, n, s, 'bsqr', tb, fr_b, os}; %#ok<AGROW>
+            [fr_b, sm_b] = quality(M, pb(1:k));
+            rows(end+1, :) = {fam, k, n, s, 'bsqr', tb, fr_b, sm_b, os}; %#ok<AGROW>
 
             % --- rejection_rpqr (default proposal size l = k) ---
             tr = timeit(@() rejection_rpqr(M, k), 3);
             rng(seed);
             idx = rejection_rpqr(M, k);
-            fr_r = quality(M, idx(1:k));
-            rows(end+1, :) = {fam, k, n, s, 'rejection_rpqr', tr, fr_r, os}; %#ok<AGROW>
+            [fr_r, sm_r] = quality(M, idx(1:k));
+            rows(end+1, :) = {fam, k, n, s, 'rejection_rpqr', tr, fr_r, sm_r, os}; %#ok<AGROW>
         end
         fprintf('  %-16s n=%-6d done\n', fam, n);
     end
 end
 
 T = cell2table(rows, 'VariableNames', {'family', 'k', 'n', 'seed', 'method', ...
-    'time_s', 'frobinv', 'osinsky'});
+    'time_s', 'frobinv', 'sigma_min', 'osinsky'});
 csv = fullfile(opt.outdir, ['exp_rpqr' opt.tag '.csv']);
 writetable(T, csv);
 fprintf('Wrote %s (%d rows)\n', csv, height(T));
 end
 
-function f = quality(M, sel)
-% ||R11^{-1}||_F of the selected k columns. For orthonormal-row input (m=k) the
-% selected block is square and ||R11^{-1}||_F = ||inv(M(:,sel))||_F (Frobenius is
-% invariant under the orthogonal Q), so this is backend-agnostic and identical for
-% both methods. Inf if the selection is rank-deficient (reported honestly).
+function [fr, sm] = quality(M, sel)
+% Selection-quality metrics of the chosen k columns from one SVD (no inv):
+%   fr = ||R11^{-1}||_F,  sm = sigma_min(R11). For orthonormal-row input (m=k) the
+% selected block is square and its singular values equal those of R11 (Frobenius
+% and singular values are invariant under the orthogonal Q), so this is
+% backend-agnostic and identical for both methods. fr = Inf / sm = 0 if the
+% selection is rank-deficient (reported honestly).
 sel = sel(:).';
 if numel(unique(sel)) < numel(sel)
-    f = Inf;
+    fr = Inf; sm = 0;
     return;
 end
-f = norm(1 ./ svd(M(:, sel)));   % ||R11^{-1}||_F via singular values (no inv)
+s = svd(M(:, sel));
+fr = norm(1 ./ s);
+sm = min(s);
 end
