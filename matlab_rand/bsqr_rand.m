@@ -36,8 +36,9 @@ function varargout = bsqr_rand(A, varargin)
 %   'slack'          - multiplier (>=1) loosening the threshold (default 1.0;
 %                      values >1 trade conditioning for fewer samples and no
 %                      longer guarantee the Osinsky bound -- experimental)
-%   'sampling'       - 'uniform' (default) or 'normweighted' (by starting
-%                      squared column norms; adds an O(m*n) precompute)
+%   'sampling'       - 'normweighted' (default; by starting squared column
+%                      norms, robust across leverage profiles, adds an O(m*n)
+%                      precompute) or 'uniform'
 %   'pick'           - single-select only ('batched' false): 'best_in_block'
 %                      (default) accepts the minimum-criterion column in the
 %                      block when it meets the threshold; 'first' accepts the

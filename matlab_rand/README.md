@@ -117,7 +117,7 @@ comparison is run fairly:
 | `block_size` | `k` (batched) / `ceil(k/2)` in `[16,64]` (single) | candidates evaluated per sampled block; larger improves realized quality at higher cost (`rand_default_block`) |
 | `threshold_mode` | `running_mean` | per-column bound (per-singular-value control) or `worstcase_allowance` (more permissive, fewer samples) |
 | `slack` | `1.0` | `>=1` multiplier loosening the threshold |
-| `sampling` | `uniform` | or `normweighted` (by starting squared column norms; adds `O(mn)`) |
+| `sampling` | `normweighted` | by starting squared column norms (robust across leverage profiles; adds `O(mn)`), or `uniform` |
 | `pick` | `best_in_block` | single-select only (`batched=false`): or `first`. Batched always takes the in-block minimizer |
 | `seed` | `[]` | RNG seed for reproducibility |
 | `return_r12` | `false` | compute `R12` as a 5th output |

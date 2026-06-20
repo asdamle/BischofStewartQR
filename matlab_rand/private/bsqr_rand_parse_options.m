@@ -18,7 +18,7 @@ addParameter(parser, 'k', [], @(x) isnumeric(x) && isscalar(x) && isfinite(x));
 addParameter(parser, 'block_size', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1));
 addParameter(parser, 'threshold_mode', 'running_mean', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'slack', 1.0, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1);
-addParameter(parser, 'sampling', 'uniform', @(x) ischar(x) || isstring(x));
+addParameter(parser, 'sampling', 'normweighted', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'pick', 'best_in_block', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'batched', true, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
 addParameter(parser, 'seed', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && isfinite(x) && x >= 0));

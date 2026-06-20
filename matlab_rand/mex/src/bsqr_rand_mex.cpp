@@ -50,7 +50,7 @@ struct Options {
     mwSize block_size = 0;   // 0 = auto (set to rand_default_block(k) once k is known)
     ThresholdMode threshold_mode = ThresholdMode::RunningMean;
     double slack = 1.0;
-    Sampling sampling = Sampling::Uniform;
+    Sampling sampling = Sampling::NormWeighted;
     Pick pick = Pick::BestInBlock;
     bool has_seed = false;
     unsigned long long seed = 0;
@@ -567,10 +567,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 tau[nsel] = tau_i;
 
                 // Compact-WY: new column of T (dlarft forward recurrence) for the next apply.
+                // The reflector v is zero above row nsel, so V'v only needs rows nsel..m-1.
                 if (nsel > 0) {
-                    const ptrdiff_t ns = static_cast<ptrdiff_t>(nsel), mm = ldA;
+                    const ptrdiff_t ns = static_cast<ptrdiff_t>(nsel), mlen = static_cast<ptrdiff_t>(m - nsel);
                     char tT = 'T';
-                    dgemv(&tT, &mm, &ns, &one, V.data(), &ldA, &V[static_cast<size_t>(nsel) * m], &inc1,
+                    dgemv(&tT, &mlen, &ns, &one, &V[static_cast<size_t>(nsel)], &ldA,
+                          &V[static_cast<size_t>(nsel) + static_cast<size_t>(nsel) * m], &inc1,
                           &zero, tcol.data(), &inc1);
                     const double negtau = -tau_i;
                     for (mwSize r = 0; r < nsel; ++r) tcol[r] *= negtau;
@@ -586,15 +588,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
                 // Apply the new reflector to the rest of the block, then downdate their
                 // w-vectors / running norms incrementally (BLAS-2 over nr contiguous cols).
+                // The reflector touches only rows nsel..m-1 (zero above), so restrict there.
                 if (nr > 0) {
-                    const ptrdiff_t mm = ldA, nrr = static_cast<ptrdiff_t>(nr);
-                    double *vcol = &V[static_cast<size_t>(nsel) * m];   // zeros above row nsel, 1 at nsel
+                    const ptrdiff_t mlen = static_cast<ptrdiff_t>(m - nsel), nrr = static_cast<ptrdiff_t>(nr);
+                    double *vtail = &V[static_cast<size_t>(nsel) + static_cast<size_t>(nsel) * m]; // [1; tail]
+                    double *Xtail = &X[static_cast<size_t>(nsel)];   // row nsel; columns stride m
                     char tT = 'T';
-                    dgemv(&tT, &mm, &nrr, &one, X.data(), &ldA, vcol, &inc1, &zero, hw.data(), &inc1);
+                    dgemv(&tT, &mlen, &nrr, &one, Xtail, &ldA, vtail, &inc1, &zero, hw.data(), &inc1);
                     const double negtau = -tau_i;
-                    dger(&mm, &nrr, &negtau, vcol, &inc1, hw.data(), &inc1, X.data(), &ldA);
+                    dger(&mlen, &nrr, &negtau, vtail, &inc1, hw.data(), &inc1, Xtail, &ldA);
                     for (mwSize a = 0; a < nr; ++a)
-                        betav[a] = X[nsel + static_cast<size_t>(a) * m] * invdiag;   // alpha/diag
+                        betav[a] = Xtail[static_cast<size_t>(a) * m] * invdiag;   // alpha/diag
                     if (nsel > 0) {
                         double *wpiv = &Wblk[static_cast<size_t>(nr) * k];           // pivot w-vector
                         const ptrdiff_t ns = static_cast<ptrdiff_t>(nsel);
