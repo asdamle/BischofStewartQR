@@ -357,13 +357,26 @@ MEX), and the two optimize *different objectives* — BSQR minimizes the growth 
 `||R11^{-1}||_F`, while ARP targets a volume/DPP criterion — so the `||R11^{-1}||_F`
 metric measures BSQR's objective.
 
+`rejection_rpqr` is run at its default `l = k` (the proposal size — its analog of
+our block; the ARP authors' own `arp.m` uses this default, and it is near its
+speed sweet spot: it is *faster* with larger `l`, not smaller).
+
 Findings (n=32000, 5 seeds):
-- **Conditioning (BSQR's objective):** BSQR's `||R11^{-1}||_F` is `2.4–57×`
-  smaller than `rejection_rpqr`'s across families and k — e.g. `spiked_leverage`
-  ≈ 52× at every k (0.012–0.017 vs 0.62–0.88 relative to the Osinsky bound),
-  `gaussian` ≈ 3×, `needle` ≈ 2.5×. The gap is expected (different objective);
-  the point is its magnitude and consistency.
-- **Runtime:** comparable, and k-dependent — BSQR is `~1.5×` faster at k=64 but
-  `~0.4–0.7×` (i.e. slower) at k=128/256, as BSQR's per-step apply grows with k.
-- **Bottom line:** BSQR delivers substantially better-conditioned subsets at
-  comparable runtime.
+- **Conditioning (BSQR's objective) — guaranteed vs uncontrolled.** This is the
+  headline. BSQR's `||R11^{-1}||_F / Osinsky` is tight and *always ≤ 1* (≈ 0.22–0.28
+  gaussian, ≈ 0.01 on the stress families). `rejection_rpqr`'s is much larger and
+  **uncontrolled** — mean ≈ 0.65–1.18 with high variance, and individual
+  selections routinely *exceed* the Osinsky bound (up to ~2.2× on gaussian k=256,
+  ~3.0× on spiked_leverage k=128). ARP optimizes a volume/DPP criterion, not this
+  one, so it has no guarantee here; BSQR is 3–60× better and provably bounded.
+- **Runtime — comparable, with the variance on rejection's side.** BSQR's runtime
+  is stable (`tested/k = block` every seed); `rejection_rpqr`'s swings ~3×
+  run-to-run (≈ 5–14 ms at k=128) because its number of rounds is itself random
+  (rejection accept/reject). Mean speedup is therefore noisy: BSQR is ~1.5× faster
+  at k=64 and ~0.5–0.7× (somewhat slower) at k=128/256, where BSQR's per-step apply
+  (block `ceil(k/2)`) grows with k. A smaller block would close this — but that is
+  deliberately *not* the default, since it would trade away the conditioning edge
+  that is the whole point (see §12, adaptive block).
+- **Bottom line:** at comparable (and steadier) runtime, BSQR delivers
+  substantially better-conditioned subsets *with a guarantee* `rejection_rpqr`
+  does not provide.
