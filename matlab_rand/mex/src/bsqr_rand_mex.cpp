@@ -2,10 +2,10 @@
 //
 // Mirrors matlab_rand/private/bsqr_rand_mfile.m in behaviour (not RNG). The
 // kernel never maintains R11^{-1}R12 or column norms for every column; it tracks
-// only the running squared inverse Frobenius norm f2 = ||R11^{-1}||_F^2 and, per
-// step, samples candidate columns in blocks, brings each into the current
-// reduced frame with the accumulated reflectors, and accepts the first/best one
-// whose increment keeps f2 under the per-step threshold.
+// only the running squared inverse Frobenius norm f2 = ||R11^{-1}||_F^2 and
+// samples candidate columns in blocks, brings them into the current reduced
+// frame with the accumulated reflectors, and keeps those whose increment holds
+// f2 under the per-step threshold.
 //
 // By default (opt.batched) the kernel runs IN-BLOCK: each sampled block is
 // brought to the current frame once, then BSQR is run within it, selecting

@@ -130,18 +130,22 @@ off and untimed by default).
 
 ## 6. Knobs
 
-`k`, `block_size` (default `ceil(k/2)` in `[16,64]`), `threshold_mode` (default `running_mean`),
-`slack` (default 1), `sampling` (`uniform` default | `normweighted` — by
-*starting* squared column norms, adds an `O(mn)` precompute), `pick`
-(`best_in_block` default | `first`), `seed`, `return_r12`, `backend`
-(`auto`/`mfile`/`mex`), `check_finite`.
+`k`, `batched` (default `true` — in-block BSQR; `false` = single-select),
+`block_size` (default `k` when batched, else `ceil(k/2)` in `[16,64]`),
+`threshold_mode` (default `running_mean`), `slack` (default 1),
+`sampling` (`normweighted` default — by *starting* squared column norms, adds an
+`O(mn)` precompute — | `uniform`), `pick` (single-select only: `best_in_block`
+default | `first`), `seed`, `return_r12`, `backend` (`auto`/`mfile`/`mex`),
+`check_finite`.
 
 ## 7. Instrumentation (the two requested metrics)
 
 `stats` (per-step `1×k` arrays plus scalars):
 - **bound on `||R11^{-1}||_F`**: `f2` (running squared), `Fhat` (per-step worst
   case), `frob_inv = sqrt(f2(end))`, `osinsky_bound = sqrt(k(n-k+1))`;
-- **columns tested**: `samples_tested`, `rounds`, `total_tested`;
+- **columns tested**: `samples_tested`, `rounds`, `total_tested`, `blocks_sampled`
+  (batched attributes a block's `samples_tested`/`rounds` to its first selection,
+  so `total_tested` / `blocks_sampled` are the meaningful aggregates);
 - plus `crit` (accepted `c`), `threshold`, `fallback`.
 
 ## 8. Validation (`matlab_rand/tests/`)
@@ -232,14 +236,13 @@ different, vendor-tuned classical algorithm — the natural "can we beat the
 library?" reference. (`dgeqp3` is itself faster than our deterministic BSQR, so
 it is the tougher baseline.)
 
-The plots use the **default block size** `ceil(k/2)` clamped to `[16,64]`
-(`rand_default_block.m`; the MEX mirrors it) and `pick='best_in_block'` (accept
-the block's minimum-criterion column when it meets the threshold). All
-cross-method comparisons (scaling vs deterministic/`dgeqp3`, the quick benchmark,
-and the `rejection_rpqr` comparison in §13) run BSQR with **norm-weighted
-(column-norm) sampling** — robust across leverage profiles and the same sampling
-information the baselines use; the `fig_sampling` / `fig_blocksize` studies are the
-exception, since they exist precisely to compare uniform vs norm-weighted. The
+The experiments run the **default in-block (`batched`) path with `block_size = k`**
+(the apply-amortizing sweet spot). All cross-method comparisons (scaling vs
+deterministic/`dgeqp3`, the quick benchmark, and the `rejection_rpqr` comparison
+in §13) run BSQR with **norm-weighted (column-norm) sampling** — robust across
+leverage profiles and the same sampling information the baselines use; the
+`fig_sampling` / `fig_blocksize` studies are the exception, since they exist
+precisely to compare uniform vs norm-weighted (and block size). The
 `worstcase_allowance` threshold stays a documented option (`bsqr_rand` help) but
 is **omitted from the plots** to keep the narrative on the per-step-bounded
 `running_mean` default.
@@ -330,14 +333,20 @@ is **omitted from the plots** to keep the narrative on the per-step-bounded
 
 ## 12. Review-pass outcomes and future work
 
-Done in the review pass:
+Done:
+- **In-block (`batched`) selection is now the default** (see the note at the top):
+  one reflector apply per block yields many selections, `O(k^3)` vs `O(k^4)`;
+  ~1.5–4.6× over single-select and faster than `rejection_rpqr`. The in-block
+  applies are restricted to rows `nsel..m-1` (matching the deterministic kernel),
+  a further ~10–20%. **Norm-weighted sampling is now the default** too.
 - **Rank guard** (both backends): a non-finite per-step increment (every remaining
   residual exactly zero) now errors `bsqr_rand:RankDeficient` instead of
   propagating `Inf` into `f2`/`R11`. *Caveat:* this only catches exact degeneracy;
   near-rank-deficiency (residual `~eps`, not exactly 0) is a documented
   precondition (`k ≤ numerical rank`), not a guarded case.
-- **Test coverage** raised to 18: added the MEX `R12` (compact-WY) path, MEX
-  `pick='first'`, and the rank-deficiency guard (both backends).
+- **Test coverage** at 19: the MEX `R12` (compact-WY) path, MEX `pick='first'`,
+  the rank-deficiency guard (both backends), and the batched in-block path
+  (`testBatchedInBlock`, both backends / samplings / blocks).
 - Comment audit (m-file says BLAS-2/rank-1, MEX says BLAS-3 compact-WY — accurate)
   and the `slack` docstring caveat (>1 breaks the proven bound).
 
@@ -346,8 +355,17 @@ Still open:
   (unlike `bsqr_mex`'s static workspace), so under `timeit` the allocation is
   *inside* the timed region — the reported speedups are mildly conservative. A
   persistent workspace would remove the churn (and make the win look larger).
-- **Adaptive block size.** Grow the block on consecutive misses to get small-block
-  efficiency when columns are easy and large-block amortization when scarce.
+- **Norm-downdate recompute guard.** The deterministic kernel refreshes a column's
+  running norm exactly once it decays past `sqrt(eps)·original`; the batched path
+  uses the raw downdate. In-block exposure is bounded (a column is re-reduced fresh
+  on resample) and all tests stay exact, but adopting the guard would give full
+  robustness parity.
+- **Deferred BLAS-3 in-block update.** The in-block reflector applies are BLAS-2;
+  a dlaqps-style deferred update (as in the deterministic *panel* kernel) would
+  make them BLAS-3 — a real but non-trivial lever.
+- **Adaptive block size.** Within batched, grow the block on consecutive misses to
+  get small-block efficiency when columns are easy and large-block amortization
+  when scarce.
 - **Auto sampling selection.** Cheaply estimate leverage concentration and pick
   uniform vs norm-weighted automatically, so the `O(mn)` precompute is only paid
   when it helps.

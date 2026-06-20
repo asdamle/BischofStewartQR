@@ -3,13 +3,19 @@ function [p, reflectors, R11, stats, R12] = bsqr_rand_mfile(A, opts)
 %
 %   Selects K columns of A without maintaining R11^{-1}R12 / column norms for
 %   every column at every step. Instead it tracks only the running squared
-%   inverse Frobenius norm f2 = ||R11^{-1}||_F^2 and, at each step, samples
-%   candidate columns (in blocks), brings each into the current reduced frame
-%   by applying the accumulated reflectors, and accepts the first/best one
-%   whose increment keeps f2 under the per-step threshold (see
-%   bsqr_rand_threshold and docs/RANDOMIZED_BSQR_PLAN.md). If a whole pass over
-%   the remaining columns finds none acceptable (only possible near rounding
-%   ties), it falls back to the global minimizer, which is guaranteed to exist.
+%   inverse Frobenius norm f2 = ||R11^{-1}||_F^2 and samples candidate columns
+%   in blocks, brought into the current reduced frame by applying the
+%   accumulated reflectors, keeping those whose increment holds f2 under the
+%   per-step threshold (see bsqr_rand_threshold and docs/RANDOMIZED_BSQR_PLAN.md).
+%
+%   Two paths (opts.batched, default true):
+%     batched=true  - in-block BSQR: each sampled block is reduced once, then
+%                     BSQR runs within it, taking as many columns as the bound
+%                     allows (f2/threshold updated after EACH in-block pick)
+%                     before resampling. Amortizes the per-block apply.
+%     batched=false - single-select: one accepted column per sampled block.
+%   If a whole pass over the remaining columns finds none acceptable (only near
+%   rounding ties) it falls back to the global minimizer, guaranteed to exist.
 %
 %   Returns the column subset (p(1:k)), the accumulated reflectors, R11, an
 %   instrumentation struct, and -- only when requested -- R12.
