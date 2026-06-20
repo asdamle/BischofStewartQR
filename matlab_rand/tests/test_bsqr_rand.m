@@ -48,7 +48,7 @@ function testGeneralMatrix(testCase)
 rng(7);
 M = randn(20, 90);
 k = 12;
-[p, reflectors, R11] = bsqr_rand(M, 'k', k, 'backend', 'mfile', 'seed', 3);
+[p, reflectors, R11] = bsqr_rand(M, 'k', k, 'backend', 'mfile', 'batched', false, 'seed', 3);
 check_factorization(testCase, M, p, reflectors, R11, k);
 end
 
@@ -122,14 +122,17 @@ if ~bsqr_rand_mex_available()
 end
 k = 24; n = 150;
 M = orthonormal_rows(k, n, 17);
-for sampling = ["uniform", "normweighted"]
-    for mode = ["running_mean", "worstcase_allowance"]
-        for bs = [1, 7, 32]
-            [p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 4, ...
-                'sampling', char(sampling), 'threshold_mode', char(mode), 'block_size', bs);
-            check_factorization(testCase, M, p, reflectors, R11, k);
-            tol = 1e-9 * max(1, stats.Fhat(end));
-            verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
+for batched = [false, true]   % both kernel paths: single-select and in-block
+    for sampling = ["uniform", "normweighted"]
+        for mode = ["running_mean", "worstcase_allowance"]
+            for bs = [1, 7, 32]
+                [p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 4, ...
+                    'batched', batched, 'sampling', char(sampling), ...
+                    'threshold_mode', char(mode), 'block_size', bs);
+                check_factorization(testCase, M, p, reflectors, R11, k);
+                tol = 1e-9 * max(1, stats.Fhat(end));
+                verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
+            end
         end
     end
 end
@@ -173,10 +176,39 @@ if ~bsqr_rand_mex_available()
 end
 k = 16; n = 100;
 M = orthonormal_rows(k, n, 23);
-[p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 3, 'pick', 'first');
+% pick only applies to the single-select path (the in-block path always takes
+% the in-block minimizer), so exercise it with batched=false.
+[p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 3, ...
+    'batched', false, 'pick', 'first');
 check_factorization(testCase, M, p, reflectors, R11, k);
 tol = 1e-9 * max(1, stats.Fhat(end));
 verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
+end
+
+function testBatchedInBlock(testCase)
+% Batched mode (multiple selections per sampled block) must still factor
+% exactly and respect the per-step bound, across both backends, both sampling
+% schemes, and block sizes around k. The in-block w-vector/running-norm
+% downdates are maintained incrementally, so this guards that arithmetic.
+repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+addpath(fullfile(repo_root, 'matlab_rand', 'benchmark'));
+k = 20; n = 300;
+backends = {'mfile'};
+if bsqr_rand_mex_available(); backends{end+1} = 'mex'; end
+for fam = ["gaussian", "needle"]
+    M = rand_test_matrix(char(fam), k, n, 41);
+    for bi = 1:numel(backends)
+        for sampling = ["uniform", "normweighted"]
+            for bs = [k, 2 * k]
+                [p, reflectors, R11, stats] = bsqr_rand(M, 'k', k, 'backend', backends{bi}, ...
+                    'batched', true, 'block_size', bs, 'sampling', char(sampling), 'seed', 5);
+                check_factorization(testCase, M, p, reflectors, R11, k);
+                tol = 1e-8 * max(1, stats.Fhat(end));
+                verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
+            end
+        end
+    end
+end
 end
 
 function testRankDeficientErrors(testCase)

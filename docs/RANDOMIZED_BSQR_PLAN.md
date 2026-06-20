@@ -3,6 +3,19 @@
 Design note and status for the experimental randomized variant in `matlab_rand/`.
 The deterministic Julia/MATLAB kernels are **not** touched by any of this.
 
+> **Update — in-block selection is now the default (`batched`).** When a block is
+> sampled it is brought to the current frame once, then BSQR is run *within* the
+> block, taking as many columns as the per-step bound allows before resampling
+> (the running `f2`/threshold are updated after **each** in-block selection). One
+> reflector apply yields many selections, cutting the dominant cost from
+> `O(k^4)` to `O(k^3)`; the MEX maintains the block's `w`-vectors / running norms
+> incrementally (BLAS-2). Measured: **1.5–4.6× faster than single-select** and
+> **faster than `rejection_rpqr` at every tested point** (1.5–6.5×) while keeping
+> `||R11^{-1}||_F` far under the bound (rejection_rpqr can exceed it). `batched=false`
+> recovers the single-select path. The default block is `k`; larger blocks trade
+> speed for realized conditioning closer to single-select. The single-select
+> sections below are retained as background; their measurements predate batching.
+
 ## 1. Idea
 
 The deterministic kernel selects, at every step, the exact argmin of the
@@ -285,7 +298,10 @@ is **omitted from the plots** to keep the narrative on the per-step-bounded
   the price of some raw speed. The cap of 64 keeps that cost bounded for large k:
   at k=256 the default block 64 gives 26× vs `dgeqp3` (conditioning 0.22), whereas
   block 128 roughly halves the speed for only marginally better conditioning
-  (0.20). An adaptive block remains future work.
+  (0.20). *(These block numbers are for the single-select path. The in-block
+  `batched` default — see the note at the top — instead amortizes the apply over
+  many selections, so its sweet spot is the larger `block = k`; it supersedes the
+  "adaptive block" once listed here as future work.)*
 - *(`worstcase_allowance`, omitted from the plots, is a documented option that
   only guarantees the final Frobenius bound: on `spiked_leverage` it spends slack
   up to ~0.8 of the Osinsky bound vs ~0.1 for `running_mean`. Hence `running_mean`

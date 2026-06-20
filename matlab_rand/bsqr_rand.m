@@ -12,9 +12,20 @@ function varargout = bsqr_rand(A, varargin)
 %       but ONLY when 'return_r12' is true (it costs an extra O(n*k^2) pass and
 %       is off by default).
 %
+%   By default the kernel runs in-block ('batched', see below): each sampled
+%   block is brought to the current frame once, then BSQR is run within it to
+%   select as many columns as meet the bound before resampling. This amortizes
+%   the per-block reflector apply over many selections (O(k^3) rather than the
+%   single-select O(k^4)) at a modest cost in realized conditioning.
+%
 % Name-value options:
 %   'k'              - number of columns to select (default min(m,n))
-%   'block_size'     - candidates tested per sampling round (default
+%   'batched'        - logical (default true). true: in-block BSQR (many
+%                      selections per sampled block; the fast default). false:
+%                      single-select (one selection per block; tighter realized
+%                      conditioning, more reflector applies). Both maintain the
+%                      same per-step ||R11^{-1}||_F guarantee.
+%   'block_size'     - candidates per sampled block (default k when batched, else
 %                      ceil(k/2) clamped to [16,64]; see RAND_DEFAULT_BLOCK).
 %                      Larger blocks improve realized selection quality (the
 %                      per-step minimum is taken over more candidates) at higher
@@ -27,9 +38,11 @@ function varargout = bsqr_rand(A, varargin)
 %                      longer guarantee the Osinsky bound -- experimental)
 %   'sampling'       - 'uniform' (default) or 'normweighted' (by starting
 %                      squared column norms; adds an O(m*n) precompute)
-%   'pick'           - 'best_in_block' (default): accept the minimum-criterion
-%                      column in the block when it meets the threshold (all c are
-%                      computed anyway). 'first': accept the first that meets it.
+%   'pick'           - single-select only ('batched' false): 'best_in_block'
+%                      (default) accepts the minimum-criterion column in the
+%                      block when it meets the threshold; 'first' accepts the
+%                      first that meets it. (Batched always takes the in-block
+%                      minimizer.)
 %   'seed'           - RNG seed for reproducibility (default [], leaves rng)
 %   'return_r12'     - logical, compute R12 as a 5th output (default false)
 %   'backend'        - 'auto' (default), 'mfile', or 'mex'
@@ -40,12 +53,15 @@ function varargout = bsqr_rand(A, varargin)
 %   Fhat           - deterministic worst-case bound Fhat_i = i(n-i+1)/(k-i+1)
 %   crit           - c-increment of the accepted pivot
 %   threshold      - acceptance threshold used at each step
-%   samples_tested - number of candidate columns evaluated at each step
-%   rounds         - number of sampling rounds (blocks) at each step
+%   samples_tested - candidate columns evaluated at each step (batched: the
+%                    block's size is attributed to its first selection, 0 after)
+%   rounds         - sampling rounds (blocks) at each step (batched: 1 at a
+%                    block's first selection, 0 after)
 %   fallback       - true where the exhaustive global-min fallback fired
 %   frob_inv       - final ||R11^{-1}||_F = sqrt(f2(end))
 %   osinsky_bound  - sqrt(k(n-k+1)), the Frobenius guarantee target
 %   total_tested   - sum of samples_tested
+%   blocks_sampled - total sampled blocks / reflector applies (sum of rounds)
 %
 %   The per-step bound and its guarantees assume A has orthonormal rows
 %   (the GKS setting, m = k). The algorithm still runs for general A, but

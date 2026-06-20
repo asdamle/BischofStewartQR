@@ -20,6 +20,7 @@ addParameter(parser, 'threshold_mode', 'running_mean', @(x) ischar(x) || isstrin
 addParameter(parser, 'slack', 1.0, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1);
 addParameter(parser, 'sampling', 'uniform', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'pick', 'best_in_block', @(x) ischar(x) || isstring(x));
+addParameter(parser, 'batched', true, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
 addParameter(parser, 'seed', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && isfinite(x) && x >= 0));
 addParameter(parser, 'return_r12', false, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
 addParameter(parser, 'backend', 'auto', @(x) ischar(x) || isstring(x));
@@ -41,8 +42,16 @@ if opts.k < 0 || opts.k > kmax
     error('bsqr_rand:InvalidK', 'k must satisfy 0 <= k <= min(size(A)).');
 end
 
+opts.batched = logical(opts.batched);   % default kernel path: in-block BSQR
 if isempty(opts.block_size)
-    opts.block_size = rand_default_block(opts.k);   % ceil(k/2) clamped to [16,128]
+    % Auto block: batched favours block = k (amortizes the per-block reflector
+    % apply over many in-block selections); single-select favours the smaller
+    % ceil(k/2)-clamped block (one selection per block, less wasted sampling).
+    if opts.batched
+        opts.block_size = max(opts.k, 1);
+    else
+        opts.block_size = rand_default_block(opts.k);   % ceil(k/2) clamped to [16,128]
+    end
 else
     opts.block_size = max(1, round(double(opts.block_size)));
 end

@@ -20,7 +20,7 @@ function run_rand_experiments(varargin)
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
-addParameter(ip, 'trials', 30);
+addParameter(ip, 'trials', 5);
 addParameter(ip, 'which', {'scaling', 'blocksize', 'sampling'});
 addParameter(ip, 'outdir', '');
 parse(ip, varargin{:});
@@ -52,7 +52,7 @@ end
 function exp_scaling(opt)
 families = {'gaussian', 'spiked_leverage', 'needle'};
 k = opt.k;
-db = rand_default_block(k);   % default block size for this k
+db = k;   % batched default block size (= k; see bsqr_rand_parse_options)
 ns = [1000, 2000, 4000, 8000, 16000, 32000, 64000];
 rows = {};
 for fi = 1:numel(families)
@@ -114,7 +114,7 @@ end
 % ===========================================================================
 function exp_sampling(opt)
 families = {'gaussian', 'graded_leverage', 'spiked_leverage', 'coherent', 'needle'};
-k = opt.k; n = 32000; block = rand_default_block(k);
+k = opt.k; n = 32000; block = k;   % batched default block size
 samplings = {'uniform', 'normweighted'};
 rows = {};
 for fi = 1:numel(families)

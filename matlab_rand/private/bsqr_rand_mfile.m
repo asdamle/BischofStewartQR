@@ -32,12 +32,102 @@ f2 = 0.0;                 % running ||R11^{-1}||_F^2
 stats = local_init_stats(k, n);
 
 needweights = strcmp(opts.sampling, 'normweighted');
+g = [];
 if needweights
     g = sum(Awork.^2, 1);          % original squared column norms (O(m*n))
 end
 
 b = opts.block_size;
 
+if opts.batched
+    % ===== Batched in-block BSQR (default kernel path) =====
+    % Each sampled block is brought to the current frame ONCE (one reflector
+    % apply); we then run BSQR within it, selecting the in-block minimizer
+    % greedily -- incrementing f2 and re-deriving the threshold after EACH
+    % selection -- while the per-step bound is met. One expensive apply yields
+    % multiple selections (amortizing the dominant cost, like rejection_rpqr).
+    nsel = 0;
+    since_last_select = 0;          % columns sampled since the last selection
+    while nsel < k
+        rem_count = n - nsel;
+        force_all = since_last_select >= rem_count;   % progress safety net
+        if force_all
+            ids = remaining; bcount = rem_count;
+        else
+            bcount = min(b, rem_count);
+            ids = sample_block(remaining, bcount, needweights, g);
+        end
+        Xred = bsqr_rand_apply_reflectors(Awork(:, ids), V, tau, nsel, m);
+        since_last_select = since_last_select + bcount;
+        cand = true(1, bcount);
+        nsel_at_block_start = nsel;
+        first = true;
+        while nsel < k && any(cand)
+            ci = find(cand);
+            Xc = Xred(:, ci);
+            rho2 = sum(Xc(nsel + 1:m, :).^2, 1);
+            if nsel > 0
+                Wb = R11(1:nsel, 1:nsel) \ Xc(1:nsel, :);
+                wn2 = sum(Wb.^2, 1);
+            else
+                wn2 = zeros(1, numel(ci));
+            end
+            cvals = (1 + wn2) ./ rho2;
+            theta = bsqr_rand_threshold(f2, nsel, k, n, opts.threshold_mode) * opts.slack;
+            [bmin, brel] = min(cvals);
+            if ~isfinite(bmin)
+                if force_all && first
+                    error('bsqr_rand:RankDeficient', ...
+                        ['At step %d all remaining columns have ~zero residual; the ', ...
+                         'input appears rank-deficient for k=%d.'], nsel + 1, k);
+                end
+                break;
+            end
+            forced = false;
+            if bmin > theta
+                if force_all && first
+                    forced = true;     % rounding-tie fallback: take the global min
+                else
+                    break;             % no in-block column meets the bound -> resample
+                end
+            end
+            first = false;
+
+            step = nsel + 1;
+            jblk = ci(brel);
+            xsel = Xred(:, jblk);
+            R11(1:nsel, step) = xsel(1:nsel);
+            [tau_i, beta_i, vtail] = bsqr_rand_householder(xsel(nsel + 1:m));
+            R11(step, step) = beta_i;
+            V(step, step) = 1;
+            if m > step; V(step + 1:m, step) = vtail; end
+            tau(step) = tau_i;
+
+            f2 = f2 + bmin;            % <-- f_i incremented per selection, even in-block
+            selected(step) = ids(jblk);
+            remaining(remaining == ids(jblk)) = [];
+            cand(jblk) = false;
+            since_last_select = 0;
+
+            rest = find(cand);          % apply the new reflector to the rest of the block
+            if ~isempty(rest) && tau_i ~= 0
+                v = [zeros(step - 1, 1); 1; vtail];
+                Xred(:, rest) = Xred(:, rest) - (tau_i * v) * (v' * Xred(:, rest));
+            end
+
+            stats.f2(step) = f2;
+            stats.crit(step) = bmin;
+            stats.threshold(step) = theta;
+            stats.Fhat(step) = (nsel + 1) * (n - nsel) / (k - nsel);
+            stats.fallback(step) = forced;
+            if nsel == nsel_at_block_start
+                stats.samples_tested(step) = bcount;   % attribute the apply to the 1st pick
+                stats.rounds(step) = 1;
+            end
+            nsel = nsel + 1;
+        end
+    end
+else
 for nsel = 0:k-1
     step = nsel + 1;
     rem_count = n - nsel;
@@ -136,6 +226,7 @@ for nsel = 0:k-1
     stats.rounds(step) = rounds;
     stats.fallback(step) = fallback;
 end
+end
 
 p = [selected, remaining];
 R11 = triu(R11);
@@ -144,6 +235,7 @@ reflectors = struct('V', V, 'tau', tau, 'm', m, 'k', k);
 stats.frob_inv = sqrt(max(f2, 0));
 stats.osinsky_bound = sqrt(k * (n - k + 1));
 stats.total_tested = sum(stats.samples_tested);
+stats.blocks_sampled = sum(stats.rounds);
 
 if nargout >= 5
     if opts.return_r12 && k > 0 && k < n
@@ -169,4 +261,17 @@ stats.fallback = false(1, k);
 stats.frob_inv = 0;
 stats.osinsky_bound = sqrt(k * (n - k + 1));
 stats.total_tested = 0;
+end
+
+function ids = sample_block(remaining, bcount, needweights, g)
+% Draw bcount distinct columns from `remaining` (weighted by starting squared
+% column norms when needweights, else uniform).
+rc = numel(remaining);
+if needweights
+    keys = -log(rand(1, rc)) ./ max(g(remaining), realmin);   % Efraimidis-Spirakis
+    [~, ord] = sort(keys);
+else
+    ord = randperm(rc);
+end
+ids = remaining(ord(1:bcount));
 end

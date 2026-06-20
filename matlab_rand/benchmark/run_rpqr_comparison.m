@@ -23,7 +23,7 @@ function run_rpqr_comparison(varargin)
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
-addParameter(ip, 'trials', 30);
+addParameter(ip, 'trials', 5);
 addParameter(ip, 'ns', [1000, 2000, 4000, 8000, 16000, 32000]);
 addParameter(ip, 'families', {'gaussian', 'spiked_leverage', 'needle'});
 addParameter(ip, 'outdir', '');

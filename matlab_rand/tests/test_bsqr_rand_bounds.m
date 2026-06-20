@@ -53,9 +53,15 @@ end
 function testSamplesReported(testCase)
 k = 16; n = 200;
 M = orthonormal_rows(k, n, 71);
-[~, ~, ~, stats] = bsqr_rand(M, 'backend', 'mfile', 'seed', 8);
-verifyGreaterThanOrEqual(testCase, stats.total_tested, k);
-verifyGreaterThanOrEqual(testCase, stats.samples_tested(:), ones(k, 1));
+% Single-select: every step samples at least one block (>= 1 column tested).
+[~, ~, ~, s1] = bsqr_rand(M, 'backend', 'mfile', 'batched', false, 'seed', 8);
+verifyGreaterThanOrEqual(testCase, s1.total_tested, k);
+verifyGreaterThanOrEqual(testCase, s1.samples_tested(:), ones(k, 1));
+% Batched (default): the per-block apply is attributed to the block's first
+% pick, so total_tested (not every step) is the meaningful count.
+[~, ~, ~, s2] = bsqr_rand(M, 'backend', 'mfile', 'seed', 8);
+verifyGreaterThanOrEqual(testCase, s2.total_tested, k);
+verifyGreaterThanOrEqual(testCase, s2.blocks_sampled, 1);
 end
 
 function testComparableToDeterministic(testCase)

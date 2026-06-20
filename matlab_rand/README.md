@@ -3,10 +3,14 @@
 A randomized variant of BSQR that selects `k` columns of a `k×n` matrix with the
 same theoretical guarantees on `||R11^{-1}||_F` as the deterministic kernel, but
 **without** maintaining `R11^{-1}R12` / column norms for every column at every
-step. Instead it tracks only the running squared inverse Frobenius norm and, per
-step, samples candidate columns and accepts the first/best one that keeps the
-running value under the per-step bound. See `docs/RANDOMIZED_BSQR_PLAN.md` for
-the math and `notes/bischof_stewart_pivoting.tex` §3.4 for the bound it relies on.
+step. Instead it tracks only the running squared inverse Frobenius norm and
+samples candidate columns in blocks, keeping those that hold the running value
+under the per-step bound. By default it runs **in-block** (`batched`): each
+sampled block is brought to the current frame once, then BSQR is run within it to
+take as many columns as the bound allows before resampling -- amortizing the
+per-block reflector apply over many selections (`O(k^3)` overall vs the
+single-select `O(k^4)`). See `docs/RANDOMIZED_BSQR_PLAN.md` for the math and
+`notes/bischof_stewart_pivoting.tex` §3.4 for the bound it relies on.
 
 This is **separate from and does not modify** the deterministic implementations
 in `matlab/` and `julia/`.
@@ -109,11 +113,12 @@ comparison is run fairly:
 | option | default | meaning |
 |---|---|---|
 | `k` | `min(m,n)` | columns to select |
-| `block_size` | `ceil(k/2)` in `[16,64]` | candidates evaluated per sampling round; larger improves realized quality at higher cost (`rand_default_block`) |
+| `batched` | `true` | in-block BSQR: many selections per sampled block, amortizing the per-block reflector apply (`O(k^3)` vs the single-select `O(k^4)`). `false` = one selection per block (tighter realized conditioning, more applies). Same bound either way |
+| `block_size` | `k` (batched) / `ceil(k/2)` in `[16,64]` (single) | candidates evaluated per sampled block; larger improves realized quality at higher cost (`rand_default_block`) |
 | `threshold_mode` | `running_mean` | per-column bound (per-singular-value control) or `worstcase_allowance` (more permissive, fewer samples) |
 | `slack` | `1.0` | `>=1` multiplier loosening the threshold |
 | `sampling` | `uniform` | or `normweighted` (by starting squared column norms; adds `O(mn)`) |
-| `pick` | `best_in_block` | or `first` |
+| `pick` | `best_in_block` | single-select only (`batched=false`): or `first`. Batched always takes the in-block minimizer |
 | `seed` | `[]` | RNG seed for reproducibility |
 | `return_r12` | `false` | compute `R12` as a 5th output |
 | `backend` | `auto` | `auto` / `mfile` / `mex` |
@@ -123,4 +128,7 @@ comparison is run fairly:
 
 Per-step `1×k` arrays: `f2` (running `||R11^{-1}||_F^2`), `Fhat` (per-step
 worst-case bound), `crit`, `threshold`, `samples_tested`, `rounds`, `fallback`.
-Scalars: `frob_inv`, `osinsky_bound`, `total_tested`.
+Scalars: `frob_inv`, `osinsky_bound`, `total_tested`, `blocks_sampled`. In
+batched mode a block's `samples_tested`/`rounds` are attributed to its first
+selection (`0` for the rest), so `total_tested` and `blocks_sampled` are the
+meaningful aggregates.
