@@ -64,15 +64,18 @@ for fi = 1:numel(families)
             rows(end+1, :) = {fam, k, n, s, 'det', 'na', 'na', 0, d.time, d.frobinv, d.osinsky, NaN}; %#ok<AGROW>
             b = measure_builtin(M, k);
             rows(end+1, :) = {fam, k, n, s, 'builtin', 'na', 'na', 0, b.time, b.frobinv, b.osinsky, NaN}; %#ok<AGROW>
-            % Randomized (running_mean is the default; worstcase_allowance is a
-            % documented option but kept out of the plots for a cleaner narrative).
-            r = measure_rand(M, k, 'running_mean', 'uniform', db, 1000 * fi + s);
-            rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', 'uniform', db, ...
+            % Randomized BSQR. Norm-weighted (column-norm) sampling is the standard
+            % choice for cross-method comparisons -- robust across leverage profiles
+            % and matching the sampling used by the rejection_rpqr comparison.
+            % running_mean is the default threshold; worstcase_allowance is a
+            % documented option kept out of the plots for a cleaner narrative.
+            r = measure_rand(M, k, 'running_mean', 'normweighted', db, 1000 * fi + s);
+            rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', 'normweighted', db, ...
                 r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
             % R12 desired: same selection plus the final Q'-apply to the leftover
             % columns. Quantifies the advantage lost when R12 cannot be skipped.
-            r = measure_rand(M, k, 'running_mean', 'uniform', db, 1000 * fi + s, true);
-            rows(end+1, :) = {fam, k, n, s, 'rand_r12', 'running_mean', 'uniform', db, ...
+            r = measure_rand(M, k, 'running_mean', 'normweighted', db, 1000 * fi + s, true);
+            rows(end+1, :) = {fam, k, n, s, 'rand_r12', 'running_mean', 'normweighted', db, ...
                 r.time, r.frobinv, r.osinsky, r.tested_per_k}; %#ok<AGROW>
         end
         fprintf('  scaling %-16s n=%-6d done\n', fam, n);
@@ -157,7 +160,7 @@ end
 function out = measure_det(M, k)
 out.time = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
 R = bsqr_mex(M, 'k', k, 'check_finite', false);
-out.frobinv = norm(inv(triu(R(1:k, 1:k))), 'fro');
+out.frobinv = norm(1 ./ svd(triu(R(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
 out.osinsky = sqrt(k * (size(M, 2) - k + 1));
 end
 
@@ -170,7 +173,7 @@ function out = measure_builtin(M, k)
 % to get a column selection.
 out.time = timeit(@() qr(M, 'econ', 'vector'), 3);
 [~, R, ~] = qr(M, 'econ', 'vector');
-out.frobinv = norm(inv(triu(R(1:k, 1:k))), 'fro');
+out.frobinv = norm(1 ./ svd(triu(R(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
 out.osinsky = sqrt(k * (size(M, 2) - k + 1));
 end
 

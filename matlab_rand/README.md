@@ -72,6 +72,38 @@ for K = [64 128 256]; run_rand_experiments('k', K); plot_rand_experiments('k', K
 
 This writes `benchmark/results/exp_*_k<K>.csv` and `benchmark/plots/fig_*_k<K>.png`.
 
+## External comparison: `rejection_rpqr` (Adaptive Randomized Pivoting)
+
+A standalone comparison against the `rejection_rpqr` selector from Epperly et
+al.'s Adaptive Randomized Pivoting. The third-party code is **not** redistributed
+here (`ext_comparisons/` is git-ignored); download it yourself:
+
+```bash
+# from the repo root
+mkdir -p ext_comparisons && cd ext_comparisons
+curl -L https://github.com/eepperly/Adaptive-Randomized-Pivoting/archive/refs/heads/main.tar.gz | tar xz
+# -> ext_comparisons/Adaptive-Randomized-Pivoting-main/
+```
+
+It ships a compiled `rejection_helper` MEX for Apple Silicon; on other platforms
+run its `code/compile_script.m`. Then:
+
+```matlab
+matlab -batch "addpath('matlab_rand/benchmark'); run_rpqr_comparison('k', 64); plot_rpqr_comparison('k', 64)"
+```
+
+This writes `exp_rpqr_k<K>.csv` and the three comparison figures
+`fig_rpqr_{time,speedup,quality}_k<K>.png` (same metrics as the main suite). The
+comparison is run fairly:
+
+- **BSQR uses norm-weighted sampling**, matching `rejection_rpqr`'s
+  squared-column-norm (leverage) sampling — the apples-to-apples choice.
+- `rejection_rpqr` is the published `.m` implementation; `bsqr_rand` is our MEX,
+  so timing reflects implementation language as well as algorithm.
+- The two optimize **different objectives**: BSQR directly minimizes the growth of
+  `||R11^{-1}||_F`, while ARP targets a volume/DPP criterion — so the
+  `||R11^{-1}||_F` metric measures BSQR's objective and favors it by construction.
+
 ## Options (`bsqr_rand(A, 'name', value, ...)`)
 
 | option | default | meaning |

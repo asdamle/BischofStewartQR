@@ -46,7 +46,7 @@ function testF2MatchesR11Inverse(testCase)
 k = 20; n = 140;
 M = orthonormal_rows(k, n, 55);
 [~, ~, R11, stats] = bsqr_rand(M, 'backend', 'mfile', 'seed', 6);
-explicit = norm(inv(R11), 'fro')^2;
+explicit = sum(1 ./ svd(R11).^2);   % ||R11^{-1}||_F^2 via singular values
 verifyLessThan(testCase, abs(stats.f2(end) - explicit) / explicit, 1e-8);
 end
 
@@ -73,7 +73,7 @@ if exist(fullfile(det_dir, 'bsqr.m'), 'file')
     [~, ~, pvec, rinv] = bsqr(M, 'k', k, 'backend', 'mfile', ...
         'pivot_format', 'vector', 'return_rinv_r12', true); %#ok<ASGLU>
     Rdet = bsqr(M, 'k', k, 'backend', 'mfile');
-    det_frobinv = norm(inv(Rdet(1:k, 1:k)), 'fro');
+    det_frobinv = norm(1 ./ svd(Rdet(1:k, 1:k)));   % ||R11^{-1}||_F via singular values
     % Randomized should be within a small constant factor of deterministic.
     verifyLessThan(testCase, rand_frobinv, 3 * det_frobinv + 1e-8);
 end

@@ -40,9 +40,9 @@ for sigma_min = [1e-8, 1e-10]
 
         % Selection quality: pivot flips among engineered near-ties are
         % acceptable, a worse achieved ||R11^{-1}||_F is not.
-        f_impl = norm(inv(R(1:k, 1:k)), 'fro');
+        f_impl = norm(1 ./ svd(R(1:k, 1:k)));        % ||R11^{-1}||_F via singular values
         Ro = out.R;
-        f_oracle = norm(inv(Ro(1:k, 1:k)), 'fro');
+        f_oracle = norm(1 ./ svd(Ro(1:k, 1:k)));
         verifyLessThan(testCase, f_impl / f_oracle, 1 + 1e-6, ...
             sprintf('%s: selection quality', label));
 

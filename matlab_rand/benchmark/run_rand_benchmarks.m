@@ -13,7 +13,8 @@ function results = run_rand_benchmarks(varargin)
 %       selection; it forms R12 as an unavoidable byproduct (the O(n*k^2) work
 %       the randomized variant skips) but does NOT materialize Q.
 %     * Randomized: bsqr_rand_mex(...) with THREE outputs [p, reflectors, R11]
-%       -- the "R12 not needed" product. No Q, no R12.
+%       -- the "R12 not needed" product. No Q, no R12. Norm-weighted (column-norm)
+%       sampling, the standard choice for cross-method comparisons.
 %     * Built-in baseline: qr(M,'econ','vector') -- LAPACK dgeqp3, a different,
 %       vendor-tuned classical algorithm. spd_qr = t_qr / t_rand shows whether
 %       the randomized method beats the library call.
@@ -59,30 +60,30 @@ for ci = 1:numel(opt.sizes)
 
     t_det = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
     Rdet = bsqr_mex(M, 'k', k, 'check_finite', false);
-    frobinv_det = norm(inv(triu(Rdet(1:k, 1:k))), 'fro');
+    frobinv_det = norm(1 ./ svd(triu(Rdet(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
 
     % Built-in column-pivoted QR (LAPACK dgeqp3): vendor-tuned classical baseline.
     t_qr = timeit(@() qr(M, 'econ', 'vector'), 3);
     [~, Rqr, ~] = qr(M, 'econ', 'vector');
-    frobinv_qr = norm(inv(triu(Rqr(1:k, 1:k))), 'fro');
+    frobinv_qr = norm(1 ./ svd(triu(Rqr(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
 
     osinsky = sqrt(k * (n - k + 1));
     % running_mean is the default; worstcase_allowance is a documented option (see
     % bsqr_rand help) but kept out of the headline comparison for clarity.
     t_rand = timeit(@() bsqr_rand_mex(M, 'k', k, 'check_finite', false, ...
-        'block_size', bs, 'threshold_mode', 'running_mean', 'seed', opt.seed + ci), 3);
+        'block_size', bs, 'sampling', 'normweighted', 'threshold_mode', 'running_mean', 'seed', opt.seed + ci), 3);
     [~, ~, ~, st] = bsqr_rand_mex(M, 'k', k, 'check_finite', false, ...
-        'block_size', bs, 'threshold_mode', 'running_mean', 'seed', opt.seed + ci);
+        'block_size', bs, 'sampling', 'normweighted', 'threshold_mode', 'running_mean', 'seed', opt.seed + ci);
     rows(end+1, :) = report_row(opt.family, k, n, 'running_mean', t_rand, t_det, t_qr, ...
         st.frob_inv, frobinv_det, frobinv_qr, osinsky, st.total_tested/k); %#ok<AGROW>
 
     % R12 desired: running_mean selection plus the final Q'-apply to the leftover
     % columns -- shows how much speedup survives when R12 is required.
     t_r12 = timeit(@() bsqr_rand_mex(M, 'k', k, 'check_finite', false, ...
-        'block_size', bs, 'threshold_mode', 'running_mean', ...
+        'block_size', bs, 'sampling', 'normweighted', 'threshold_mode', 'running_mean', ...
         'return_r12', true, 'seed', opt.seed + ci), 5);
     [~, ~, ~, st12] = bsqr_rand_mex(M, 'k', k, 'check_finite', false, ...
-        'block_size', bs, 'threshold_mode', 'running_mean', ...
+        'block_size', bs, 'sampling', 'normweighted', 'threshold_mode', 'running_mean', ...
         'return_r12', true, 'seed', opt.seed + ci);
     rows(end+1, :) = report_row(opt.family, k, n, 'running_mean+R12', t_r12, t_det, t_qr, ...
         st12.frob_inv, frobinv_det, frobinv_qr, osinsky, st12.total_tested/k); %#ok<AGROW>

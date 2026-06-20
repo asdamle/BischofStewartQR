@@ -67,7 +67,7 @@ for idx = 1:numel(zoo)
     end
     out = oracle_bsqr(z.A, z.k);
     R11 = out.R(1:z.k, 1:z.k);
-    frob2 = norm(inv(R11), 'fro')^2;
+    frob2 = sum(1 ./ svd(R11).^2);   % ||R11^{-1}||_F^2 via singular values
     err = abs(sum(out.crit_best) - frob2) / frob2;
     verifyLessThan(testCase, err, 1e-10, z.name);
 end
