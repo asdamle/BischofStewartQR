@@ -48,7 +48,7 @@ assert(exist('bsqr_mex', 'file') == 3, ...
     'bsqr_mex (deterministic) not built. Run matlab/build_bsqr_mex.m first.');
 
 rows = {};
-if isempty(opt.block_size); bsdesc = 'auto(ceil(k/2))'; else; bsdesc = num2str(opt.block_size); end
+if isempty(opt.block_size); bsdesc = 'auto(k)'; else; bsdesc = num2str(opt.block_size); end
 fprintf('family=%s  block_size=%s  BLAS threads=%d\n', opt.family, bsdesc, maxNumCompThreads);
 fprintf('%-12s %-18s %10s %10s %10s %8s %8s %7s %8s\n', ...
     'size', 'mode', 't_rand(ms)', 't_det(ms)', 't_qr(ms)', 'spd_det', 'spd_qr', 'cond', 'tested/k');
@@ -56,7 +56,7 @@ fprintf('%-12s %-18s %10s %10s %10s %8s %8s %7s %8s\n', ...
 for ci = 1:numel(opt.sizes)
     k = opt.sizes{ci}(1); n = opt.sizes{ci}(2);
     M = rand_test_matrix(opt.family, k, n, opt.seed + ci);
-    if isempty(opt.block_size); bs = rand_default_block(k); else; bs = opt.block_size; end
+    if isempty(opt.block_size); bs = k; else; bs = opt.block_size; end   % batched default block
 
     t_det = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
     Rdet = bsqr_mex(M, 'k', k, 'check_finite', false);

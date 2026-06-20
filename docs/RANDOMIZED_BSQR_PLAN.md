@@ -351,6 +351,23 @@ Done:
   and the `slack` docstring caveat (>1 breaks the proven bound).
 
 Still open:
+- **Exact-threshold ties — the sampling-cost worst case, and an optional tolerance.**
+  The bound is enforced by the strict test `c <= theta`. Generic inputs never tie,
+  but a perfectly structured one can sit *exactly* on the threshold: a normalized
+  Hadamard (k random rows of an N-by-N Hadamard, /sqrt(N) -> orthonormal rows,
+  uniform leverage k/N) has `c_j = (1+0)/(k/N) = N/k = theta_0` for *every* column
+  at step 0, and its quantized column overlaps keep the criterion pinned at theta.
+  At certain `N/k` (empirically the odd powers of two) rounding then tips every
+  remaining column a hair above theta at one step; no sampled block contains an
+  acceptable column, the global-min fallback fires once, and the sampler degenerates
+  to a single O(n) scan (`tested/k ~ n/k`) for that step — still correct and bounded,
+  just not cheap. (It is intermittent: even powers of two sail through at
+  `tested/k = 2`. Leverage is irrelevant here — gaussian, equally flat in leverage,
+  never ties.) A defensible practical fix is to relax the test to
+  `c <= theta * (1 + p*eps)` for a small integer `p`: rounding-level ties then pass
+  normally and the bound is exceeded only at the rounding level. We don't ship a
+  Hadamard test family (its conditioning just duplicates gaussian and the artifact
+  flips with `n`), but the worst case is worth knowing.
 - **Persistent MEX workspace.** `bsqr_rand_mex` allocates its scratch per call
   (unlike `bsqr_mex`'s static workspace), so under `timeit` the allocation is
   *inside* the timed region — the reported speedups are mildly conservative. A

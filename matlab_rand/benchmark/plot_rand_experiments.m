@@ -9,7 +9,7 @@ function plot_rand_experiments(varargin)
 %     fig_scaling_quality_k<K>.png - two rows vs n: ||R11^{-1}||_F / bound and
 %                                    sigma_min(R11) / bound.
 %     fig_blocksize_k<K>.png       - time, columns sampled, conditioning vs block
-%                                    size (per family), uniform vs norm-weighted.
+%                                    size (per family), batched + norm-weighted.
 %     fig_sampling_k<K>.png        - uniform vs norm-weighted across families.
 %   Each line is the seed mean; the shaded band spans the seed min/max. The three
 %   scaling figures are one-metric-each (one former column apiece) so each has a
@@ -163,7 +163,6 @@ for fi = 1:numel(fams)
     fam = fams(fi); base = T.family == fam;
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log', 'YScale', 'log');
-    band_line(ax, T, base & T.sampling == "uniform", 'block_size', 'time_s', C.uniform, 'uniform');
     band_line(ax, T, base & T.sampling == "normweighted", 'block_size', 'time_s', C.normweighted, 'normweighted');
     bt = mean(T.time_s(base & T.method == "builtin"));   % vendor-qr reference (block-independent)
     if ~isnan(bt)
@@ -174,13 +173,11 @@ for fi = 1:numel(fams)
     if fi == 1; legend(ax, 'Location', 'best'); end
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log', 'YScale', 'log');
-    band_line(ax, T, base & T.sampling == "uniform", 'block_size', 'tested_per_k', C.uniform, 'uniform');
     band_line(ax, T, base & T.sampling == "normweighted", 'block_size', 'tested_per_k', C.normweighted, 'normweighted');
     grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, 'columns tested / k');
     title(ax, sprintf('%s: sampling cost', fam), 'Interpreter', 'none');
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log');
-    cond_ratio_line2(ax, T, base & T.sampling == "uniform", 'block_size', C.uniform, 'uniform');
     cond_ratio_line2(ax, T, base & T.sampling == "normweighted", 'block_size', C.normweighted, 'normweighted');
     yline(ax, 1, 'k--', 'HandleVisibility', 'off');
     grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, '||R_{11}^{-1}||_F / bound');

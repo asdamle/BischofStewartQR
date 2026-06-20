@@ -5,8 +5,8 @@ function run_rand_experiments(varargin)
 %   (e.g. exp_scaling_k64.csv, exp_scaling_k128.csv, ...):
 %     exp_scaling_k<K>.csv   - time / conditioning / samples vs n, per family,
 %                              deterministic vs randomized (both modes + R12).
-%     exp_blocksize_k<K>.csv - effect of block_size on time / samples / cond,
-%                              uniform vs norm-weighted sampling.
+%     exp_blocksize_k<K>.csv - effect of block_size (k-relative sweep) on time /
+%                              samples / cond, batched + norm-weighted.
 %     exp_sampling_k<K>.csv  - uniform vs norm-weighted sampling across families.
 %
 %   All randomized timing uses the MEX kernel called directly with
@@ -88,8 +88,11 @@ end
 function exp_blocksize(opt)
 families = {'gaussian', 'spiked_leverage', 'needle'};
 k = opt.k; n = 8000;
-blocks = [1, 2, 4, 8, 16, 32, 64, 128];
-samplings = {'uniform', 'normweighted'};
+% k-relative sweep that brackets the batched default block = k (with finer steps
+% at 3/4 k and 3/2 k around the knee, block=1 as the no-batching reference, and up
+% to 4k for the conditioning-recovery tail). All stay < n.
+blocks = unique([1, round(k .* [1/8 1/4 1/2 3/4 1 1.5 2 4])]);
+samplings = {'normweighted'};   % batched default; uniform-vs-norm lives in exp_sampling
 rows = {};
 for fi = 1:numel(families)
     fam = families{fi};
