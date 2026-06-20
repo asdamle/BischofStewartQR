@@ -15,7 +15,7 @@ function varargout = bsqr_rand(A, varargin)
 % Name-value options:
 %   'k'              - number of columns to select (default min(m,n))
 %   'block_size'     - candidates tested per sampling round (default
-%                      ceil(k/2) clamped to [16,128]; see RAND_DEFAULT_BLOCK).
+%                      ceil(k/2) clamped to [16,64]; see RAND_DEFAULT_BLOCK).
 %                      Larger blocks improve realized selection quality (the
 %                      per-step minimum is taken over more candidates) at higher
 %                      cost; the guaranteed bound is unchanged.

@@ -260,8 +260,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     const mwSize k = opt.k;
-    if (opt.block_size == 0) {   // auto: mirrors rand_default_block.m = ceil(k/2) in [16,128]
-        opt.block_size = std::min<mwSize>(128, std::max<mwSize>(16, (k + 1) / 2));
+    if (opt.block_size == 0) {   // auto: mirrors rand_default_block.m = ceil(k/2) in [16,64]
+        opt.block_size = std::min<mwSize>(64, std::max<mwSize>(16, (k + 1) / 2));
     }
     const mwSize block = std::min(opt.block_size, std::max<mwSize>(n, 1));
     const bool weighted = (opt.sampling == Sampling::NormWeighted);

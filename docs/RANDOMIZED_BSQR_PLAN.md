@@ -91,18 +91,13 @@ Measured (Apple Silicon, MEX, k=64, `gaussian` orthonormal rows, default block
 | 64×64000   | 345×           | 127×              |
 
 `t_rand` is essentially flat across `n` while both baselines grow `O(nk^2)`, so
-the speedup grows with `n`. (The default block was 16 in earlier revisions, which
-gave larger raw speedups — e.g. 475× vs det at 64×64000 — but worse realized
-conditioning; the larger default trades some of that speed for selection quality,
-see §11.) On concentrated-
-leverage inputs (where uniform sampling tests many columns) use `normweighted`
-sampling to keep `tested/k ≈ block` and recover the same scaling (§11).
-
-These numbers reflect three landed optimizations (earlier BLAS-2 / `O(n)`-shuffle
-versions were ~3–6× only): see §10.
-
-The speedup grows with `n`, exactly as the cost model predicts; the conditioning
-stays far under the guarantee.
+the speedup grows with `n` while the conditioning stays far under the guarantee.
+On concentrated-leverage inputs (where uniform sampling tests many columns) use
+`normweighted` sampling to keep `tested/k ≈ block` and recover this scaling (§11).
+The numbers reflect three landed optimizations (§10; earlier BLAS-2 /
+`O(n)`-shuffle versions were only ~3–6×) and the block size: the default
+`ceil(k/2)` favors conditioning, while a smaller block trades that for raw speed
+(block 16 reached 475× vs det here — see §11).
 
 ## 5. Outputs (`matlab_rand/bsqr_rand.m`)
 
@@ -118,7 +113,7 @@ off and untimed by default).
 
 ## 6. Knobs
 
-`k`, `block_size` (default 16), `threshold_mode` (default `running_mean`),
+`k`, `block_size` (default `ceil(k/2)` in `[16,64]`), `threshold_mode` (default `running_mean`),
 `slack` (default 1), `sampling` (`uniform` default | `normweighted` — by
 *starting* squared column norms, adds an `O(mn)` precompute), `pick`
 (`best_in_block` default | `first`), `seed`, `return_r12`, `backend`
@@ -129,7 +124,7 @@ off and untimed by default).
 `stats` (per-step `1×k` arrays plus scalars):
 - **bound on `||R11^{-1}||_F`**: `f2` (running squared), `Fhat` (per-step worst
   case), `frob_inv = sqrt(f2(end))`, `osinsky_bound = sqrt(k(n-k+1))`;
-- **columns tested ("nested")**: `samples_tested`, `rounds`, `total_tested`;
+- **columns tested**: `samples_tested`, `rounds`, `total_tested`;
 - plus `crit` (accepted `c`), `threshold`, `fallback`.
 
 ## 8. Validation (`matlab_rand/tests/`)
@@ -195,8 +190,9 @@ Kernel optimizations landed (MEX), in order of impact for `k << n`:
 3. **Reuse the accepted column.** Its reduced form already sits in the test block,
    so it is not re-applied (only the rare exhaustive-fallback re-applies).
 
-Together these moved `gaussian` k=64 from ~5× to **475×** at n=64000 (§4): the
-kernel is now n-independent while the deterministic baseline grows `O(nk^2)`.
+Together these took `gaussian` k=64 from ~5× to two orders of magnitude over the
+deterministic baseline (345× at the default block, 475× at block 16; see §4): the
+kernel is now n-independent while both baselines grow `O(nk^2)`.
 
 ## 11. Experiment & plot suite (R12 not needed)
 
@@ -218,7 +214,7 @@ different, vendor-tuned classical algorithm — the natural "can we beat the
 library?" reference. (`dgeqp3` is itself faster than our deterministic BSQR, so
 it is the tougher baseline.)
 
-The plots use the **default block size** `ceil(k/2)` clamped to `[16,128]`
+The plots use the **default block size** `ceil(k/2)` clamped to `[16,64]`
 (`rand_default_block.m`; the MEX mirrors it) and `pick='best_in_block'` (accept
 the block's minimum-criterion column when it meets the threshold). The
 `worstcase_allowance` threshold stays a documented option (`bsqr_rand` help) but
@@ -244,25 +240,22 @@ is **omitted from the plots** to keep the narrative on the per-step-bounded
   *uniform* sampling the win is smaller because the sampler tests many columns —
   fixed by norm-weighted sampling (below).
 - **Beats the vendor library, not just our own kernel.** Against built-in
-  `dgeqp3` (gaussian, n=64000) randomized is `127× / 59× / 18×` faster at
+  `dgeqp3` (gaussian, n=64000) randomized is `127× / 59× / 36×` faster at
   `k = 64 / 128 / 256` — and `dgeqp3` is the *tougher* baseline (it outpaces our
-  deterministic BSQR). Even with `R12` formed it stays `~5–6×` faster than
+  deterministic BSQR). Even with `R12` formed it stays `~5–7×` faster than
   `dgeqp3` at n=64000. Selection quality is comparable and well under the bound
-  (`||R11^{-1}||_F`/Osinsky ≈ 0.20–0.28 randomized vs ≈ 0.16–0.18 for `dgeqp3` on
-  gaussian). The value proposition is speed at preserved guarantees. (Raw speedups
-  scale inversely with the block size; the smaller block 16 used in earlier
-  revisions roughly doubled–to–6×'d these numbers at the cost of conditioning.)
+  (`||R11^{-1}||_F`/Osinsky ≈ 0.22–0.28 randomized vs ≈ 0.16 for `dgeqp3` on
+  gaussian). The value proposition is speed at preserved guarantees.
 - **When R12 *is* needed** (the `rand_r12` series / `fig_scaling_*` purple line),
   the randomized method must apply the accumulated `Q'` to the `n-k` leftover
   columns — one `O(nk^2)` BLAS-3 pass, the same order as the deterministic
   kernel's total work. The dramatic n-scaling therefore collapses to a constant
-  factor: `gaussian` `t_det/t_rand` settles at `~6× → 10× → 14×` over
-  `n = 1000 → 8000 → 64000` (vs `7× → 34× → 517×` without R12), and the stress
-  families to ~4–6×. It still wins because it does one clean `Q'`-apply instead of
-  the deterministic kernel's per-step W-maintenance over every column — but this
-  is the regime where the advantage is a modest constant, not orders of magnitude.
-  Bottom line: the big win is specifically the *R12-not-needed* (subset +
-  reflectors + R11) use case.
+  factor: at k=64 `gaussian` `t_det/t_rand` settles at `~5× → 9× → 14×` over
+  `n = 1000 → 8000 → 64000` (vs `6× → 25× → 345×` without R12). It still wins —
+  one clean `Q'`-apply versus the deterministic kernel's per-step W-maintenance
+  over every column — but the advantage here is a modest constant, not orders of
+  magnitude. The big win is specifically the *R12-not-needed* (subset + reflectors
+  + R11) use case.
 - **Conditioning.** `running_mean` keeps `||R11^{-1}||_F` far under the bound on
   *all* families (ratio ≈ 0.05–0.28 at the default block) and within ≈ 1.2–1.6× of
   the deterministic value. The bound is never violated — the stress matrices
@@ -275,10 +268,12 @@ is **omitted from the plots** to keep the narrative on the per-step-bounded
   the ratio improves `0.30 → 0.27 → 0.24 → 0.20` at block `16 → 32 → 64 → 128`,
   roughly halving the gap to deterministic (≈ 0.17). Cost grows ~linearly in block
   (and on the stress families very small blocks are much slower — block=1 needs
-  ~130–190 rounds). The default is now **`ceil(k/2)` clamped to `[16,128]`** (=
-  32/64/128 for k = 64/128/256): a deliberate shift toward selection quality, at
-  the price of some raw speed (e.g. k=256 vs `dgeqp3` drops from ~107× at block 16
-  to ~18× at block 128). An adaptive block remains future work.
+  ~130–190 rounds). The default is now **`ceil(k/2)` clamped to `[16,64]`** (=
+  32/64/64 for k = 64/128/256): a deliberate shift toward selection quality, at
+  the price of some raw speed. The cap of 64 keeps that cost bounded for large k:
+  at k=256 the default block 64 gives 36× vs `dgeqp3` (conditioning 0.22), whereas
+  block 128 would halve it to ~18× for only marginally better conditioning (0.20).
+  An adaptive block remains future work.
 - *(`worstcase_allowance`, omitted from the plots, is a documented option that
   only guarantees the final Frobenius bound: on `spiked_leverage` it spends slack
   up to ~0.8 of the Osinsky bound vs ~0.1 for `running_mean`. Hence `running_mean`
@@ -297,18 +292,14 @@ is **omitted from the plots** to keep the narrative on the per-step-bounded
   may be) concentrated.**
 - **Across k (k ∈ {64, 128, 256}, n=64000).** The story holds at every k; the
   numbers shift as the cost model predicts:
-  - *No-R12 gaussian speedup* (vs deterministic, n=64000, default block) shrinks
-    with k — `345× → 127× → 35×` at k = 64/128/256 — because the randomized apply
-    grows with `k` *and* the default block `ceil(k/2)`, while the deterministic
-    baseline grows `O(nk²)`. Versus `dgeqp3` it is `127× → 59× → 18×`.
-  - *Realized conditioning improves with k* — `0.28 → 0.23 → 0.20` — since the
-    default block `ceil(k/2)` minimizes over a larger fraction of candidates.
-  - *Stress families* (uniform) still improve slightly with k (`needle`),
-    because the useful set `ng ≈ 1.25k` grows with k so fewer samples are wasted.
-  - *Conditioning* stays `~0.29–0.33` (gaussian) and lower for stress at all k —
-    the Osinsky bound is respected throughout.
-  - *Norm-weighted sampling* wins at every k: e.g. `needle` k=256 cuts tested/k
-    `207 → 16` and time `105 ms → 10 ms` (~10×).
+  - *Gaussian speedup vs deterministic* shrinks with k — `345× → 127× → 67×` —
+    because the randomized apply grows with `k` *and* the default block `ceil(k/2)`
+    while the deterministic baseline grows `O(nk²)`. Versus `dgeqp3`: `127× → 59× → 36×`.
+  - *Realized conditioning* is `0.28 → 0.23 → 0.22` — comparable across k and well
+    under the bound; the larger relative block for bigger k offsets the growth.
+  - *Stress families* (uniform) improve slightly with k (`needle`), because the
+    useful set `ng ≈ 1.25k` grows with k so fewer samples are wasted; norm-weighted
+    sampling continues to dominate them (the previous bullet).
 
 ## 12. Review-pass outcomes and future work
 

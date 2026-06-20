@@ -77,7 +77,7 @@ This writes `benchmark/results/exp_*_k<K>.csv` and `benchmark/plots/fig_*_k<K>.p
 | option | default | meaning |
 |---|---|---|
 | `k` | `min(m,n)` | columns to select |
-| `block_size` | `16` | candidates evaluated per sampling round |
+| `block_size` | `ceil(k/2)` in `[16,64]` | candidates evaluated per sampling round; larger improves realized quality at higher cost (`rand_default_block`) |
 | `threshold_mode` | `running_mean` | per-column bound (per-singular-value control) or `worstcase_allowance` (more permissive, fewer samples) |
 | `slack` | `1.0` | `>=1` multiplier loosening the threshold |
 | `sampling` | `uniform` | or `normweighted` (by starting squared column norms; adds `O(mn)`) |

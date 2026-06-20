@@ -4,3 +4,7 @@ julia/benchmark/results/publication_smoke/
 matlab/benchmark/results/publication_smoke/
 matlab_rand/mex/*.mex*
 matlab_rand/benchmark/results/
+
+# Third-party comparison algorithms: not redistributed here. Comparisons are
+# documented; download the code from each algorithm's original source.
+ext_comparisons/

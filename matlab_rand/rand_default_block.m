@@ -1,6 +1,6 @@
 function b = rand_default_block(k)
 %RAND_DEFAULT_BLOCK Default sampling block size as a function of k.
-%   b = ceil(k/2), clamped to [16, 128].
+%   b = ceil(k/2), clamped to [16, 64].
 %
 %   Block size trades compute for *realized* selection quality: with
 %   pick='best_in_block' the accepted pivot is the minimum-criterion column over
@@ -12,5 +12,5 @@ function b = rand_default_block(k)
 %
 %   The C++ MEX backend mirrors this formula; keep the two in sync.
 
-b = min(128, max(16, ceil(k / 2)));
+b = min(64, max(16, ceil(k / 2)));
 end
