@@ -89,6 +89,7 @@ for row = {'frob', 'smin'}
             ratio_line(ax, T, base & T.method == methods{mi, 1}, row{1}, methods{mi, 3}, methods{mi, 2});
         end
         yline(ax, 1, 'k--', 'HandleVisibility', 'off');   % the bound
+        ylim(ax, [0 1.5]);   % consistent axis across families; rejection_rpqr bands clip here
         grid(ax, 'on');
         if strcmp(row{1}, 'frob')
             title(ax, fam, 'Interpreter', 'none');
