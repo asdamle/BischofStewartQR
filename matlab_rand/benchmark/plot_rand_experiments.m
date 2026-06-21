@@ -200,12 +200,15 @@ fig = figure('Position', [100 100 1300 380], 'Color', 'w');
 tl = tiledlayout(fig, 1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 for mi = 1:size(metrics, 1)
     ax = nexttile(tl); hold(ax, 'on');
-    mu = zeros(numel(fams), 2); er = zeros(numel(fams), 2);
+    set(ax, 'TickLabelInterpreter', 'none');   % family names verbatim (no TeX subscripts)
+    mu = zeros(numel(fams), 2); elo = zeros(numel(fams), 2); ehi = zeros(numel(fams), 2);
     for fi = 1:numel(fams)
         for si = 1:2
             samp = ["uniform", "normweighted"]; samp = samp(si);
             v = T.(metrics{mi, 1})(T.family == fams(fi) & T.sampling == samp);
-            mu(fi, si) = mean(v); er(fi, si) = std(v);
+            % min/max whiskers (not +/- std): honest for floored/skewed quantities
+            % like tested/k (>= 1), and matches the min/max bands in the other figures.
+            mu(fi, si) = mean(v); elo(fi, si) = mean(v) - min(v); ehi(fi, si) = max(v) - mean(v);
         end
     end
     cats = categorical(fams, fams);
@@ -214,7 +217,7 @@ for mi = 1:size(metrics, 1)
     b(2).FaceColor = C.normweighted; b(2).DisplayName = 'normweighted';
     for si = 1:2
         xc = b(si).XEndPoints;
-        errorbar(ax, xc, mu(:, si), er(:, si), 'k', 'linestyle', 'none', 'HandleVisibility', 'off');
+        errorbar(ax, xc, mu(:, si), elo(:, si), ehi(:, si), 'k', 'linestyle', 'none', 'HandleVisibility', 'off');
     end
     show_legend = (mi == 1);
     if strcmp(metrics{mi, 1}, 'time_s')   % overlay vendor-qr time per family

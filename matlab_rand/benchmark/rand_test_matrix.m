@@ -17,6 +17,11 @@ function [M, info] = rand_test_matrix(family, k, n, seed)
 %     'needle'          - ~k useful columns hidden among n near-null ones
 %                         (hardest for uniform sampling; the case where
 %                         norm-weighted sampling should help most).
+%     'chebyshev'       - applied structure: first k Chebyshev polynomials
+%                         sampled at n equispaced points (a polynomial
+%                         least-squares / interpolation design matrix).
+%                         Selecting columns = choosing k nodes from n; leverage
+%                         (the Christoffel function) concentrates near the ends.
 %
 %   info has fields .family, .k, .n, .leverage (1-by-n column squared norms).
 
@@ -57,6 +62,21 @@ switch lower(char(family))
         idx = randperm(n, ng);
         d(idx) = 1;
         W = (d .* randn(n, k));
+
+    case 'chebyshev'
+        % Applied structure: a degree-(k-1) Chebyshev design matrix on n random
+        % sample points in [-1,1] -- polynomial least-squares / optimal design,
+        % where selecting k of the n columns = picking the k most informative
+        % samples. Leverage (the Christoffel function) concentrates near the
+        % ends. Chebyshev polynomials are bounded by 1 on [-1,1] so the factor
+        % is well-scaled; orth makes the rows orthonormal (rank k).
+        x = sort(2 * rand(1, n) - 1);          % seeded random design points
+        B = ones(k, n);
+        if k >= 2; B(2, :) = x; end
+        for i = 3:k
+            B(i, :) = 2 * x .* B(i - 1, :) - B(i - 2, :);   % Chebyshev recurrence
+        end
+        W = B.';
 
     otherwise
         error('rand_test_matrix:UnknownFamily', 'Unknown family "%s".', family);

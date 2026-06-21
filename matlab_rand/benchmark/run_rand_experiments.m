@@ -116,7 +116,10 @@ end
 
 % ===========================================================================
 function exp_sampling(opt)
-families = {'gaussian', 'graded_leverage', 'spiked_leverage', 'coherent', 'needle'};
+% chebyshev is the applied family (polynomial least-squares / optimal design,
+% edge-concentrated leverage) -- included here to motivate the synthetic
+% leverage profiles; kept out of the scaling/rpqr suites where it just blends.
+families = {'gaussian', 'graded_leverage', 'spiked_leverage', 'coherent', 'needle', 'chebyshev'};
 k = opt.k; n = 32000; block = k;   % batched default block size
 samplings = {'uniform', 'normweighted'};
 rows = {};
