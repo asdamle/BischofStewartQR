@@ -18,12 +18,13 @@ function run_rpqr_comparison(varargin)
 %       volume/DPP criterion. The ||R11^{-1}||_F metric therefore favors BSQR by
 %       construction -- it measures BSQR's objective.
 %
-% Options: 'k' (default 64), 'trials' (seeds, default 5), 'ns' (vector),
+% Options: 'k' (default 64), 'trials' (seeds, default 20 -- the publication
+%   count; timeit already stabilizes the timing, so 20 suffices), 'ns' (vector),
 %   'families' (cellstr; see rand_test_matrix), 'outdir'.
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
-addParameter(ip, 'trials', 5);
+addParameter(ip, 'trials', 20);
 addParameter(ip, 'ns', [1000, 2000, 4000, 8000, 16000, 32000]);
 addParameter(ip, 'families', {'gaussian', 'spiked_leverage', 'needle'});
 addParameter(ip, 'outdir', '');

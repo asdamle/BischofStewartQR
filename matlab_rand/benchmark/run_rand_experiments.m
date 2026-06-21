@@ -14,13 +14,14 @@ function run_rand_experiments(varargin)
 %   Each configuration is repeated over several seeds so the plotter can draw
 %   confidence bands. Plot with plot_rand_experiments('k', K).
 %
-% Options: 'k' (rows to select, default 64), 'trials' (seeds, default 5),
+% Options: 'k' (rows to select, default 64), 'trials' (seeds, default 20 --
+%   the publication count; timeit already stabilizes the timing, so 20 suffices),
 %   'which' (cellstr subset of {'scaling','blocksize','sampling'}, default all),
 %   'outdir'.
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
-addParameter(ip, 'trials', 5);
+addParameter(ip, 'trials', 20);
 addParameter(ip, 'which', {'scaling', 'blocksize', 'sampling'});
 addParameter(ip, 'outdir', '');
 parse(ip, varargin{:});
