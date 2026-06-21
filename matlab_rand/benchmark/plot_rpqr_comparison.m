@@ -9,13 +9,15 @@ function plot_rpqr_comparison(varargin)
 %                                 sigma_min(R11) / bound (>=1), vs n
 %   Line = seed mean; shaded band = seed min/max.
 %
-% Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats'.
+% Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats' (default
+%   {'png','pdf'} -- vector PDF for publication alongside PNG; pass {'png'} to
+%   skip the PDF for quick iteration).
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
 addParameter(ip, 'resultsdir', '');
 addParameter(ip, 'plotdir', '');
-addParameter(ip, 'formats', {'png'});
+addParameter(ip, 'formats', {'png', 'pdf'});
 parse(ip, varargin{:});
 opt = ip.Results;
 opt.tag = sprintf('_k%d', opt.k);

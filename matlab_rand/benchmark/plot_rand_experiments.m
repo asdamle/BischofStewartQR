@@ -15,14 +15,16 @@ function plot_rand_experiments(varargin)
 %   scaling figures are one-metric-each (one former column apiece) so each has a
 %   single clear legend.
 %
-% Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats'
+% Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats' (default
+%   {'png','pdf'} -- vector PDF for publication alongside PNG; pass {'png'} to
+%   skip the PDF for quick iteration).
 %   (cellstr, default {'png'}).
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
 addParameter(ip, 'resultsdir', '');
 addParameter(ip, 'plotdir', '');
-addParameter(ip, 'formats', {'png'});
+addParameter(ip, 'formats', {'png', 'pdf'});
 parse(ip, varargin{:});
 opt = ip.Results;
 opt.tag = sprintf('_k%d', opt.k);
