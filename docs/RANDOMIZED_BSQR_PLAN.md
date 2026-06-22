@@ -476,3 +476,13 @@ identical, but BSQR's `||R11^{-1}||` stays `<=` the Osinsky bound (guaranteed)
 while `rejection_rpqr`'s runs 2–3× larger and can exceed it, inflating its
 interpolation coefficients (≈2–4×) and noise-amplified ID error correspondingly.
 Computed with no `inv()` (conditioning via `svd`, coefficients via backslash).
+
+The reconstruction rows compare two coefficient choices: the cheap leading-k-frame
+`T = R11^{-1}R12` and the standard projection coefficients
+`T_proj = A(:,S)^+ A(:,rest)` (columns `maxTproj`, `noisy_id_*_proj`; thin-dashed
+overlay). `max|T_proj|` turns out *smaller* than `max|T|` and nearly method-agnostic,
+so the conditioning gap inflates the V_k-frame ID but **largely closes under
+projection coefficients** — the guarantee matters downstream with the cheap oblique
+coefficients, not with a least-squares solve. Every metric is recorded in both
+norms; the spectral figure is `fig_approx_cond_quality_spec.{png,pdf}`
+(`plot_approx_cond_comparison('norm','2')`).

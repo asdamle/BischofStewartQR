@@ -18,8 +18,9 @@ function run_approx_cond_comparison(varargin)
 %                                             leading-k coefficients T: even
 %                                             noiseless its error exceeds proj_frob
 %                                             by a factor growing with ||R11^{-1}||)
-%     noisy_id_err = same ID from *noisy* selected columns: adds ~ noise_rel*||T||
-%                                             ~ noise_rel*||R11^{-1}|| on top of id_err
+%     noisy_id_err = same ID from *noisy* selected columns: the noise (sized to
+%                                             noise_rel*||A(:,S)||) is amplified by
+%                                             ||T|| ~ ||R11^{-1}|| on top of id_err
 %
 %   As a coefficient-choice control we also record the *standard projection* ID
 %   coefficients T_proj = A(:,S)^+ A(:,rest) (k-step pivoted QR on A with the V_k^T
@@ -178,8 +179,9 @@ out.id_err  = norm(Eid, 'fro') / normA_fro;
 out.id_spec = snorm2(Eid) / normA_2;
 
 % same ID rebuilt from *noisy* measured selected columns: Ahat(:,rest) = C*T with
-% C = A(:,S)+E adds a term ~ noise_rel * ||T|| ~ noise_rel * ||R11^{-1}|| on top of
-% id_*, so an ill-conditioned R11 amplifies measurement noise too.
+% C = A(:,S)+E. The noise (sized to noise_rel*||A(:,S)||) propagates as E*T, adding a
+% term that scales with ||T|| ~ ||R11^{-1}|| on top of id_*, so an ill-conditioned
+% R11 amplifies measurement noise too.
 rng(seed + 777);
 E = randn(size(A, 1), k);
 E = E * (noise_rel * norm(A(:, S), 'fro') / norm(E, 'fro'));

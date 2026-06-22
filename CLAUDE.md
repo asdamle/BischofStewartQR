@@ -53,6 +53,28 @@ matlab -batch "addpath('matlab/benchmark'); plot_publication_results"
 
 Tests are function-based `runtests` files under `matlab/tests/`; run a single file with `runtests('matlab/tests/test_bsqr.m')` after adding paths.
 
+### MATLAB randomized comparisons (`matlab_rand/benchmark/`)
+
+Beyond the scaling/block-size/sampling sweeps (`run_rand_experiments`) and the
+`rejection_rpqr` conditioning comparison (`run_rpqr_comparison`), there is a
+matrix-approximation comparison suite (randomized BSQR vs `rejection_rpqr`, both
+selecting on the leading-`k` right singular vectors; see `matlab_rand/README.md` and
+`docs/RANDOMIZED_BSQR_PLAN.md` §14):
+
+```bash
+# application families (gmm_kernel/integral_skeleton/snapshots): approximation accuracy + interp. coefficients
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_comparison; plot_approx_comparison"
+# synthetic-spectrum companion (gaussian/spiked_leverage/needle right-singular-vector leverage)
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_synth_comparison; plot_approx_comparison('tag','_synth')"
+# R11-conditioning companion (gaussian/coherent/collinear_cluster); add ('norm','2') for the spectral figure
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"
+```
+
+Figures land in `matlab_rand/benchmark/plots/` (`fig_approx_quality`,
+`fig_approx_synth_quality`, `fig_approx_cond_quality{,_spec}`); CSVs in the
+git-ignored `results/`. The suite keeps its own matrix builders and helpers — it is
+not coupled to the deterministic kernels and uses no `inv()`.
+
 ### Validation harness
 
 `matlab/tests/oracle_bsqr.m` is the executable ground truth (a literal transcription of the

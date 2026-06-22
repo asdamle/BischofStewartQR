@@ -2,13 +2,15 @@ function plot_approx_comparison(varargin)
 %PLOT_APPROX_COMPARISON Figure for the low-rank approximation comparison.
 %
 %   Reads results/exp_approx<tag>.csv (from run_approx_comparison) and writes a
-%   single 2-row figure to benchmark/plots/:
+%   figure to benchmark/plots/:
 %     fig_approx<tag>_quality.{png,pdf} -- relative approximation error vs rank k,
-%       with one tiled column per family and two rows:
-%         top    = Frobenius   ||A - P_S A||_F / ||A||_F
-%         bottom = spectral    ||A - P_S A||_2 / ||A||_2
-%       randomized BSQR and rejection_rpqr as lines (seed mean) with min/max
-%       bands, plus the optimal rank-k error as a dashed reference (lower bound).
+%       one tiled column per family. Two accuracy rows, plus a third row when the CSV
+%       carries the maxT column (the default runner writes it):
+%         row 1 = Frobenius  ||A - P_S A||_F / ||A||_F
+%         row 2 = spectral   ||A - P_S A||_2 / ||A||_2
+%         row 3 = max |R_{11}^{-1}R_{12}|   (interpolation-coefficient magnitude)
+%       randomized BSQR and rejection_rpqr as lines (seed mean) with min/max bands;
+%       the accuracy rows add the optimal rank-k error as a dashed lower bound.
 %
 % Options: 'tag' (default '' -- the application run; pass '_synth' for the
 %   synthetic-spectrum companion), 'resultsdir', 'plotdir', 'formats' (default
