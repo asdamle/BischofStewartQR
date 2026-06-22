@@ -2,28 +2,37 @@
 
 ## Test Suite
 
+Test deps (`Test`, `Random`, `DelimitedFiles`) are in the package's
+`[targets].test`, so run the suite via `Pkg.test` (a direct `runtests.jl` call
+would not see them):
+
 ```bash
-julia --project=julia julia/test/runtests.jl
+julia --project=julia -e 'using Pkg; Pkg.test()'
 ```
 
 ## Publication Benchmark Workflow
 
+The benchmark pipeline uses the separate `julia/benchmark` environment (it
+carries BenchmarkTools, AppleAccelerate, etc.; the package itself depends only
+on `LinearAlgebra`). Instantiate it once with
+`julia --project=julia/benchmark -e 'using Pkg; Pkg.instantiate()'`.
+
 Runner:
 
 ```bash
-julia --project=julia julia/benchmark/run_publication_benchmarks.jl
+julia --project=julia/benchmark julia/benchmark/run_publication_benchmarks.jl
 ```
 
 Smoke runner:
 
 ```bash
-julia --project=julia julia/benchmark/run_publication_smoke_benchmark.jl
+julia --project=julia/benchmark julia/benchmark/run_publication_smoke_benchmark.jl
 ```
 
 Plot generation:
 
 ```bash
-julia --project=julia julia/benchmark/plot_publication_results.jl
+julia --project=julia/benchmark julia/benchmark/plot_publication_results.jl
 ```
 
 Plot generation defaults to PNG. Set `BS_PUB_FIG_FORMATS=png,pdf,eps` to
@@ -33,7 +42,7 @@ relative time (`BSQR / baseline`); `1.0` is parity.
 Perf gate:
 
 ```bash
-julia --project=julia julia/benchmark/check_publication_perf_gate.jl
+julia --project=julia/benchmark julia/benchmark/check_publication_perf_gate.jl
 ```
 
 ## Environment Knobs

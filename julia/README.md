@@ -1,37 +1,55 @@
 # Julia BSQR
 
-Canonical Julia implementation of Bischof-Stewart column-pivoted QR.
+Canonical Julia implementation of Bischof-Stewart column-pivoted QR
+(`BSPivotQR`). The package depends only on `LinearAlgebra`; the heavier
+benchmark/dev dependencies live in the separate `julia/benchmark/` environment.
+
+## Quick start
+
+```julia
+julia> include("startup.jl")        # from the repo root: activate + instantiate, then `using BSPivotQR`
+julia> F = bsqr(A)                  # deterministic BS pivoted QR -> BSQRPivoted
+julia> R(F), perm(F)               # R factor, column permutation
+```
+
+Equivalently: `julia --project=julia` then `using BSPivotQR`.
 
 ## Setup
 
 ```bash
-julia --project=julia -e 'using Pkg; Pkg.instantiate()'
+julia --project=julia           -e 'using Pkg; Pkg.instantiate()'   # core package env
+julia --project=julia/benchmark -e 'using Pkg; Pkg.instantiate()'   # benchmark env
 ```
 
 ## Tests
 
+Test dependencies (`Test`, `Random`, `DelimitedFiles`) live in the package's
+`[targets].test`, so run them through `Pkg.test`:
+
 ```bash
-julia --project=julia julia/test/runtests.jl
+julia --project=julia -e 'using Pkg; Pkg.test()'
 ```
 
 ## Benchmarks
 
+The benchmark pipeline uses the `julia/benchmark` environment.
+
 Publication benchmark:
 
 ```bash
-julia --project=julia julia/benchmark/run_publication_benchmarks.jl
+julia --project=julia/benchmark julia/benchmark/run_publication_benchmarks.jl
 ```
 
 Smoke benchmark:
 
 ```bash
-julia --project=julia julia/benchmark/run_publication_smoke_benchmark.jl
+julia --project=julia/benchmark julia/benchmark/run_publication_smoke_benchmark.jl
 ```
 
 Plot from CSV:
 
 ```bash
-julia --project=julia julia/benchmark/plot_publication_results.jl
+julia --project=julia/benchmark julia/benchmark/plot_publication_results.jl
 ```
 
 Publication plots default to PNG. Set `BS_PUB_FIG_FORMATS=png,pdf,eps`
@@ -41,7 +59,7 @@ relative time (`BSQR / baseline`), where `1.0` is parity.
 Performance gate:
 
 ```bash
-julia --project=julia julia/benchmark/check_publication_perf_gate.jl
+julia --project=julia/benchmark julia/benchmark/check_publication_perf_gate.jl
 ```
 
 Cross-language timing comparison helper:

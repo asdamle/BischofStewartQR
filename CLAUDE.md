@@ -14,23 +14,34 @@ There is also an **experimental randomized variant** in `matlab_rand/` (`bsqr_ra
 
 ### Julia
 
+The package (`julia/`) depends only on `LinearAlgebra`; heavier benchmark/dev
+deps (BenchmarkTools, AppleAccelerate, DelimitedFiles, ...) live in the separate
+`julia/benchmark/` environment. Test deps (Test, Random, DelimitedFiles) are in
+`[targets].test`, so tests run via `Pkg.test()` (not a direct `runtests.jl`).
+Quick interactive access: `julia> include("startup.jl")` from the repo root.
+
 ```bash
-julia --project=julia -e 'using Pkg; Pkg.instantiate()'   # setup
-julia --project=julia julia/test/runtests.jl              # tests
+julia --project=julia           -e 'using Pkg; Pkg.instantiate()'   # core package env
+julia --project=julia/benchmark -e 'using Pkg; Pkg.instantiate()'   # benchmark env
+julia --project=julia           -e 'using Pkg; Pkg.test()'          # tests
 ```
 
 All tests are `@testset` blocks in `julia/test/test_bsqr.jl`; there is no per-test runner — comment out or run the file via `include` in a REPL to iterate on one testset.
 
-Benchmarks (publication pipeline):
+Benchmarks (publication pipeline; uses the `julia/benchmark` environment):
 
 ```bash
-julia --project=julia julia/benchmark/run_publication_benchmarks.jl     # full run
-julia --project=julia julia/benchmark/run_publication_smoke_benchmark.jl  # fast smoke
-julia --project=julia julia/benchmark/plot_publication_results.jl       # plots/tables from CSV
-julia --project=julia julia/benchmark/check_publication_perf_gate.jl    # perf gate
+julia --project=julia/benchmark julia/benchmark/run_publication_benchmarks.jl     # full run
+julia --project=julia/benchmark julia/benchmark/run_publication_smoke_benchmark.jl  # fast smoke
+julia --project=julia/benchmark julia/benchmark/plot_publication_results.jl       # plots/tables from CSV
+julia --project=julia/benchmark julia/benchmark/check_publication_perf_gate.jl    # perf gate
 ```
 
 ### MATLAB
+
+Quick interactive access: launch MATLAB from the repo root (or run `startup`) to
+put `bsqr`/`bsqr_rand` on the path and build both MEX backends, then call
+`bsqr(A)` / `bsqr_rand(A)` (MEX backend by default).
 
 ```bash
 matlab -batch "addpath('matlab/tests'); run_tests"            # tests
