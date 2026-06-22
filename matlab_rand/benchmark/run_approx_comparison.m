@@ -11,10 +11,10 @@ function run_approx_comparison(varargin)
 %   exactly how ARP's own arp.m uses rejection_rpqr:
 %     1. Build a full application matrix A (fixed per family; see
 %        approx_test_matrix / approx_real_matrix).
-%     2. Compute leading right singular vectors with svds (Lanczos):
-%        [~,~,V] = svds(A, k); W = V' is k-by-n with orthonormal rows. Both
-%        selectors receive the *same* W, so the comparison isolates the
-%        column-selection step, not the (shared, accurate) subspace estimate.
+%     2. Take the leading-k right singular vectors V_k from a per-family dense SVD
+%        (the same one used for the optimal reference in step 4); W = V_k' is k-by-n
+%        with orthonormal rows. Both selectors receive the *same* W, so the
+%        comparison isolates column selection, not the (shared, exact) subspace.
 %     3. Each method picks k of the n columns of A; the chosen subset is scored by
 %        the orthogonal-projection error ||A - P_S A|| (interpolation-free, hence
 %        identical scoring for both methods).
@@ -27,8 +27,8 @@ function run_approx_comparison(varargin)
 %
 %   The matrix is fixed per family (matching the fixed-matrix design of the ARP
 %   accuracy study); trials vary only the selectors' RNG, so the seed bands show
-%   selection variability on one problem. svds is computed once per (family,k) and
-%   reused across trials.
+%   selection variability on one problem. The dense SVD is computed once per family;
+%   its k-column slice (W) and the optimal references are reused across the trials.
 %
 %   Alongside the accuracy metrics it also records the interpolation-coefficient
 %   magnitude maxT = max|R11^{-1}R12| (in the leading-k frame W=V_k'): the
@@ -114,8 +114,9 @@ for fi = 1:numel(opt.families)
     end
     [m, n] = size(A);
     normA_fro = norm(A, 'fro');
-    svals = svd(A);                             % exact spectrum for the optimal
-    normA_2 = svals(1);                         % rank-k reference (no cancellation)
+    [~, Sfull, Vfull] = svd(A, 'econ');         % one dense SVD per family supplies both
+    svals = diag(Sfull);                        % the exact spectrum (optimal refs, no
+    normA_2 = svals(1);                         % cancellation) and V_k for W below
     fprintf('  %-18s %dx%d (%s)\n', fam, m, n, in.desc);
 
     % Sweep only meaningful k: k < rank cap min(m,n) (need a column to drop and a
@@ -136,11 +137,10 @@ for fi = 1:numel(opt.families)
         continue;
     end
     for k = ks
-        % leading right singular vectors via Lanczos (svds) -- shared by both
-        % selectors, so the comparison isolates column selection, not this
-        % (accurate) subspace estimate.
-        [~, ~, V] = svds(A, k);
-        W = V.';                                % k-by-n, orthonormal rows
+        % leading-k right singular vectors, sliced from the per-family dense SVD --
+        % shared by both selectors, so the comparison isolates column selection, not
+        % this (exact) subspace estimate.
+        W = Vfull(:, 1:k).';                    % k-by-n, orthonormal rows
         opt_frob = sqrt(sum(svals(k+1:end).^2));   % exact optimal rank-k errors
         opt_spec = svals(k+1);
 
