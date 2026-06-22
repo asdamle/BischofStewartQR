@@ -21,12 +21,19 @@ function run_approx_cond_comparison(varargin)
 %     noisy_id_err = same ID from *noisy* selected columns: adds ~ noise_rel*||T||
 %                                             ~ noise_rel*||R11^{-1}|| on top of id_err
 %
+%   As a coefficient-choice control we also record the *standard projection* ID
+%   coefficients T_proj = A(:,S)^+ A(:,rest) (k-step pivoted QR on A with the V_k^T
+%   permutation), versus the leading-k-frame T above: maxTproj = max|T_proj|, and
+%   noisy_id_err_proj / noisy_id_spec_proj (same noise, T_proj coefficients). With
+%   T_proj the noiseless reconstruction equals the projection error exactly, so the
+%   comparison shows whether switching coefficients changes max|.| and the noisy gap.
+%
 %   Every conditioning/error metric is recorded in BOTH norms: the Frobenius columns
 %   above and their spectral (2-norm) counterparts specinv = ||R11^{-1}||_2,
 %   proj_spec, id_spec, noisy_id_spec (each error / ||A||_2), with osinsky2 =
-%   sqrt(1+k(n-k)) the spectral bound. The coefficient magnitude maxT is a max-norm
-%   quantity in both. plot_approx_cond_comparison('norm','2') draws the spectral
-%   version; the default draws the Frobenius one.
+%   sqrt(1+k(n-k)) the spectral bound. The coefficient magnitudes maxT / maxTproj are
+%   max-norm quantities in both. plot_approx_cond_comparison('norm','2') draws the
+%   spectral version; the default draws the Frobenius one.
 %
 %   Here R11/R12 are taken in the leading-k right-singular-vector frame: W = V_k'
 %   (k-by-n, orthonormal rows, from svds), W(:,S) is k-by-k, R12 = Q1' W(:,rest),
@@ -98,16 +105,18 @@ for fi = 1:numel(opt.families)
             p = bsqr_rand(W, 'k', k, 'seed', s);
             mb = cond_metrics(A, W, p(1:k), normA_fro, normA_2, opt.noise_rel, s);
             rows(end+1, :) = {fam, m, n, in.r, k, s, 'bsqr_rand', mb.frobinv, osinsky, ...
-                mb.specinv, osinsky2, mb.maxT, mb.normT, mb.proj_frob, mb.proj_spec, ...
-                mb.id_err, mb.id_spec, mb.noisy_id_err, mb.noisy_id_spec, opt.noise_rel}; %#ok<AGROW>
+                mb.specinv, osinsky2, mb.maxT, mb.normT, mb.maxTproj, mb.proj_frob, mb.proj_spec, ...
+                mb.id_err, mb.id_spec, mb.noisy_id_err, mb.noisy_id_err_proj, ...
+                mb.noisy_id_spec, mb.noisy_id_spec_proj, opt.noise_rel}; %#ok<AGROW>
 
             % rejection_rpqr -- seeded for reproducibility
             rng(s);
             idx = rejection_rpqr(W, k);
             mr = cond_metrics(A, W, idx(1:k), normA_fro, normA_2, opt.noise_rel, s);
             rows(end+1, :) = {fam, m, n, in.r, k, s, 'rejection_rpqr', mr.frobinv, osinsky, ...
-                mr.specinv, osinsky2, mr.maxT, mr.normT, mr.proj_frob, mr.proj_spec, ...
-                mr.id_err, mr.id_spec, mr.noisy_id_err, mr.noisy_id_spec, opt.noise_rel}; %#ok<AGROW>
+                mr.specinv, osinsky2, mr.maxT, mr.normT, mr.maxTproj, mr.proj_frob, mr.proj_spec, ...
+                mr.id_err, mr.id_spec, mr.noisy_id_err, mr.noisy_id_err_proj, ...
+                mr.noisy_id_spec, mr.noisy_id_spec_proj, opt.noise_rel}; %#ok<AGROW>
         end
         fprintf('    k=%-4d done\n', k);
     end
@@ -115,8 +124,9 @@ end
 
 if isempty(rows); warning('No families produced data.'); return; end
 T = cell2table(rows, 'VariableNames', {'family', 'm', 'n', 'r', 'k', 'seed', 'method', ...
-    'frobinv', 'osinsky', 'specinv', 'osinsky2', 'maxT', 'normT', ...
-    'proj_frob', 'proj_spec', 'id_err', 'id_spec', 'noisy_id_err', 'noisy_id_spec', 'noise_rel'});
+    'frobinv', 'osinsky', 'specinv', 'osinsky2', 'maxT', 'normT', 'maxTproj', ...
+    'proj_frob', 'proj_spec', 'id_err', 'id_spec', ...
+    'noisy_id_err', 'noisy_id_err_proj', 'noisy_id_spec', 'noisy_id_spec_proj', 'noise_rel'});
 csv = fullfile(opt.outdir, 'exp_approx_cond.csv');
 writetable(T, csv);
 fprintf('Wrote %s (%d rows)\n', csv, height(T));
@@ -143,13 +153,18 @@ T = R11 \ R12;                           % = W(:,S)^{-1} W(:,rest), interp. coef
 out.maxT = max(abs(T), [], 'all');       % max-norm coefficient magnitude (both plots)
 out.normT = norm(T, 'fro');
 
-% orthogonal-projection error -- the best approximation in span(A(:,S)). Depends
-% only on the span, so it is ~identical per method and conditioning-independent;
-% it is the LOWER BOUND for any reconstruction from these columns.
-Qs = orth(A(:, S));
-Eproj = A - Qs * (Qs' * A);
+% orthogonal-projection error + the *standard* (least-squares / projection) ID
+% coefficients T_proj = A(:,S)^+ A(:,rest), both from one QR of A(:,S). The
+% projection error is the conditioning-blind LOWER BOUND; with T_proj the noiseless
+% reconstruction equals it exactly (the oblique penalty of the V_k-frame T is gone),
+% so only the noisy_*_proj errors are recorded separately. No inv(): triangular solve.
+[Qa, Ra] = qr(A(:, S), 0);              % A(:,S) = Qa*Ra (Qa m-by-k, Ra k-by-k)
+QtA = Qa' * A;                          % k-by-n; QtA(:,rest) = R12 of A
+Eproj = A - Qa * QtA;
 out.proj_frob = norm(Eproj, 'fro') / normA_fro;
 out.proj_spec = snorm2(Eproj) / normA_2;
+Tproj = Ra \ QtA(:, rest);             % = A(:,S)^+ A(:,rest), the projection coeffs
+out.maxTproj = max(abs(Tproj), [], 'all');
 
 % rank-k interpolative decomposition A ~ A(:,S) [I, T]. The coefficients T are the
 % *oblique* leading-k-frame coefficients (not the least-squares ones), so even with
@@ -170,10 +185,14 @@ E = randn(size(A, 1), k);
 E = E * (noise_rel * norm(A(:, S), 'fro') / norm(E, 'fro'));
 C = A(:, S) + E;
 Ahat(:, S) = C;
-Ahat(:, rest) = C * T;
+Ahat(:, rest) = C * T;                  % V_k-frame coefficients
 En = A - Ahat;
 out.noisy_id_err  = norm(En, 'fro') / normA_fro;
 out.noisy_id_spec = snorm2(En) / normA_2;
+Ahat(:, rest) = C * Tproj;              % projection coefficients, same noise draw
+Enp = A - Ahat;
+out.noisy_id_err_proj  = norm(Enp, 'fro') / normA_fro;
+out.noisy_id_spec_proj = snorm2(Enp) / normA_2;
 end
 
 % ---------------------------------------------------------------------------

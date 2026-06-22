@@ -59,19 +59,19 @@ if is2
     T.condratio = T.specinv ./ T.osinsky2;
     refcol = 'proj_spec';
     stem = 'fig_approx_cond_quality_spec';
-    rowspec = {'condratio',     '||R_{11}^{-1}||_2 / bound'; ...
-               'maxT',          'max |R_{11}^{-1}R_{12}|'; ...
-               'id_spec',       'rank-k ID error (2-norm) / ||A||_2'; ...
-               'noisy_id_spec', 'noisy ID error (2-norm) / ||A||_2'};
+    rowspec = {'condratio',     '||R_{11}^{-1}||_2 / bound',          ''; ...
+               'maxT',          'max |R_{11}^{-1}R_{12}|',            ''; ...
+               'id_spec',       'rank-k ID error (2-norm) / ||A||_2', ''; ...
+               'noisy_id_spec', 'noisy ID error (2-norm) / ||A||_2',  'noisy_id_spec_proj'};
     normlabel = 'spectral';
 else
     T.condratio = T.frobinv ./ T.osinsky;
     refcol = 'proj_frob';
     stem = 'fig_approx_cond_quality';
-    rowspec = {'condratio',    '||R_{11}^{-1}||_F / bound'; ...
-               'maxT',         'max |R_{11}^{-1}R_{12}|'; ...
-               'id_err',       'rank-k ID error / ||A||_F'; ...
-               'noisy_id_err', 'noisy ID error / ||A||_F'};
+    rowspec = {'condratio',    '||R_{11}^{-1}||_F / bound',          ''; ...
+               'maxT',         'max |R_{11}^{-1}R_{12}|',            ''; ...
+               'id_err',       'rank-k ID error / ||A||_F',          ''; ...
+               'noisy_id_err', 'noisy ID error / ||A||_F',           'noisy_id_err_proj'};
     normlabel = 'Frobenius';
 end
 nr = size(rowspec, 1);
@@ -81,6 +81,7 @@ tl = tiledlayout(fig, nr, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
 ax = [];
 for ri = 1:nr
     col = rowspec{ri, 1};
+    projcol = rowspec{ri, 3};        % T_proj overlay column ('' = none)
     for fi = 1:nf
         fam = fams(fi); base = T.family == fam;
         ax = nexttile(tl); hold(ax, 'on');
@@ -90,9 +91,15 @@ for ri = 1:nr
         elseif any(strcmp(col, {'id_err', 'noisy_id_err', 'id_spec', 'noisy_id_spec'}))
             ref_line(ax, T(base, :), refcol);                   % projection lower bound
         end
-        for mi = 1:size(methods, 1)
+        for mi = 1:size(methods, 1)                              % solid: V_k-frame T
             band_line(ax, T(base & T.method == methods{mi, 1}, :), col, ...
                 methods{mi, 3}, methods{mi, 2});
+        end
+        if ~isempty(projcol)                                     % thin dashed: T_proj
+            for mi = 1:size(methods, 1)
+                proj_coeff_line(ax, T(base & T.method == methods{mi, 1}, :), projcol, ...
+                    methods{mi, 3}, [methods{mi, 2}, ' (proj. coeffs)']);
+            end
         end
         grid(ax, 'on');
         if ri == 1; title(ax, fam, 'Interpreter', 'none'); end
@@ -105,8 +112,9 @@ eps_str = '';
 if ismember('noise_rel', T.Properties.VariableNames)
     eps_str = sprintf(' (noise \\epsilon=%.0e)', T.noise_rel(1));
 end
-title(tl, ['||R_{11}^{-1}|| matters (', normlabel, ' norm): conditioning, coefficients, ', ...
-    'rank-k ID error (noiseless vs noisy', eps_str, ');  dashed = projection optimum']);
+title(tl, {['Conditioning, coefficient magnitude, and rank-k ID error (noiseless & noisy', ...
+    eps_str, ') -- ', normlabel, ' norm'], ...
+    'ID rows: solid = T (V_k-frame coeffs), dashed = T_{proj} (projection coeffs / optimum)'});
 save_fig(fig, fullfile(opt.plotdir, stem), opt.formats);
 end
 
@@ -118,6 +126,16 @@ fill(ax, [x; flipud(x)], [ylo; flipud(yhi)], color, 'FaceAlpha', 0.15, ...
     'EdgeColor', 'none', 'HandleVisibility', 'off');
 plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, ...
     'LineWidth', 1.5, 'MarkerSize', 4, 'DisplayName', name);
+end
+
+function proj_coeff_line(ax, sub, col, color, name)
+% Thin dashed, mean-only line for the projection-coefficient (T_proj) variant of an
+% ID error -- overlaid on the solid V_k-frame (T) band so the two coefficient
+% choices can be read off the same panel. No band, to keep the panel legible.
+if isempty(sub); return; end
+[x, ym] = agg_by_k(sub, col);
+plot(ax, x, ym, '--', 'Color', color, 'LineWidth', 1.0, 'Marker', 'none', ...
+    'DisplayName', name);
 end
 
 function ref_line(ax, sub, col)
