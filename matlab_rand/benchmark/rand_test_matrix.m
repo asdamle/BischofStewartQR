@@ -14,6 +14,10 @@ function [M, info] = rand_test_matrix(family, k, n, seed)
 %     'graded_leverage' - leverage decays smoothly across columns.
 %     'spiked_leverage' - a handful of high-leverage columns, rest flat.
 %     'coherent'        - columns cluster into a few groups (many redundant).
+%     'collinear_cluster' - one high-leverage, near-collinear cluster of columns
+%                         plus spread-out background; picking >1 cluster column
+%                         makes R11 near-singular (an R11-conditioning stress
+%                         case, adversarial to leverage/volume sampling).
 %     'needle'          - ~k useful columns hidden among n near-null ones
 %                         (hardest for uniform sampling; the case where
 %                         norm-weighted sampling should help most).
@@ -54,6 +58,18 @@ switch lower(char(family))
         centers = randn(r, k);
         assign = randi(r, n, 1);
         W = centers(assign, :) + 0.05 * randn(n, k);
+
+    case 'collinear_cluster'
+        % Adversarial to leverage/volume sampling for R11 conditioning: one
+        % high-leverage, near-collinear cluster of columns (all close to a single
+        % direction v0) plus well-spread background columns. The span is fine, but
+        % selecting more than one cluster column makes the k-by-k R11 near-singular
+        % (||R11^{-1}|| explodes) -- the case where BSQR's pivot criterion, which
+        % refuses the near-dependent column, separates from norm/volume sampling.
+        ncl = max(2, round(0.20 * n));         % cluster size (high collective norm)
+        v0 = randn(1, k);                       % the shared cluster direction
+        W = randn(n, k);                        % background columns
+        W(1:ncl, :) = 30 * (v0 + 1e-3 * randn(ncl, k));   % tight, high-leverage cluster
 
     case 'needle'
         % ng ~ k useful columns; the rest are near-null (tiny leverage).

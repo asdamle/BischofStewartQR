@@ -431,3 +431,48 @@ Findings (n=32000, 5 seeds):
 - **Bottom line:** at comparable (and steadier) runtime, BSQR delivers
   substantially better-conditioned subsets *with a guarantee* `rejection_rpqr`
   does not provide.
+
+## 14. External comparison: low-rank approximation quality
+
+`run_approx_comparison.m` / `plot_approx_comparison.m` add an application-facing
+companion to §13 that scores the **approximation error** of each method's column
+subset (Frobenius *and* spectral norms) rather than `||R11^{-1}||_F` — a fairer,
+practitioner-facing metric (the conditioning metric is BSQR's own objective).
+
+It uses the standard CSSP-via-leading-singular-vectors pipeline (as in ARP's own
+`arp.m`): build a full application matrix `A`, compute accurate leading right
+singular vectors `V_k` with `svds` (Lanczos), hand the *same* `W = V_k'` to both
+selectors, and score the chosen `k` columns by the interpolation-free
+orthogonal-projection error `||A − P_S A||` against the optimal rank-`k` error.
+Sharing `V_k` isolates the column-selection step — subspace estimation is not the
+point. Synthetic families (`gmm_kernel`, `integral_skeleton`, `snapshots`) are
+reproducible and committed; real matrices live in `ext_comparisons/data/`
+(git-ignored, with download instructions in `matlab_rand/README.md`). It sweeps
+the rank `k` on a fixed matrix per family and writes `results/exp_approx.csv` plus
+`plots/fig_approx_quality.{png,pdf}`. `bsqr_rand` runs with its public defaults
+(batched, norm-weighted).
+
+A **synthetic-spectrum companion** (`run_approx_synth_comparison.m` →
+`approx_synth_matrix.m`; `plots/fig_approx_synth_quality.{png,pdf}`) asks how much
+the §13 `||R11^{-1}||_F` differences translate into approximation error: it builds
+`A = U diag(s) V'` with a prescribed interesting spectrum `s` (few large, decay,
+flatter section, more decay) and right singular vectors `V` from the *same*
+leverage families used in §13 (`gaussian`, `spiked_leverage`, `needle`, via
+`rand_test_matrix`). The shared spectrum makes the optimal-error curve identical
+across the three families, isolating the effect of leverage structure.
+
+A **conditioning companion** (`run_approx_cond_comparison.m` /
+`plot_approx_cond_comparison.m`; `plots/fig_approx_cond_quality.{png,pdf}`) closes
+the loop: since the projection error depends only on the selected *span*,
+`||R11^{-1}||` is invisible to it, so this run measures the basis-dependent
+quantities a CUR/ID pipeline pays for — `||R11^{-1}||_F/bound`, the
+interpolation-coefficient magnitude `max|R11^{-1}R12|`, and the rank-k ID
+reconstruction error split into a *noiseless* part (oblique-coefficient penalty,
+already amplified by `||R11^{-1}||` above the orthogonal-projection lower bound) and
+a *noisy* part (measurement noise propagated through `T ~ ||R11^{-1}||`).
+Families are near-collinear leverage profiles (`gaussian` control, `coherent`, and
+a new `collinear_cluster` in `rand_test_matrix`). Result: projection accuracy is
+identical, but BSQR's `||R11^{-1}||` stays `<=` the Osinsky bound (guaranteed)
+while `rejection_rpqr`'s runs 2–3× larger and can exceed it, inflating its
+interpolation coefficients (≈2–4×) and noise-amplified ID error correspondingly.
+Computed with no `inv()` (conditioning via `svd`, coefficients via backslash).

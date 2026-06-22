@@ -108,6 +108,104 @@ comparison is run fairly:
   `||R11^{-1}||_F`, while ARP targets a volume/DPP criterion — so the
   `||R11^{-1}||_F` metric measures BSQR's objective and favors it by construction.
 
+### Matrix-approximation comparison
+
+A second, application-facing comparison that scores the **low-rank approximation
+error** of each method's column subset (the metric a practitioner cares about),
+in both the Frobenius and spectral norms — a fairer counterpart to the
+`||R11^{-1}||_F` comparison above, which is BSQR's own objective. It follows the
+standard CSSP-via-leading-singular-vectors pipeline (exactly how ARP's `arp.m`
+uses `rejection_rpqr`):
+
+1. Build a full application matrix `A` (`approx_test_matrix` for synthetic
+   families, `approx_real_matrix` for real data).
+2. Compute accurate leading **right** singular vectors with `svds` (Lanczos):
+   `W = V(:,1:k)'` is `k×n` with orthonormal rows. **Both selectors get the same
+   `W`**, so the comparison isolates column selection, not subspace estimation —
+   which is shared and accurate, and explicitly not the point. (ARP normally feeds
+   a *sketched* `Q'`; exact `V_k'` to both is even more apples-to-apples.)
+3. Each method picks `k` of the `n` columns; the subset is scored by the
+   interpolation-free orthogonal-projection error `||A − P_S A||` (identical
+   scoring for both). Reference: the optimal rank-`k` error.
+
+The matrix is fixed per family (matching the ARP accuracy study's design); trials
+vary only the selectors' RNG. `bsqr_rand` runs with its public defaults (batched,
+norm-weighted). Run and plot:
+
+```matlab
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_comparison; plot_approx_comparison"
+```
+
+Synthetic families (always available, fully reproducible): `gmm_kernel` (RBF
+kernel on a Gaussian-mixture cloud — Nyström landmark selection),
+`integral_skeleton` (`1/dist` kernel between separated clouds — skeletonization /
+interpolative decomposition), `snapshots` (parametric model-reduction snapshots —
+empirical interpolation / DEIM). This writes `results/exp_approx.csv` and
+`plots/fig_approx_quality.{png,pdf}`.
+
+**Synthetic-spectrum companion.** To see how much the `||R11^{-1}||_F` differences
+from the comparison above translate into *approximation* error, a companion run
+uses matrices `A = U diag(s) V'` with a prescribed, deliberately interesting
+spectrum `s` (a few large values, decay, a flatter section, more decay) and right
+singular vectors `V` taken from the **same leverage families as the rpqr
+comparison** (`gaussian`, `spiked_leverage`, `needle` — see `approx_synth_matrix`).
+The three families share one spectrum, so the optimal-error curve is identical
+across panels and only the leverage structure varies:
+
+```matlab
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_synth_comparison; plot_approx_comparison('tag','_synth')"
+```
+
+This writes `results/exp_approx_synth.csv` and `plots/fig_approx_synth_quality.{png,pdf}`.
+The figure pairs the accuracy rows (Frobenius / spectral) with an
+interpolation-coefficient row `max|R11^{-1}R12|` on the *same* matrices, so it shows
+directly that accuracy is ~identical while the coefficients (the basis quality
+`||R11^{-1}||` controls) differ between methods. (The accuracy-only application run
+gets the same coefficient row.)
+
+**Conditioning companion — where `||R11^{-1}||` matters.** Because the projection
+error depends only on the *span* of the selected columns, `||R11^{-1}||` is
+invisible to it (both methods come out near-optimal above). This companion measures
+the basis-dependent quantities a CUR / interpolative-decomposition pipeline
+actually pays for: `||R11^{-1}||_F / bound`, the interpolation-coefficient
+magnitude `max|R11^{-1}R12|`, and the **rank-k ID reconstruction error**, split into
+its *noiseless* part (the oblique leading-k coefficients already push it above the
+orthogonal-projection optimum by a factor growing with `||R11^{-1}||`) and a *noisy*
+part (measurement noise on the selected columns propagated through `T ~ ||R11^{-1}||`).
+The dashed orthogonal-projection error is the method-independent lower bound.
+Families are the leverage profiles that make candidate columns near-collinear:
+`gaussian` (control), `coherent`, `collinear_cluster`.
+
+```matlab
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"
+```
+
+Writes `results/exp_approx_cond.csv` and `plots/fig_approx_cond_quality.{png,pdf}`. The
+CSV records every conditioning/error metric in both the Frobenius and spectral
+(2-) norms; `plot_approx_cond_comparison('norm','2')` draws the spectral version
+(`||R11^{-1}||_2` and the 2-norm approximation errors; `max|R11^{-1}R12|` stays
+max-norm) as `plots/fig_approx_cond_quality_spec.{png,pdf}`.
+The takeaway: projection accuracy is identical, but BSQR's `||R11^{-1}||` is
+guaranteed `<=` the Osinsky bound while `rejection_rpqr`'s is 2–3× larger and can
+exceed it — which inflates its interpolation coefficients and noise-amplified ID
+error correspondingly.
+
+**Real data** is never committed. To include a real matrix, drop a `.mat` holding
+a 2-D double variable `A` into `ext_comparisons/data/` (git-ignored) and pass its
+name as a family:
+
+```bash
+mkdir -p ext_comparisons/data
+# e.g. a matrix from the SuiteSparse Matrix Collection (https://sparse.tamu.edu/):
+#   download <name>.mat (its 'Problem.A' field), save the matrix as variable A in
+#   ext_comparisons/data/<name>.mat. (The ARP 'genetics' processed_data.mat also
+#   works if you have it.)
+```
+
+```matlab
+run_approx_comparison('families', {'gmm_kernel', '<name>'});   % missing real names are skipped with a note
+```
+
 ## Options (`bsqr_rand(A, 'name', value, ...)`)
 
 | option | default | meaning |
