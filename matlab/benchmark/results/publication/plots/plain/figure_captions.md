@@ -10,4 +10,6 @@ Run: 20260611_210948; seeds: 2; MATLAB default threading. In all figures, BSQR i
 
 **fig_relative_time.** Geometric-mean relative time (BSQR / CPQR; 1 = parity, dashed line) per family and regime. Points are geomeans of per-seed geomeans; whiskers show the per-seed range.
 
+**fig_relative_time_composite** (top-level plots/). The single timing figure: the relative time without (BSQR / CPQR) and with the interpolation matrix (both methods also form R11^{-1}R12; labelled (BSQR + R11^{-1}R12) / (CPQR + R11^{-1}R12)), overlaid on the shared rows and distinguished by colour. Square rows are m = n, short-wide rows m < n. Points/whiskers as for fig_relative_time.
+
 Numerical quality is summarized in tables/quality_summary.md.
