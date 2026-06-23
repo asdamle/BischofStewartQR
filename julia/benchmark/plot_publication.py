@@ -35,7 +35,9 @@ DOUBLE_COL_W = float(os.getenv("BS_PUB_DOUBLE_COL_WIDTH_IN", "6.9"))
 
 MODE_LABELS = {
     "plain": {"bs": "BSQR", "base": "CPQR (built-in)", "ratio": "BSQR / CPQR"},
-    "rinv": {"bs": "BSQR (W returned)", "base": "CPQR + solve", "ratio": "BSQR+W / CPQR+solve"},
+    "rinv": {"bs": r"BSQR + $R_{11}^{-1}R_{12}$",
+             "base": r"CPQR + $R_{11}^{-1}R_{12}$",
+             "ratio": r"(BSQR + $R_{11}^{-1}R_{12}$) / (CPQR + $R_{11}^{-1}R_{12}$)"},
 }
 
 FAMILY_DISPLAY = {
@@ -297,7 +299,7 @@ def fig_relative_time(rel_rows, labels, mode, outdir, formats):
     stats = relative_combo_stats(rel_rows)
     families = sorted({k[0] for k in stats})
     regimes = ["square", "short_wide"]
-    regime_display = {"square": "square", "short_wide": "short-wide"}
+    regime_display = {"square": "(m = n)", "short_wide": "(m < n)"}
     threads = sorted({k[2] for k in stats})
 
     row_keys = [(fam, regime) for fam in families for regime in regimes
@@ -327,7 +329,7 @@ def fig_relative_time(rel_rows, labels, mode, outdir, formats):
                     label=f"{th} BLAS {unit}")
     ax.axvline(1.0, color="black", ls="--", lw=0.8)
     ax.set_yticks(y_base)
-    ax.set_yticklabels([f"{FAMILY_DISPLAY.get(fam, fam)}, {regime_display[regime]}"
+    ax.set_yticklabels([f"{FAMILY_DISPLAY.get(fam, fam)} {regime_display[regime]}"
                         for fam, regime in row_keys])
     ax.set_ylim(-0.6, nrows - 0.4)
     ax.set_xlabel(f"relative time ({labels['ratio']})")
@@ -335,6 +337,76 @@ def fig_relative_time(rel_rows, labels, mode, outdir, formats):
     if len(threads) > 1:
         ax.legend(loc="best", frameon=False)
     save_fig(fig, outdir, "fig_relative_time", formats)
+
+
+# Composite: the plain (BSQR / CPQR) and rinv (BSQR+W / CPQR+solve) relative times
+# overlaid on the shared family×regime rows -- the single timing figure for the paper.
+COMPOSITE_MODES = [("plain", "bsqr_full", "dgeqp3"), ("rinv", "bsqr_rinv", "dgeqp3_trsm")]
+COMPOSITE_COLOR = {"plain": BSQR_COLOR, "rinv": BASE_COLOR}
+REGIME_DISPLAY = {"square": "(m = n)", "short_wide": "(m < n)"}
+
+
+def fig_relative_time_composite(rows, outdir, formats):
+    mode_stats, fams, thset = {}, set(), set()
+    for name, bs, base in COMPOSITE_MODES:
+        sub = [r for r in rows if r["method"] in (bs, base)]
+        st = relative_combo_stats(paired_relative_rows(sub, bs, base))
+        mode_stats[name] = st
+        for fam, regime, th in st:
+            fams.add(fam)
+            thset.add(th)
+    families = sorted(fams)
+    threads = sorted(thset)
+    row_keys = [(fam, regime) for fam in families for regime in ("square", "short_wide")
+                if any((fam, regime, th) in st for st in mode_stats.values()
+                       for th in threads)]
+    nrows = len(row_keys)
+
+    fig, ax = plt.subplots(1, 1, figsize=(SINGLE_COL_W, 0.52 * nrows + 1.45),
+                           constrained_layout=True)
+    y_base = np.arange(nrows, dtype=float)[::-1]
+    series = [(name, th) for name in ("plain", "rinv") for th in threads]
+    offs = np.linspace(0.30, -0.30, len(series)) if len(series) > 1 else [0.0]
+    offmap = {s: offs[i] for i, s in enumerate(series)}
+
+    for name, bs, base in COMPOSITE_MODES:
+        color = COMPOSITE_COLOR[name]
+        st = mode_stats[name]
+        for ti, th in enumerate(threads):
+            ys, cs, lo_e, hi_e = [], [], [], []
+            for ri, key in enumerate(row_keys):
+                s = st.get((key[0], key[1], th))
+                if s is None or not math.isfinite(s[0]):
+                    continue
+                ys.append(y_base[ri] + offmap[(name, th)])
+                cs.append(s[0])
+                lo_e.append(s[0] - s[1])
+                hi_e.append(s[2] - s[0])
+            if not cs:
+                continue
+            face = color if ti == 0 else "white"
+            ax.errorbar(cs, ys, xerr=np.vstack([lo_e, hi_e]), fmt="o", color=color,
+                        markerfacecolor=face, markersize=4.0, linestyle="none",
+                        capsize=2.0, elinewidth=0.9, zorder=3)
+    ax.axvline(1.0, color="black", ls="--", lw=0.8, zorder=1)
+    ax.set_yticks(y_base)
+    ax.set_yticklabels([f"{FAMILY_DISPLAY.get(fam, fam)} {REGIME_DISPLAY[regime]}"
+                        for fam, regime in row_keys])
+    ax.set_ylim(-0.7, nrows - 0.3)
+    ax.set_xlabel("relative time (BSQR / baseline)")
+    ax.grid(True, axis="x", **GRID_KW)
+
+    handles = [Line2D([0], [0], color=COMPOSITE_COLOR[name], marker="o", ls="none",
+                      label=MODE_LABELS[name]["ratio"]) for name in ("plain", "rinv")]
+    if len(threads) > 1:
+        for ti, th in enumerate(threads):
+            unit = "thread" if th == 1 else "threads"
+            handles.append(Line2D([0], [0], color="black", marker="o", ls="none",
+                                  markerfacecolor=("black" if ti == 0 else "white"),
+                                  label=f"{th} BLAS {unit}"))
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.10),
+              ncol=1, frameon=False, fontsize=6.8, handletextpad=0.4)
+    save_fig(fig, outdir, "fig_relative_time_composite", formats)
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +511,14 @@ def write_captions(rows, labels, mode, outdir):
         f"({labels['ratio']}; 1 = parity, dashed line) per family and regime. Points "
         "are geomeans of per-seed geomeans; whiskers show the per-seed range.",
         "",
+        "**fig_relative_time_composite** (top-level plots/). The single timing figure: "
+        "the relative time without (BSQR / CPQR) and with the interpolation matrix "
+        "(both methods also form R11^{-1}R12; labelled "
+        "(BSQR + R11^{-1}R12) / (CPQR + R11^{-1}R12)), "
+        "overlaid on the shared rows. Colour distinguishes the two; marker fill "
+        "distinguishes 1 vs 4 BLAS threads. Square rows are m = n, short-wide rows m < n "
+        "(swept sizes as above). Points/whiskers as for fig_relative_time.",
+        "",
         "Numerical quality is summarized in tables/quality_summary.md.",
         "",
     ]
@@ -452,14 +532,21 @@ def main():
     if len(sys.argv) != 7:
         raise SystemExit(__doc__)
     input_path, outdir, tabledir, bsqr_method, baseline_method, mode = sys.argv[1:7]
-    if mode not in MODE_LABELS:
-        raise RuntimeError(f"Unknown mode '{mode}'; expected plain or rinv")
-    labels = MODE_LABELS[mode]
     formats = parse_fig_formats()
+    rows = load_rows(input_path)
+
+    if mode == "composite":
+        # plain + rinv overlaid into the top-level plots dir; method args unused.
+        os.makedirs(outdir, exist_ok=True)
+        fig_relative_time_composite(rows, outdir, formats)
+        print(f"Wrote composite relative-time figure to {outdir}")
+        return
+
+    if mode not in MODE_LABELS:
+        raise RuntimeError(f"Unknown mode '{mode}'; expected plain, rinv, or composite")
+    labels = MODE_LABELS[mode]
     os.makedirs(outdir, exist_ok=True)
     os.makedirs(tabledir, exist_ok=True)
-
-    rows = load_rows(input_path)
     methods = (bsqr_method, baseline_method)
     comp_rows = [r for r in rows if r["method"] in set(methods)]
     if not comp_rows:

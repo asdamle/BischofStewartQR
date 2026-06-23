@@ -109,6 +109,9 @@ function main()
         mkpath(comp_tabledir)
         run(`python3 $PLOTTER $input $comp_outdir $comp_tabledir $bsqr_method $baseline_method $mode`)
     end
+    # Composite relative-time figure (plain + rinv overlaid) at the top level; the
+    # method args are placeholders (the composite uses both pairs internally).
+    run(`python3 $PLOTTER $input $outdir $tabledir bsqr_full dgeqp3 composite`)
 end
 
 main()

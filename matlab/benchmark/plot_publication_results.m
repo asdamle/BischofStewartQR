@@ -48,6 +48,10 @@ end
 
 make_mode_artifacts(rows, "plain", "bsqr_full", "qr_pivoted", plots_dir, tables_dir, style);
 make_mode_artifacts(rows, "rinv", "bsqr_rinv", "qr_pivoted_trsm", plots_dir, tables_dir, style);
+
+% Composite relative-time figure (plain + rinv overlaid) at the top level -- the
+% single timing figure for the paper.
+fig_relative_time_composite(rows, style, plots_dir);
 end
 
 function make_mode_artifacts(rows, mode_name, bs_method, baseline_method, plots_dir, tables_dir, style)
@@ -213,7 +217,7 @@ if isempty(rt)
 end
 families = sort(unique(rt.family));
 regimes = ["square", "short_wide"];
-regime_display = containers.Map({'square', 'short_wide'}, {'square', 'short-wide'});
+regime_display = containers.Map({'square', 'short_wide'}, {'(m = n)', '(m < n)'});
 
 row_labels = strings(0, 1);
 center = zeros(0, 1);
@@ -237,7 +241,7 @@ for fi = 1:numel(families)
         if isempty(seed_geo)
             continue;
         end
-        row_labels(end+1, 1) = display_family(families(fi)) + ", " + ...
+        row_labels(end+1, 1) = display_family(families(fi)) + " " + ...
             string(regime_display(char(regimes(ri)))); %#ok<AGROW>
         center(end+1, 1) = geomean(seed_geo); %#ok<AGROW>
         lo(end+1, 1) = min(seed_geo); %#ok<AGROW>
@@ -267,6 +271,83 @@ apply_axes_style(ax, style);
 xlabel(ax, "relative time (" + string(labels.ratio) + ")", 'Interpreter', 'latex');
 grid(ax, 'on');
 save_figure(fig, outstem, style);
+end
+
+function fig_relative_time_composite(rows, style, plots_dir)
+% Composite forest plot: plain (BSQR / CPQR) and rinv (BSQR+W / CPQR+solve)
+% relative times overlaid on the shared family x regime rows, distinguished by
+% colour. The MATLAB CSV has no thread dimension, so one marker per (mode, row).
+modes = { 'bsqr_full', 'qr_pivoted',     style.bsqr_color,     'BSQR / CPQR'; ...
+          'bsqr_rinv', 'qr_pivoted_trsm', style.baseline_color, ...
+          '(BSQR + $R_{11}^{-1}R_{12}$) / (CPQR + $R_{11}^{-1}R_{12}$)' };
+families = sort(unique(rows.family));
+regimes = ["square", "short_wide"];
+regime_display = containers.Map({'square', 'short_wide'}, {'(m = n)', '(m < n)'});
+
+row_keys = strings(0, 2);
+row_labels = strings(0, 1);
+for fi = 1:numel(families)
+    for ri = 1:numel(regimes)
+        row_keys(end+1, :) = [string(families(fi)), regimes(ri)]; %#ok<AGROW>
+        row_labels(end+1, 1) = display_family(families(fi)) + " " + ...
+            string(regime_display(char(regimes(ri)))); %#ok<AGROW>
+    end
+end
+nrows = size(row_keys, 1);
+if nrows == 0
+    return;
+end
+y_base = (nrows:-1:1)';
+
+fig = new_figure(style, style.single_col_width, 0.40 * nrows + 1.35);
+ax = axes(fig);
+hold(ax, 'on');
+dodge = 0.18;
+handles = gobjects(size(modes, 1), 1);
+for mi = 1:size(modes, 1)
+    rt = pair_relative_times(rows, modes{mi, 1}, modes{mi, 2});
+    color = modes{mi, 3};
+    off = dodge * (mi == 1) - dodge * (mi == 2);   % plain up, rinv down
+    ys = []; cs = []; lo_e = []; hi_e = [];
+    for k = 1:nrows
+        mask = rt.family == row_keys(k, 1) & rt.regime == row_keys(k, 2);
+        if ~any(mask)
+            continue;
+        end
+        combo = rt(mask, :);
+        seeds = unique(combo.seed);
+        sg = zeros(numel(seeds), 1);
+        for si = 1:numel(seeds)
+            v = combo.relative_time(combo.seed == seeds(si));
+            sg(si) = geomean(v(isfinite(v) & v > 0));
+        end
+        sg = sg(isfinite(sg));
+        if isempty(sg)
+            continue;
+        end
+        c = geomean(sg);
+        ys(end+1, 1) = y_base(k) + off;       %#ok<AGROW>
+        cs(end+1, 1) = c;                      %#ok<AGROW>
+        lo_e(end+1, 1) = c - min(sg);          %#ok<AGROW>
+        hi_e(end+1, 1) = max(sg) - c;          %#ok<AGROW>
+    end
+    handles(mi) = errorbar(ax, cs, ys, lo_e, hi_e, 'horizontal', 'Marker', 'o', ...
+        'Color', color, 'MarkerFaceColor', color, 'LineStyle', 'none', ...
+        'CapSize', 2.0, 'MarkerSize', 4.0, 'LineWidth', 0.9);
+end
+xline(ax, 1.0, '--k', 'LineWidth', 0.8);
+yticks(ax, sort(y_base));
+yticklabels(ax, cellstr(flipud(row_labels)));
+ylim(ax, [0.4, nrows + 0.6]);
+xl = xlim(ax);
+xlim(ax, [min(0.95, xl(1)), xl(2)]);
+apply_axes_style(ax, style);
+xlabel(ax, "relative time (BSQR / baseline)", 'Interpreter', 'latex');
+grid(ax, 'on');
+lgd = legend(ax, handles, {modes{1, 4}, modes{2, 4}}, 'Location', 'southoutside', ...
+    'Interpreter', 'latex', 'Box', 'off', 'NumColumns', 1);
+set(lgd, 'FontSize', style.legend_font_size);
+save_figure(fig, fullfile(plots_dir, 'fig_relative_time_composite'), style);
 end
 
 % ----------------------------------------------------------------------
@@ -357,6 +438,12 @@ fprintf(fid, ['**fig_shortwide_runtime.** Median runtime versus column count n f
 fprintf(fid, ['**fig_relative_time.** Geometric-mean relative time (%s; 1 = parity, ', ...
     'dashed line) per family and regime. Points are geomeans of per-seed geomeans; ', ...
     'whiskers show the per-seed range.\n\n'], labels.ratio);
+fprintf(fid, ['**fig_relative_time_composite** (top-level plots/). The single timing ', ...
+    'figure: the relative time without (BSQR / CPQR) and with the interpolation matrix ', ...
+    '(both methods also form R11^{-1}R12; labelled ', ...
+    '(BSQR + R11^{-1}R12) / (CPQR + R11^{-1}R12)), ', ...
+    'overlaid on the shared rows and distinguished by colour. Square rows are ', ...
+    'm = n, short-wide rows m < n. Points/whiskers as for fig_relative_time.\n\n']);
 fprintf(fid, 'Numerical quality is summarized in tables/quality_summary.md.\n');
 end
 
@@ -369,8 +456,9 @@ switch string(mode_name)
     case "plain"
         labels = struct('bs', 'BSQR', 'base', 'CPQR (built-in)', 'ratio', 'BSQR / CPQR');
     case "rinv"
-        labels = struct('bs', 'BSQR (W returned)', 'base', 'CPQR + solve', ...
-            'ratio', 'BSQR+W / CPQR+solve');
+        labels = struct('bs', 'BSQR + $R_{11}^{-1}R_{12}$', ...
+            'base', 'CPQR + $R_{11}^{-1}R_{12}$', ...
+            'ratio', '(BSQR + $R_{11}^{-1}R_{12}$) / (CPQR + $R_{11}^{-1}R_{12}$)');
     otherwise
         error('plot_publication_results:UnknownMode', 'Unknown mode: %s', mode_name);
 end
