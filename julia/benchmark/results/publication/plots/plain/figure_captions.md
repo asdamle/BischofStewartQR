@@ -8,8 +8,6 @@ Run: 20260622_161419; seeds: 5; BLAS threads: 1, 4. In all figures, BSQR is comp
 
 **fig_shortwide_runtime.** Median runtime versus column count n for short-wide matrices, one color per row count m (log–log). Lines/bands as above; marker and line style distinguish the methods.
 
-**fig_relative_time.** Geometric-mean relative time (BSQR / CPQR; 1 = parity, dashed line) per family and regime. Points are geomeans of per-seed geomeans; whiskers show the per-seed range.
-
-**fig_relative_time_composite** (top-level plots/). The single timing figure: the relative time without (BSQR / CPQR) and with the interpolation matrix (both methods also form R11^{-1}R12; labelled (BSQR + R11^{-1}R12) / (CPQR + R11^{-1}R12)), overlaid on the shared rows. Colour distinguishes the two; marker fill distinguishes 1 vs 4 BLAS threads. Square rows are m = n, short-wide rows m < n (swept sizes as above). Points/whiskers as for fig_relative_time.
+**fig_relative_time_composite** (top-level plots/). The single timing figure: the relative time without (BSQR / CPQR) and with the interpolation matrix (both methods also form R11^{-1}R12; labelled (BSQR + R11^{-1}R12) / (CPQR + R11^{-1}R12)), overlaid on the shared rows. Colour distinguishes the two; marker fill distinguishes 1 vs 4 BLAS threads. Square rows are m = n, short-wide rows m < n (swept sizes as above); 1 = parity (dashed line). Points are geomeans of per-seed geomeans; whiskers show the per-seed range.
 
 Numerical quality is summarized in tables/quality_summary.md.

@@ -295,50 +295,6 @@ def relative_combo_stats(rel_rows):
     return {key: seed_stats(vals) for key, vals in combo.items()}
 
 
-def fig_relative_time(rel_rows, labels, mode, outdir, formats):
-    stats = relative_combo_stats(rel_rows)
-    families = sorted({k[0] for k in stats})
-    regimes = ["square", "short_wide"]
-    regime_display = {"square": "(m = n)", "short_wide": "(m < n)"}
-    threads = sorted({k[2] for k in stats})
-
-    row_keys = [(fam, regime) for fam in families for regime in regimes
-                if any((fam, regime, th) in stats for th in threads)]
-    nrows = len(row_keys)
-    fig, ax = plt.subplots(1, 1, figsize=(SINGLE_COL_W, 0.38 * nrows + 1.05),
-                           constrained_layout=True)
-    y_base = np.arange(nrows, dtype=float)[::-1]
-    dodge = 0.18 if len(threads) > 1 else 0.0
-    thread_marker = {th: ("o" if i == 0 else "s") for i, th in enumerate(threads)}
-    thread_fill = {th: (BSQR_COLOR if i == 0 else "white") for i, th in enumerate(threads)}
-
-    for i, th in enumerate(threads):
-        ys, cs, lo_err, hi_err = [], [], [], []
-        for row_i, (fam, regime) in enumerate(row_keys):
-            st = stats.get((fam, regime, th))
-            if st is None or not math.isfinite(st[0]):
-                continue
-            ys.append(y_base[row_i] + (dodge if i == 0 else -dodge) * (len(threads) > 1))
-            cs.append(st[0])
-            lo_err.append(st[0] - st[1])
-            hi_err.append(st[2] - st[0])
-        unit = "thread" if th == 1 else "threads"
-        ax.errorbar(cs, ys, xerr=np.vstack([lo_err, hi_err]), fmt=thread_marker[th],
-                    color=BSQR_COLOR, markerfacecolor=thread_fill[th], markersize=4.0,
-                    linestyle="none", capsize=2.0, elinewidth=0.9,
-                    label=f"{th} BLAS {unit}")
-    ax.axvline(1.0, color="black", ls="--", lw=0.8)
-    ax.set_yticks(y_base)
-    ax.set_yticklabels([f"{FAMILY_DISPLAY.get(fam, fam)} {regime_display[regime]}"
-                        for fam, regime in row_keys])
-    ax.set_ylim(-0.6, nrows - 0.4)
-    ax.set_xlabel(f"relative time ({labels['ratio']})")
-    ax.grid(True, axis="x", **GRID_KW)
-    if len(threads) > 1:
-        ax.legend(loc="best", frameon=False)
-    save_fig(fig, outdir, "fig_relative_time", formats)
-
-
 # Composite: the plain (BSQR / CPQR) and rinv (BSQR+W / CPQR+solve) relative times
 # overlaid on the shared family×regime rows -- the single timing figure for the paper.
 COMPOSITE_MODES = [("plain", "bsqr_full", "dgeqp3"), ("rinv", "bsqr_rinv", "dgeqp3_trsm")]
@@ -507,17 +463,14 @@ def write_captions(rows, labels, mode, outdir):
         "short-wide matrices, one color per row count m (log–log). Lines/bands as "
         "above; marker and line style distinguish the methods.",
         "",
-        "**fig_relative_time.** Geometric-mean relative time "
-        f"({labels['ratio']}; 1 = parity, dashed line) per family and regime. Points "
-        "are geomeans of per-seed geomeans; whiskers show the per-seed range.",
-        "",
         "**fig_relative_time_composite** (top-level plots/). The single timing figure: "
         "the relative time without (BSQR / CPQR) and with the interpolation matrix "
         "(both methods also form R11^{-1}R12; labelled "
         "(BSQR + R11^{-1}R12) / (CPQR + R11^{-1}R12)), "
         "overlaid on the shared rows. Colour distinguishes the two; marker fill "
         "distinguishes 1 vs 4 BLAS threads. Square rows are m = n, short-wide rows m < n "
-        "(swept sizes as above). Points/whiskers as for fig_relative_time.",
+        "(swept sizes as above); 1 = parity (dashed line). Points are geomeans of "
+        "per-seed geomeans; whiskers show the per-seed range.",
         "",
         "Numerical quality is summarized in tables/quality_summary.md.",
         "",
@@ -555,7 +508,9 @@ def main():
 
     fig_square_runtime(comp_rows, methods, labels, outdir, formats)
     fig_shortwide_runtime(comp_rows, methods, labels, outdir, formats)
-    fig_relative_time(rel_rows, labels, mode, outdir, formats)
+    # The per-mode relative-time forest plot is superseded by the top-level
+    # fig_relative_time_composite (plain + rinv on one figure); rel_rows below still
+    # feed the relative-time tables.
 
     write_csv(os.path.join(tabledir, "table_square_relative_time.csv"),
               ["family", "blas_threads", "m", "n",

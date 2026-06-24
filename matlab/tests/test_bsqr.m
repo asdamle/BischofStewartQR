@@ -151,8 +151,9 @@ verifyTrue(testCase, isfile(fullfile(outdir, 'metadata.txt')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'plain', 'fig_square_runtime.png')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'plain', 'figure_captions.md')));
 verifyTrue(testCase, isfile(fullfile(outdir, 'tables', 'plain', 'table_square_relative_time.csv')));
-verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'fig_relative_time.pdf')));
-verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'fig_relative_time.eps')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'rinv', 'fig_shortwide_runtime.pdf')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'fig_relative_time_composite.pdf')));
+verifyTrue(testCase, isfile(fullfile(outdir, 'plots', 'fig_relative_time_composite.eps')));
 
 tbl = readtable(fullfile(outdir, 'tables', 'plain', 'table_square_relative_time.csv'));
 verifyTrue(testCase, ismember('relative_time_geomean', tbl.Properties.VariableNames));

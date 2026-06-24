@@ -10,22 +10,23 @@ downstream of the timing CSVs — restyling never requires re-benchmarking.
 ## Figure inventory
 
 Per comparison mode (`plain`: `bsqr_full` vs the built-in pivoted QR; `rinv`: `bsqr_rinv` vs
-built-in + `trsm`), four figures plus a captions file are written to `plots/{plain,rinv}/`:
+built-in + `trsm`), two runtime figures plus a captions file are written to `plots/{plain,rinv}/`:
 
 | file | content | size |
 |---|---|---|
 | `fig_square_runtime` | median runtime vs `m = n`, log–log; panels family × threads (Julia) / family (MATLAB); x-ticks at the measured sizes | double col (6.9 in) |
 | `fig_shortwide_runtime` | median runtime vs `n`, log–log, one color per `m` (tab10/lines); power-of-two x-ticks; combined method + m legend below | double col |
-| `fig_relative_time` | forest plot of geomean relative time per family × regime, parity line at 1; Julia: filled/open markers for 1/4 BLAS threads. Rows labelled `Family (m = n)` / `Family (m < n)` | single col (3.35 in) |
 | `figure_captions.md` | suggested caption text with test-matrix and metric definitions plus run metadata | — |
 
-One additional **composite** figure is written once to the top-level `plots/`
-(`fig_relative_time_composite`): the `plain` (`BSQR / CPQR`) and `rinv`
-(`(BSQR + R₁₁⁻¹R₁₂) / (CPQR + R₁₁⁻¹R₁₂)` — both methods also form the interpolation
-matrix `R₁₁⁻¹R₁₂`) relative times overlaid on the shared `Family (m = n)` / `Family (m < n)`
-rows, **colour = ratio** (plain `#4C78A8`, rinv `#F58518`). Julia additionally encodes
-threads by marker fill (filled = 1, open = 4 BLAS threads). This is the single timing
-figure intended for the paper; the per-mode `fig_relative_time` figures are retained.
+The relative-time comparison is a single **composite** figure written once to the
+top-level `plots/` (`fig_relative_time_composite`): a forest plot of geomean relative
+time per family × regime (parity line at 1), with the `plain` (`BSQR / CPQR`) and
+`rinv` (`(BSQR + R₁₁⁻¹R₁₂) / (CPQR + R₁₁⁻¹R₁₂)` — both methods also form the
+interpolation matrix `R₁₁⁻¹R₁₂`) ratios overlaid on the shared
+`Family (m = n)` / `Family (m < n)` rows, **colour = ratio** (plain `#4C78A8`, rinv
+`#F58518`). Julia additionally encodes threads by marker fill (filled = 1, open = 4
+BLAS threads). This is the single timing figure intended for the paper; there is no
+per-mode relative-time figure.
 
 Numerical quality is reported as numbers, not a figure: `tables/{mode}/quality_summary.md`
 gives median and maximum relative residual and `‖I − QᵀQ‖_F` per method over all cases, with

@@ -76,7 +76,9 @@ write_quality_summary(quality, bs_method, baseline_method, labels, mode_tables);
 
 fig_square_runtime(rows, bs_method, baseline_method, labels, fullfile(mode_plots, 'fig_square_runtime'), style);
 fig_shortwide_runtime(rows, bs_method, baseline_method, labels, fullfile(mode_plots, 'fig_shortwide_runtime'), style);
-fig_relative_time(rt, labels, fullfile(mode_plots, 'fig_relative_time'), style);
+% The per-mode relative-time forest plot is superseded by the top-level
+% fig_relative_time_composite (plain + rinv on one figure); rt above still feeds the
+% relative-time tables.
 write_captions(rows, labels, mode_name, mode_plots);
 end
 
@@ -208,68 +210,6 @@ lgd = legend(ax_last, handles, cellstr(entries), 'Interpreter', 'latex', ...
     'Box', 'off', 'NumColumns', 4);
 lgd.Layout.Tile = 'south';
 set(lgd, 'FontSize', style.legend_font_size);
-save_figure(fig, outstem, style);
-end
-
-function fig_relative_time(rt, labels, outstem, style)
-if isempty(rt)
-    return;
-end
-families = sort(unique(rt.family));
-regimes = ["square", "short_wide"];
-regime_display = containers.Map({'square', 'short_wide'}, {'(m = n)', '(m < n)'});
-
-row_labels = strings(0, 1);
-center = zeros(0, 1);
-lo = zeros(0, 1);
-hi = zeros(0, 1);
-for fi = 1:numel(families)
-    for ri = 1:numel(regimes)
-        mask = rt.family == families(fi) & rt.regime == regimes(ri);
-        if ~any(mask)
-            continue;
-        end
-        combo = rt(mask, :);
-        seeds = unique(combo.seed);
-        seed_geo = zeros(numel(seeds), 1);
-        for si = 1:numel(seeds)
-            vals = combo.relative_time(combo.seed == seeds(si));
-            vals = vals(isfinite(vals) & vals > 0);
-            seed_geo(si) = geomean(vals);
-        end
-        seed_geo = seed_geo(isfinite(seed_geo));
-        if isempty(seed_geo)
-            continue;
-        end
-        row_labels(end+1, 1) = display_family(families(fi)) + " " + ...
-            string(regime_display(char(regimes(ri)))); %#ok<AGROW>
-        center(end+1, 1) = geomean(seed_geo); %#ok<AGROW>
-        lo(end+1, 1) = min(seed_geo); %#ok<AGROW>
-        hi(end+1, 1) = max(seed_geo); %#ok<AGROW>
-    end
-end
-if isempty(center)
-    return;
-end
-
-nrows = numel(center);
-fig = new_figure(style, style.single_col_width, 0.38 * nrows + 1.05);
-ax = axes(fig);
-hold(ax, 'on');
-y = (nrows:-1:1)';
-errorbar(ax, center, y, center - lo, hi - center, 'horizontal', ...
-    'Marker', 'o', 'Color', style.bsqr_color, 'MarkerFaceColor', style.bsqr_color, ...
-    'LineStyle', 'none', 'CapSize', 2.0, 'MarkerSize', 4.0, 'LineWidth', 0.9);
-xline(ax, 1.0, '--k', 'LineWidth', 0.8);
-yticks(ax, sort(y));
-yticklabels(ax, cellstr(flipud(row_labels)));
-ylim(ax, [0.4, nrows + 0.6]);
-% Pad the left edge so the parity line sits inside the axes.
-xl = xlim(ax);
-xlim(ax, [min(0.95, xl(1)), xl(2)]);
-apply_axes_style(ax, style);
-xlabel(ax, "relative time (" + string(labels.ratio) + ")", 'Interpreter', 'latex');
-grid(ax, 'on');
 save_figure(fig, outstem, style);
 end
 
@@ -435,15 +375,13 @@ fprintf(fid, ['**fig_square_runtime.** Median runtime versus matrix size for squ
 fprintf(fid, ['**fig_shortwide_runtime.** Median runtime versus column count n for ', ...
     'short-wide matrices, one color per row count m (log-log). Lines/bands as above; ', ...
     'marker and line style distinguish the methods.\n\n']);
-fprintf(fid, ['**fig_relative_time.** Geometric-mean relative time (%s; 1 = parity, ', ...
-    'dashed line) per family and regime. Points are geomeans of per-seed geomeans; ', ...
-    'whiskers show the per-seed range.\n\n'], labels.ratio);
 fprintf(fid, ['**fig_relative_time_composite** (top-level plots/). The single timing ', ...
     'figure: the relative time without (BSQR / CPQR) and with the interpolation matrix ', ...
     '(both methods also form R11^{-1}R12; labelled ', ...
     '(BSQR + R11^{-1}R12) / (CPQR + R11^{-1}R12)), ', ...
     'overlaid on the shared rows and distinguished by colour. Square rows are ', ...
-    'm = n, short-wide rows m < n. Points/whiskers as for fig_relative_time.\n\n']);
+    'm = n, short-wide rows m < n; 1 = parity (dashed line). Points are geomeans of ', ...
+    'per-seed geomeans; whiskers show the per-seed range.\n\n']);
 fprintf(fid, 'Numerical quality is summarized in tables/quality_summary.md.\n');
 end
 
