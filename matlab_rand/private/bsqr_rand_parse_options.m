@@ -18,6 +18,7 @@ addParameter(parser, 'k', [], @(x) isnumeric(x) && isscalar(x) && isfinite(x));
 addParameter(parser, 'block_size', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1));
 addParameter(parser, 'threshold_mode', 'running_mean', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'slack', 1.0, @(x) isnumeric(x) && isscalar(x) && isfinite(x) && x >= 1);
+addParameter(parser, 'norm_recomp_tol', sqrt(eps('double')), @(x) isnumeric(x) && isscalar(x) && isfinite(x));
 addParameter(parser, 'sampling', 'normweighted', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'pick', 'best_in_block', @(x) ischar(x) || isstring(x));
 addParameter(parser, 'batched', true, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
@@ -56,6 +57,14 @@ else
     opts.block_size = max(1, round(double(opts.block_size)));
 end
 opts.slack = double(opts.slack);
+
+% Mirrors the deterministic kernel's safeguard knob (matlab/private/bsqr_parse_options.m).
+% Only the MEX in-block path downdates running norms and uses it; the m-file kernel
+% recomputes rho^2 / ||w||^2 exactly each in-block step, so the value is a no-op there.
+opts.norm_recomp_tol = double(opts.norm_recomp_tol);
+if opts.norm_recomp_tol < 0 || opts.norm_recomp_tol > 1
+    error('bsqr_rand:InvalidNormRecompTol', 'norm_recomp_tol must satisfy 0 <= value <= 1.');
+end
 
 opts.threshold_mode = char(lower(string(opts.threshold_mode)));
 if ~ismember(opts.threshold_mode, {'running_mean', 'worstcase_allowance'})

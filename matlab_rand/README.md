@@ -223,6 +223,7 @@ run_approx_comparison('families', {'gmm_kernel', '<name>'});   % missing real na
 | `block_size` | `k` (batched) / `ceil(k/2)` in `[16,64]` (single) | candidates evaluated per sampled block; larger improves realized quality at higher cost (`rand_default_block`) |
 | `threshold_mode` | `running_mean` | per-column bound (per-singular-value control) or `worstcase_allowance` (more permissive, fewer samples) |
 | `slack` | `1.0` | `>=1` multiplier loosening the threshold |
+| `norm_recomp_tol` | `sqrt(eps)` | running-norm recompute safeguard in `[0,1]`, matching the deterministic kernel. Used only by the MEX batched path (which downdates norms incrementally); the m-file recomputes exactly, so it is a no-op there |
 | `sampling` | `normweighted` | by starting squared column norms (robust across leverage profiles; adds `O(mn)`), or `uniform` |
 | `pick` | `best_in_block` | single-select only (`batched=false`): or `first`. Batched always takes the in-block minimizer |
 | `seed` | `[]` | RNG seed for reproducibility |

@@ -12,7 +12,10 @@
 // columns greedily while the per-step bound holds (the block's w-vectors and
 // running norms are downdated incrementally, BLAS-2). One expensive apply yields
 // many selections -- O(k^3) overall vs the single-select O(k^4). batched=false
-// recovers the one-selection-per-block path. Both respect the same bound.
+// recovers the one-selection-per-block path. Both respect the same bound. The
+// in-block residual-norm downdate carries the same Businger-Golub recompute
+// safeguard as the deterministic kernel (opt.norm_recomp_tol, default sqrt(eps));
+// the single-select and global-min paths recompute norms from scratch and need none.
 //
 // Performance design (see docs/RANDOMIZED_BSQR_PLAN.md):
 //   * Block apply is BLAS-3 via the compact-WY form Q_nsel' = I - V T' V'
@@ -50,6 +53,7 @@ struct Options {
     mwSize block_size = 0;   // 0 = auto (set to rand_default_block(k) once k is known)
     ThresholdMode threshold_mode = ThresholdMode::RunningMean;
     double slack = 1.0;
+    double norm_recomp_tol = std::sqrt(std::numeric_limits<double>::epsilon());
     Sampling sampling = Sampling::NormWeighted;
     Pick pick = Pick::BestInBlock;
     bool has_seed = false;
@@ -142,6 +146,15 @@ void parse_options(const mxArray *A, int nrhs, const mxArray *prhs[], Options &o
                 fail("bsqr_rand:InvalidSlack", "slack must be a finite scalar >= 1.");
             }
             opt.slack = sd;
+        } else if (name == "norm_recomp_tol") {
+            if (!(mxIsNumeric(val) && mxIsScalar(val) && !mxIsComplex(val))) {
+                fail("bsqr_rand:InvalidNormRecompTol", "norm_recomp_tol must be a real numeric scalar.");
+            }
+            const double t = mxGetScalar(val);
+            if (!std::isfinite(t) || t < 0.0 || t > 1.0) {
+                fail("bsqr_rand:InvalidNormRecompTol", "norm_recomp_tol must satisfy 0 <= value <= 1.");
+            }
+            opt.norm_recomp_tol = t;
         } else if (name == "sampling") {
             const std::string sm = to_lower(get_string(val, "bsqr_rand:InvalidSampling"));
             if (sm == "uniform") {
@@ -350,6 +363,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         const mwSize bmax = std::max<mwSize>(block, 1);
         std::vector<double> Wblk(static_cast<size_t>(std::max<mwSize>(k, 1)) * bmax, 0.0);  // in-block w-vecs
         std::vector<double> sblk(bmax, 0.0);     // running squared trailing norms
+        std::vector<double> sblk_ref(bmax, 0.0); // last exact sblk (recompute reference)
         std::vector<double> wn2blk(bmax, 0.0);   // ||w||^2 per block column
         std::vector<double> dots(bmax, 0.0);     // w_a . w_pivot (pre-update)
         std::vector<double> betav(bmax, 0.0);    // alpha/diag per rest column
@@ -522,6 +536,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 double s = 0.0;
                 for (mwSize r = nsel; r < m; ++r) s = std::fma(xc[r], xc[r], s);
                 sblk[t] = s;
+                sblk_ref[t] = s;   // exact value seeds the recompute reference
                 const double *wc = &Wblk[static_cast<size_t>(t) * k];
                 double w = 0.0;
                 for (mwSize r = 0; r < nsel; ++r) w = std::fma(wc[r], wc[r], w);
@@ -551,6 +566,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                     std::swap_ranges(&Wblk[static_cast<size_t>(pbest) * k],
                                      &Wblk[static_cast<size_t>(pbest) * k] + k, &Wblk[static_cast<size_t>(nr) * k]);
                     std::swap(sblk[pbest], sblk[nr]);
+                    std::swap(sblk_ref[pbest], sblk_ref[nr]);
                     std::swap(wn2blk[pbest], wn2blk[nr]);
                     std::swap(idblk[pbest], idblk[nr]);
                 }
@@ -614,6 +630,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                         wn2blk[a] += -2.0 * bv * dots[a] + bv * bv * wcoeff;     // ||w||^2 downdate
                         const double alpha = X[nsel + static_cast<size_t>(a) * m];
                         sblk[a] = std::max(sblk[a] - alpha * alpha, 0.0);        // running-norm downdate
+
+                        // Businger-Golub safeguard, mirroring the deterministic kernel
+                        // (matlab/private/bsqr_mfile.m): once the running residual norm has
+                        // decayed past norm_recomp_tol * (last exact value), recompute it
+                        // exactly from the just-updated block column. Inline rather than
+                        // deferred (as in the deterministic *panel*) because the in-block
+                        // apply above has already updated X[:,a]; nsel has not yet been
+                        // incremented, so the post-elimination residual is rows nsel+1..m-1.
+                        // Residual norm only -- wn2blk is refreshed exactly at every block
+                        // boundary, so it is not separately guarded.
+                        if (sblk[a] <= sblk_ref[a] * opt.norm_recomp_tol) {
+                            double s_exact = 0.0;
+                            const double *xa = &X[static_cast<size_t>(a) * m];
+                            for (mwSize r = nsel + 1; r < m; ++r) s_exact = std::fma(xa[r], xa[r], s_exact);
+                            sblk[a] = sblk_ref[a] = s_exact;
+                        }
                     }
                 }
 

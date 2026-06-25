@@ -9,7 +9,13 @@ The deterministic Julia/MATLAB kernels are **not** touched by any of this.
 > (the running `f2`/threshold are updated after **each** in-block selection). One
 > reflector apply yields many selections, cutting the dominant cost from
 > `O(k^4)` to `O(k^3)`; the MEX maintains the block's `w`-vectors / running norms
-> incrementally (BLAS-2). Measured: **1.5–4.6× faster than single-select** and
+> incrementally (BLAS-2). The in-block residual-norm downdate carries the same
+> Businger–Golub recompute safeguard as the deterministic kernel
+> (`norm_recomp_tol`, default `sqrt(eps)`): once a running norm decays past that
+> fraction of its last exact value it is recomputed from scratch (inline, since
+> the in-block apply has already updated the block column — unlike the deterministic
+> *panel*, which defers to a flush). The single-select and global-min paths and the
+> m-file kernel recompute norms exactly each step and need no guard. Measured: **1.5–4.6× faster than single-select** and
 > **faster than `rejection_rpqr` at every tested point** (1.5–6.5×) while keeping
 > `||R11^{-1}||_F` far under the bound (rejection_rpqr can exceed it). `batched=false`
 > recovers the single-select path. The default block is `k`; larger blocks trade
@@ -372,11 +378,6 @@ Still open:
   (unlike `bsqr_mex`'s static workspace), so under `timeit` the allocation is
   *inside* the timed region — the reported speedups are mildly conservative. A
   persistent workspace would remove the churn (and make the win look larger).
-- **Norm-downdate recompute guard.** The deterministic kernel refreshes a column's
-  running norm exactly once it decays past `sqrt(eps)·original`; the batched path
-  uses the raw downdate. In-block exposure is bounded (a column is re-reduced fresh
-  on resample) and all tests stay exact, but adopting the guard would give full
-  robustness parity.
 - **Deferred BLAS-3 in-block update.** The in-block reflector applies are BLAS-2;
   a dlaqps-style deferred update (as in the deterministic *panel* kernel) would
   make them BLAS-3 — a real but non-trivial lever.

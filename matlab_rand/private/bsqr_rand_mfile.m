@@ -69,6 +69,9 @@ if opts.batched
         nsel_at_block_start = nsel;
         first = true;
         while nsel < k && any(cand)
+            % rho2 / wn2 are recomputed exactly from Xred each in-block step (no
+            % running downdate), so opts.norm_recomp_tol -- the MEX's safeguard knob
+            % -- has nothing to guard here and is intentionally unused.
             ci = find(cand);
             Xc = Xred(:, ci);
             rho2 = sum(Xc(nsel + 1:m, :).^2, 1);

@@ -36,6 +36,12 @@ function varargout = bsqr_rand(A, varargin)
 %   'slack'          - multiplier (>=1) loosening the threshold (default 1.0;
 %                      values >1 trade conditioning for fewer samples and no
 %                      longer guarantee the Osinsky bound -- experimental)
+%   'norm_recomp_tol' - running-norm recompute safeguard, in [0,1] (default
+%                      sqrt(eps)), matching the deterministic kernel. When the
+%                      MEX in-block residual norm decays past this fraction of
+%                      its last exact value it is recomputed from scratch. Only
+%                      the MEX batched path downdates norms incrementally and
+%                      uses it; the m-file kernel recomputes exactly (no-op there).
 %   'sampling'       - 'normweighted' (default; by starting squared column
 %                      norms, robust across leverage profiles, adds an O(m*n)
 %                      precompute) or 'uniform'

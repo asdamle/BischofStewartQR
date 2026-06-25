@@ -225,3 +225,52 @@ if bsqr_rand_mex_available()
     verifyError(testCase, @() bsqr_rand(M, 'k', k, 'backend', 'mex'), 'bsqr_rand:RankDeficient');
 end
 end
+
+function testMexNormRecompSafeguard(testCase)
+% The MEX batched in-block path downdates running residual norms incrementally;
+% the norm_recomp_tol safeguard (mirroring the deterministic kernel) recomputes
+% them exactly once they decay past tol * (last exact value). Exercise both the
+% recompute-every-step branch (tol = 1, refresh after each in-block pick) and the
+% pure-downdate branch (tol = 0, never refresh) on cancellation-prone inputs --
+% near-duplicate / near-collinear / near-null columns whose residuals collapse
+% during in-block reduction. Every setting must factor exactly and respect the
+% Osinsky bound; the guard only makes the running norms more accurate.
+if ~bsqr_rand_mex_available()
+    return;
+end
+repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+addpath(fullfile(repo_root, 'matlab_rand', 'benchmark'));
+k = 20; n = 240;
+for fam = ["coherent", "collinear_cluster", "needle"]
+    M = rand_test_matrix(char(fam), k, n, 29);
+    bound = k * (n - k + 1);
+    for tol = [0, sqrt(eps), 1]   % pure-downdate / default / recompute-every-step
+        [p, reflectors, R11, stats] = bsqr_rand(M, 'k', k, 'backend', 'mex', ...
+            'seed', 8, 'batched', true, 'norm_recomp_tol', tol);
+        check_factorization(testCase, M, p, reflectors, R11, k);
+        verifyLessThanOrEqual(testCase, stats.f2(:), ...
+            stats.Fhat(:) + 1e-8 * max(1, stats.Fhat(end)));
+        sv = svd(R11);                       % realized ||R11^{-1}||_F^2, inv-free
+        verifyLessThanOrEqual(testCase, sum(1 ./ sv .^ 2), bound * (1 + 1e-6));
+    end
+end
+end
+
+function testNormRecompTolValidation(testCase)
+% norm_recomp_tol is shared by both backends and must validate identically
+% (0 <= tol <= 1). The m-file accepts a valid value as a no-op (it recomputes
+% norms exactly), the MEX uses it.
+M = orthonormal_rows(8, 40, 3);
+verifyError(testCase, @() bsqr_rand(M, 'backend', 'mfile', 'norm_recomp_tol', -0.1), ...
+    'bsqr_rand:InvalidNormRecompTol');
+verifyError(testCase, @() bsqr_rand(M, 'backend', 'mfile', 'norm_recomp_tol', 1.5), ...
+    'bsqr_rand:InvalidNormRecompTol');
+[p, reflectors, R11] = bsqr_rand(M, 'backend', 'mfile', 'norm_recomp_tol', 1e-3, 'seed', 1);
+check_factorization(testCase, M, p, reflectors, R11, 8);
+if bsqr_rand_mex_available()
+    verifyError(testCase, @() bsqr_rand(M, 'backend', 'mex', 'norm_recomp_tol', -0.1), ...
+        'bsqr_rand:InvalidNormRecompTol');
+    [pm, rm, R11m] = bsqr_rand(M, 'backend', 'mex', 'norm_recomp_tol', 0.5, 'seed', 1);
+    check_factorization(testCase, M, pm, rm, R11m, 8);
+end
+end
