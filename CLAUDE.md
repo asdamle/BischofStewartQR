@@ -68,12 +68,14 @@ matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_app
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_synth_comparison; plot_approx_comparison('tag','_synth')"
 # R11-conditioning companion (gaussian/coherent/collinear_cluster); add ('norm','2') for the spectral figure
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"
+# large-n sampler scaling (k=64, n to 1e6): bsqr norm-weighted vs uniform vs rejection_rpqr, on gaussian + needle
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_largen_scaling; plot_largen_scaling"
 ```
 
 Figures land in `matlab_rand/benchmark/plots/` (`fig_approx_quality`,
-`fig_approx_synth_quality`, `fig_approx_cond_quality{,_spec}`); CSVs in the
-git-ignored `results/`. The suite keeps its own matrix builders and helpers — it is
-not coupled to the deterministic kernels and uses no `inv()`.
+`fig_approx_synth_quality`, `fig_approx_cond_quality{,_spec}`, `fig_largen_scaling`);
+CSVs in the git-ignored `results/`. The suite keeps its own matrix builders and
+helpers — it is not coupled to the deterministic kernels and uses no `inv()`.
 
 ### Validation harness
 

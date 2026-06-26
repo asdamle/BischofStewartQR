@@ -108,6 +108,26 @@ comparison is run fairly:
   `||R11^{-1}||_F`, while ARP targets a volume/DPP criterion — so the
   `||R11^{-1}||_F` metric measures BSQR's objective and favors it by construction.
 
+### Large-n scaling (sampler comparison)
+
+A fixed-`k` (=64), large-`n` runtime study isolating the **sampling scheme**:
+randomized BSQR with norm-weighted vs uniform sampling, and `rejection_rpqr`, on
+two leverage regimes — `gaussian` (benign; uniform is fine) and `needle`
+(~`k` high-leverage columns among many near-null ones; uniform keeps missing them
+and degenerates to the global-min fallback).
+
+```matlab
+matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_largen_scaling; plot_largen_scaling"
+```
+
+Writes `exp_largen.csv` and `fig_largen_scaling.{png,pdf}` (one log-log time-vs-`n`
+panel per family; line = seed median, band = seed min/max; 20 seeds, `timeit`,
+swept to `n = 1e6`). Same fair-timing discipline as `run_rpqr_comparison` (direct
+`bsqr_rand_mex`, `check_finite=false`). The takeaway: norm-weighted BSQR and
+`rejection_rpqr` both carry the common `O(mn)` norm work and scale alike (BSQR
+~constant-factor faster, **no crossover** even at `n = 1e6`); uniform BSQR is
+fastest on `gaussian` but blows up on `needle`.
+
 ### Matrix-approximation comparison
 
 A second, application-facing comparison that scores the **low-rank approximation
