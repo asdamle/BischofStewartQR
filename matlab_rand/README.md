@@ -196,7 +196,9 @@ orthogonal-projection optimum by a factor growing with `||R11^{-1}||`) and a *no
 part (measurement noise on the selected columns propagated through `T ~ ||R11^{-1}||`).
 The dashed orthogonal-projection error is the method-independent lower bound.
 Families are the leverage profiles that make candidate columns near-collinear:
-`gaussian` (control), `coherent`, `collinear_cluster`.
+`gaussian` (control), `spiked_leverage`, `collinear_cluster`. Swept over a dense
+linear `k` grid; the prescribed spectrum has a sharp cliff so the ID-error rows
+show a clear knee.
 
 ```matlab
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"

@@ -24,6 +24,7 @@ addParameter(ip, 'norm', 'fro');
 addParameter(ip, 'resultsdir', '');
 addParameter(ip, 'plotdir', '');
 addParameter(ip, 'formats', {'png', 'pdf'});
+addParameter(ip, 'kscale', 'linear');  % x-axis (rank k): 'linear' or 'log'
 parse(ip, varargin{:});
 opt = ip.Results;
 
@@ -85,7 +86,7 @@ for ri = 1:nr
     for fi = 1:nf
         fam = fams(fi); base = T.family == fam;
         ax = nexttile(tl); hold(ax, 'on');
-        set(ax, 'XScale', 'log', 'YScale', 'log', 'TickLabelInterpreter', 'none');
+        set(ax, 'XScale', opt.kscale, 'YScale', 'log', 'TickLabelInterpreter', 'none');
         if strcmp(col, 'condratio')
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');     % the Osinsky bound
         elseif any(strcmp(col, {'id_err', 'noisy_id_err', 'id_spec', 'noisy_id_spec'}))
@@ -124,8 +125,9 @@ if isempty(sub); return; end
 [x, ym, ylo, yhi] = agg_by_k(sub, col);
 fill(ax, [x; flipud(x)], [ylo; flipud(yhi)], color, 'FaceAlpha', 0.15, ...
     'EdgeColor', 'none', 'HandleVisibility', 'off');
-plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, ...
-    'LineWidth', 1.5, 'MarkerSize', 4, 'DisplayName', name);
+% Lines only (no per-point markers): with the dense k grid markers read as
+% clutter/jaggedness; method is distinguished by colour.
+plot(ax, x, ym, '-', 'Color', color, 'LineWidth', 1.5, 'DisplayName', name);
 end
 
 function proj_coeff_line(ax, sub, col, color, name)
@@ -146,6 +148,8 @@ plot(ax, x, ym, 'k--', 'LineWidth', 1.0, 'DisplayName', 'projection error');
 end
 
 function [x, ym, ylo, yhi] = agg_by_k(sub, col)
+% Center = seed mean; band = seed min/max, consistent with the other rand figures
+% (and with 20 trials a 5/95 band would barely differ).
 x = unique(sub.k); ym = zeros(size(x)); ylo = ym; yhi = ym;
 for i = 1:numel(x)
     v = sub.(col)(sub.k == x(i)); v = v(isfinite(v));

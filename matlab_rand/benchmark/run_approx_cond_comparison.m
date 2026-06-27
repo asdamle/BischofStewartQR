@@ -41,23 +41,25 @@ function run_approx_cond_comparison(varargin)
 %   T = R11 \ R12 (no inv -- backslash solve; frobinv via norm(1./svd(R11)), spectral
 %   residual norms via svds(.,1)).
 %
-%   Families are A = U diag(s) V' (approx_synth_matrix) with a fixed spectrum and V
-%   from leverage families that make candidate columns near-collinear: 'gaussian'
-%   (benign control), 'coherent' (near-duplicate groups), 'collinear_cluster' (a
+%   Families are A = U diag(s) V' (approx_synth_matrix) with a fixed spectrum (a
+%   sharp cliff near the middle of the swept k, so the rank-k ID-error rows have a
+%   clear knee) and V from leverage families: 'gaussian' (benign control),
+%   'spiked_leverage' (a few dominant high-leverage columns), 'collinear_cluster' (a
 %   planted high-leverage near-collinear cluster). bsqr_rand runs with its public
 %   defaults. Writes results/exp_approx_cond.csv; plot with
-%   plot_approx_cond_comparison.
+%   plot_approx_cond_comparison (linear k axis by default).
 %
-% Options: 'ks' (default [4 8 16 32 64 128 256]), 'trials' (20), 'families'
-%   (default {'gaussian','coherent','collinear_cluster'}), 'noise_rel' (default
+% Options: 'ks' (default 5:5:200, linearly spaced; dense around the spectrum knee),
+%   'trials' (20), 'families'
+%   (default {'gaussian','spiked_leverage','collinear_cluster'}), 'noise_rel' (default
 %   1e-2, relative noise on the measured selected columns for noisy_id_err -- large
 %   enough that the noise term competes with id_err; sweep it to vary the regime),
 %   'sizes' (per-family struct forwarded to approx_synth_matrix), 'outdir'.
 
 ip = inputParser;
-addParameter(ip, 'ks', [4 8 16 32 64 128 256]);
+addParameter(ip, 'ks', 5:5:200);       % linearly spaced (plotted on a linear k axis)
 addParameter(ip, 'trials', 20);
-addParameter(ip, 'families', {'gaussian', 'coherent', 'collinear_cluster'});
+addParameter(ip, 'families', {'gaussian', 'spiked_leverage', 'collinear_cluster'});
 addParameter(ip, 'noise_rel', 1e-2);
 addParameter(ip, 'sizes', struct());
 addParameter(ip, 'outdir', '');

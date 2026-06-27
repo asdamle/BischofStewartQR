@@ -66,7 +66,7 @@ selecting on the leading-`k` right singular vectors; see `matlab_rand/README.md`
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_comparison; plot_approx_comparison"
 # synthetic-spectrum companion (gaussian/spiked_leverage/needle right-singular-vector leverage)
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_synth_comparison; plot_approx_comparison('tag','_synth')"
-# R11-conditioning companion (gaussian/coherent/collinear_cluster); add ('norm','2') for the spectral figure
+# R11-conditioning companion (gaussian/spiked_leverage/collinear_cluster, dense linear k); add ('norm','2') for the spectral figure
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"
 # large-n sampler scaling (k=64, n to 1e6): bsqr norm-weighted vs uniform vs rejection_rpqr, on gaussian + needle
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_largen_scaling; plot_largen_scaling"

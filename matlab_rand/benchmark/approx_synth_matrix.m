@@ -50,21 +50,24 @@ end
 
 % ---------------------------------------------------------------------------
 function s = synth_spectrum(r)
-% A deliberately structured, strictly decreasing spectrum: a few large values, a
-% pronounced first drop, a near-flat "plateau" section, then more decay. The drop
-% lands well below the dominant values (0.9 -> 0.02, ~45x) so the top directions
-% clearly dominate -- this reads as a steep initial decline in the error-vs-k
-% curve. The plateau declines gently (0.02 -> 0.015) rather than being exactly flat
-% so the singular values stay distinct (no degenerate subspace -> V is exactly the
-% prescribed family vectors). Breakpoints scale with r.
-b1 = max(3, round(0.015 * r));                  % a few large
-b2 = max(b1 + 5, round(0.13 * r));              % end of the (pronounced) first drop
-b3 = max(b2 + 5, round(0.42 * r));              % end of the flatter section
+% A deliberately structured, strictly decreasing spectrum with a sharp cliff partway
+% through the swept-k range, so the rank-k ID-error curves (rows 3-4 of the
+% conditioning figure) have a clear knee: a leading band of "significant" directions
+% decaying gently, a gentle mid decay, a SHARP cliff (a few indices, ~100x drop)
+% near the middle of the swept k, then a gentle tail. The optimal rank-k error is
+% then nearly flat before the cliff and plummets across it, so the conditioning
+% penalty (method ID error sitting above the projection optimum) is legible before
+% the cliff and the optimum drops sharply at it. Strictly decreasing so the singular
+% values stay distinct (no degenerate subspace -> V is exactly the prescribed family
+% vectors). Breakpoints scale with r.
+b1 = max(3, round(0.10 * r));                   % leading band end
+b2 = max(b1 + 5, round(0.50 * r));              % cliff start (~mid swept-k)
+bc = min(r - 1, b2 + max(3, round(0.04 * r)));  % cliff end (sharp: a few indices)
 s = zeros(r, 1);
-s(1:b1)      = linspace(1.0, 0.9, b1);                          % few large
-s(b1+1:b2)   = logspace(log10(0.9),  log10(0.02),  b2 - b1);    % pronounced first drop
-s(b2+1:b3)   = logspace(log10(0.02), log10(0.015), b3 - b2);    % flatter section
-s(b3+1:r)    = logspace(log10(0.015), log10(1e-5), r - b3);     % more decay
+s(1:b1)      = linspace(1.0, 0.3, b1);                          % leading band
+s(b1+1:b2)   = logspace(log10(0.3),  log10(0.05), b2 - b1);     % gentle mid decay
+s(b2+1:bc)   = logspace(log10(0.05), log10(5e-4), bc - b2);     % SHARP cliff (~100x)
+s(bc+1:r)    = logspace(log10(5e-4), log10(1e-6), r - bc);      % gentle tail
 end
 
 function v = getdef(s, name, default)

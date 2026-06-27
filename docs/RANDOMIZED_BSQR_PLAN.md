@@ -471,8 +471,9 @@ interpolation-coefficient magnitude `max|R11^{-1}R12|`, and the rank-k ID
 reconstruction error split into a *noiseless* part (oblique-coefficient penalty,
 already amplified by `||R11^{-1}||` above the orthogonal-projection lower bound) and
 a *noisy* part (measurement noise propagated through `T ~ ||R11^{-1}||`).
-Families are near-collinear leverage profiles (`gaussian` control, `coherent`, and
-a new `collinear_cluster` in `rand_test_matrix`). Result: projection accuracy is
+Families are near-collinear leverage profiles (`gaussian` control, `spiked_leverage`,
+and `collinear_cluster` in `rand_test_matrix`), swept over a dense linear `k` grid
+with a sharp-cliff spectrum (a clear knee in the ID-error rows). Result: projection accuracy is
 identical, but BSQR's `||R11^{-1}||` stays `<=` the Osinsky bound (guaranteed)
 while `rejection_rpqr`'s runs 2–3× larger and can exceed it, inflating its
 interpolation coefficients (≈2–4×) and noise-amplified ID error correspondingly.
