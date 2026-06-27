@@ -227,7 +227,16 @@ struct Fenwick {
         LOG = 0;
         while ((static_cast<mwSize>(1) << (LOG + 1)) <= n) ++LOG;
         cur_total = 0.0;
-        for (mwSize i = 0; i < n; ++i) add(i, w[i]);
+        // O(n) bottom-up build: seed each node with its own leaf weight (1-indexed)
+        // and fold it into its Fenwick parent in a single increasing pass. Children
+        // k < i have already contributed t[k] into t[i] by the time i is processed.
+        // (The naive alternative -- n separate add() calls -- is O(n log n).)
+        for (mwSize i = 1; i <= n; ++i) {
+            t[i] += w[i - 1];
+            cur_total += w[i - 1];
+            const mwSize parent = i + (i & (~i + 1));   // i + lowbit(i)
+            if (parent <= n) t[parent] += t[i];
+        }
     }
     void add(mwSize i, double d) {
         cur_total += d;

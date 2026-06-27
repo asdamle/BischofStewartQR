@@ -114,7 +114,7 @@ A fixed-`k` (=64), large-`n` runtime study isolating the **sampling scheme**:
 randomized BSQR with norm-weighted vs uniform sampling, and `rejection_rpqr`, on
 two leverage regimes — `gaussian` (benign; uniform is fine) and `needle`
 (~`k` high-leverage columns among many near-null ones; uniform keeps missing them
-and degenerates to the global-min fallback).
+and must resample ~`n/k` times to find each).
 
 ```matlab
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_largen_scaling; plot_largen_scaling"
@@ -126,7 +126,9 @@ swept to `n = 1e6`). Same fair-timing discipline as `run_rpqr_comparison` (direc
 `bsqr_rand_mex`, `check_finite=false`). The takeaway: norm-weighted BSQR and
 `rejection_rpqr` both carry the common `O(mn)` norm work and scale alike (BSQR
 ~constant-factor faster, **no crossover** even at `n = 1e6`); uniform BSQR is
-fastest on `gaussian` but blows up on `needle`.
+fastest on `gaussian` (it skips the norm precompute) but a constant factor (~20×)
+slower on `needle` — it resamples to hit the rare high-leverage columns, so it
+stays linear in `n` but well above the two norm-weighted methods.
 
 ### Matrix-approximation comparison
 
