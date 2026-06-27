@@ -676,11 +676,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                     if (!taken[id]) bit.add(id, g[id]);
                 }
             } else {
-                mwSize w = 0;   // compact `remaining` to drop the columns taken this block
-                for (mwSize j = 0; j < rcount; ++j) {
-                    if (!taken[remaining[j]]) remaining[w++] = remaining[j];
+                // Only the drawn columns (remaining[0..bcount-1]) can have been
+                // taken this block, so swap-pop the taken ones out of the pool in
+                // O(bcount) rather than rescanning the whole O(rcount) pool (which
+                // would make a failed sampling block O(n) and the uniform-on-needle
+                // cost O(n^2/k) instead of linear). Refill each hole from the tail
+                // and re-examine it -- the tail can itself be a taken drawn column.
+                mwSize t = 0;
+                while (t < bcount && t < rcount) {
+                    if (taken[remaining[t]]) {
+                        remaining[t] = remaining[rcount - 1];
+                        --rcount;
+                    } else {
+                        ++t;
+                    }
                 }
-                rcount = w;
             }
         }
     } else {
