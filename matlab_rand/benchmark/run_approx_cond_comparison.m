@@ -21,6 +21,10 @@ function run_approx_cond_comparison(varargin)
 %     noisy_id_err = same ID from *noisy* selected columns: the noise (sized to
 %                                             noise_rel*||A(:,S)||) is amplified by
 %                                             ||T|| ~ ||R11^{-1}|| on top of id_err
+%     svdopt_frob = sqrt(sum sigma_{k+1:}^2)/||A||_F  (best-possible rank-k error,
+%                                             SVD truncation -- the absolute lower
+%                                             bound below proj_frob; from the exact
+%                                             prescribed spectrum, no cancellation)
 %
 %   As a coefficient-choice control we also record the *standard projection* ID
 %   coefficients T_proj = A(:,S)^+ A(:,rest) (k-step pivoted QR on A with the V_k^T
@@ -49,7 +53,7 @@ function run_approx_cond_comparison(varargin)
 %   defaults. Writes results/exp_approx_cond.csv; plot with
 %   plot_approx_cond_comparison (linear k axis by default).
 %
-% Options: 'ks' (default 5:5:200, linearly spaced; dense around the spectrum knee),
+% Options: 'ks' (default 1:80, every k; the spectrum knee is at k~50),
 %   'trials' (20), 'families'
 %   (default {'gaussian','spiked_leverage','collinear_cluster'}), 'noise_rel' (default
 %   1e-2, relative noise on the measured selected columns for noisy_id_err -- large
@@ -57,7 +61,7 @@ function run_approx_cond_comparison(varargin)
 %   'sizes' (per-family struct forwarded to approx_synth_matrix), 'outdir'.
 
 ip = inputParser;
-addParameter(ip, 'ks', 5:5:200);       % linearly spaced (plotted on a linear k axis)
+addParameter(ip, 'ks', 1:80);          % every k up to 80 (plotted on a linear k axis)
 addParameter(ip, 'trials', 20);
 addParameter(ip, 'families', {'gaussian', 'spiked_leverage', 'collinear_cluster'});
 addParameter(ip, 'noise_rel', 1e-2);
@@ -97,12 +101,22 @@ for fi = 1:numel(opt.families)
     fprintf('  %-18s %dx%d rank %d\n', fam, m, n, in.r);
 
     ks = opt.ks(opt.ks >= 1 & opt.ks < min(m, n) & opt.ks < in.r);
+    if isempty(ks); continue; end
+    % One Lanczos SVD per family (the leading max(ks) right vectors); slice V(:,1:k)
+    % per k. The leading-k subspace is the same as svds(A,k)'s, and every recorded
+    % metric is invariant to right-vector column signs, so this is exact -- and far
+    % cheaper than recomputing svds(A,k) for every k.
+    [~, Sfull, Vfull] = svds(A, max(ks));
+    normA_2 = Sfull(1, 1);                        % ||A||_2 = sigma_max(A) (k-independent)
+    svals = in.svals(:);                          % exact prescribed spectrum (tail sums, no cancellation)
     for k = ks
-        [~, Sk, V] = svds(A, k);
-        W = V.';                                 % k-by-n, orthonormal rows = V_k'
-        normA_2 = Sk(1, 1);                      % ||A||_2 = sigma_max(A)
+        W = Vfull(:, 1:k).';                      % k-by-n, orthonormal rows = V_k'
         osinsky  = sqrt(k * (n - k + 1));        % Frobenius bound on ||R11^{-1}||_F
         osinsky2 = sqrt(1 + k * (n - k));        % spectral bound on ||R11^{-1}||_2
+        % best-possible rank-k error (SVD truncation), relative -- the absolute lower
+        % bound below any column-selection projection / ID error.
+        svdopt_frob = sqrt(sum(svals(k+1:end) .^ 2)) / normA_fro;
+        svdopt_spec = svals(k+1) / normA_2;
         for s = 1:opt.trials
             % randomized BSQR -- public defaults (batched, block=k, norm-weighted)
             p = bsqr_rand(W, 'k', k, 'seed', s);
@@ -110,7 +124,8 @@ for fi = 1:numel(opt.families)
             rows(end+1, :) = {fam, m, n, in.r, k, s, 'bsqr_rand', mb.frobinv, osinsky, ...
                 mb.specinv, osinsky2, mb.maxT, mb.normT, mb.maxTproj, mb.proj_frob, mb.proj_spec, ...
                 mb.id_err, mb.id_spec, mb.noisy_id_err, mb.noisy_id_err_proj, ...
-                mb.noisy_id_spec, mb.noisy_id_spec_proj, opt.noise_rel}; %#ok<AGROW>
+                mb.noisy_id_spec, mb.noisy_id_spec_proj, opt.noise_rel, ...
+                svdopt_frob, svdopt_spec}; %#ok<AGROW>
 
             % rejection_rpqr -- seeded for reproducibility
             rng(s);
@@ -119,7 +134,8 @@ for fi = 1:numel(opt.families)
             rows(end+1, :) = {fam, m, n, in.r, k, s, 'rejection_rpqr', mr.frobinv, osinsky, ...
                 mr.specinv, osinsky2, mr.maxT, mr.normT, mr.maxTproj, mr.proj_frob, mr.proj_spec, ...
                 mr.id_err, mr.id_spec, mr.noisy_id_err, mr.noisy_id_err_proj, ...
-                mr.noisy_id_spec, mr.noisy_id_spec_proj, opt.noise_rel}; %#ok<AGROW>
+                mr.noisy_id_spec, mr.noisy_id_spec_proj, opt.noise_rel, ...
+                svdopt_frob, svdopt_spec}; %#ok<AGROW>
         end
         fprintf('    k=%-4d done\n', k);
     end
@@ -129,7 +145,8 @@ if isempty(rows); warning('No families produced data.'); return; end
 T = cell2table(rows, 'VariableNames', {'family', 'm', 'n', 'r', 'k', 'seed', 'method', ...
     'frobinv', 'osinsky', 'specinv', 'osinsky2', 'maxT', 'normT', 'maxTproj', ...
     'proj_frob', 'proj_spec', 'id_err', 'id_spec', ...
-    'noisy_id_err', 'noisy_id_err_proj', 'noisy_id_spec', 'noisy_id_spec_proj', 'noise_rel'});
+    'noisy_id_err', 'noisy_id_err_proj', 'noisy_id_spec', 'noisy_id_spec_proj', 'noise_rel', ...
+    'svdopt_frob', 'svdopt_spec'});
 csv = fullfile(opt.outdir, 'exp_approx_cond.csv');
 writetable(T, csv);
 fprintf('Wrote %s (%d rows)\n', csv, height(T));

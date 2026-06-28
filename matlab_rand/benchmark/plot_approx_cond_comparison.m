@@ -58,21 +58,19 @@ if is2
             strjoin(need, ', ')); return;
     end
     T.condratio = T.specinv ./ T.osinsky2;
-    refcol = 'proj_spec';
     stem = 'fig_approx_cond_quality_spec';
-    rowspec = {'condratio',     '||R_{11}^{-1}||_2 / bound',          ''; ...
-               'maxT',          'max |R_{11}^{-1}R_{12}|',            ''; ...
-               'id_spec',       'rank-k ID error (2-norm) / ||A||_2', ''; ...
-               'noisy_id_spec', 'noisy ID error (2-norm) / ||A||_2',  'noisy_id_spec_proj'};
+    rowspec = {'condratio',     '||R_{11}^{-1}||_2 / bound',          '',                   ''; ...
+               'maxT',          'max |R_{11}^{-1}R_{12}|',            '',                   ''; ...
+               'id_spec',       'rank-k ID error (2-norm) / ||A||_2', 'proj_spec',          'svdopt_spec'; ...
+               'noisy_id_spec', 'noisy ID error (2-norm) / ||A||_2',  'noisy_id_spec_proj', 'svdopt_spec'};
     normlabel = 'spectral';
 else
     T.condratio = T.frobinv ./ T.osinsky;
-    refcol = 'proj_frob';
     stem = 'fig_approx_cond_quality';
-    rowspec = {'condratio',    '||R_{11}^{-1}||_F / bound',          ''; ...
-               'maxT',         'max |R_{11}^{-1}R_{12}|',            ''; ...
-               'id_err',       'rank-k ID error / ||A||_F',          ''; ...
-               'noisy_id_err', 'noisy ID error / ||A||_F',           'noisy_id_err_proj'};
+    rowspec = {'condratio',    '||R_{11}^{-1}||_F / bound',          '',                  ''; ...
+               'maxT',         'max |R_{11}^{-1}R_{12}|',            '',                  ''; ...
+               'id_err',       'rank-k ID error / ||A||_F',          'proj_frob',         'svdopt_frob'; ...
+               'noisy_id_err', 'noisy ID error / ||A||_F',           'noisy_id_err_proj', 'svdopt_frob'};
     normlabel = 'Frobenius';
 end
 nr = size(rowspec, 1);
@@ -83,14 +81,13 @@ ax = [];
 for ri = 1:nr
     col = rowspec{ri, 1};
     projcol = rowspec{ri, 3};        % T_proj overlay column ('' = none)
+    svdoptcol = rowspec{ri, 4};      % SVD best-rank-k lower-bound column ('' = none)
     for fi = 1:nf
         fam = fams(fi); base = T.family == fam;
         ax = nexttile(tl); hold(ax, 'on');
         set(ax, 'XScale', opt.kscale, 'YScale', 'log', 'TickLabelInterpreter', 'none');
         if strcmp(col, 'condratio')
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');     % the Osinsky bound
-        elseif any(strcmp(col, {'id_err', 'noisy_id_err', 'id_spec', 'noisy_id_spec'}))
-            ref_line(ax, T(base, :), refcol);                   % projection lower bound
         end
         for mi = 1:size(methods, 1)                              % solid: V_k-frame T
             band_line(ax, T(base & T.method == methods{mi, 1}, :), col, ...
@@ -101,6 +98,9 @@ for ri = 1:nr
                 proj_coeff_line(ax, T(base & T.method == methods{mi, 1}, :), projcol, ...
                     methods{mi, 3}, [methods{mi, 2}, ' (proj. coeffs)']);
             end
+        end
+        if ~isempty(svdoptcol)                                   % black dotted: SVD lower bound
+            svdopt_line(ax, T(base, :), svdoptcol);
         end
         grid(ax, 'on');
         if ri == 1; title(ax, fam, 'Interpreter', 'none'); end
@@ -115,7 +115,7 @@ if ismember('noise_rel', T.Properties.VariableNames)
 end
 title(tl, {['Conditioning, coefficient magnitude, and rank-k ID error (noiseless & noisy', ...
     eps_str, ') -- ', normlabel, ' norm'], ...
-    'ID rows: solid = T (V_k-frame coeffs), dashed = T_{proj} (projection coeffs / optimum)'});
+    'ID rows: solid = T (V_k-frame), dashed = T_{proj} (projection), dotted = best rank-k (SVD)'});
 save_fig(fig, fullfile(opt.plotdir, stem), opt.formats);
 end
 
@@ -131,20 +131,24 @@ plot(ax, x, ym, '-', 'Color', color, 'LineWidth', 1.5, 'DisplayName', name);
 end
 
 function proj_coeff_line(ax, sub, col, color, name)
-% Thin dashed, mean-only line for the projection-coefficient (T_proj) variant of an
-% ID error -- overlaid on the solid V_k-frame (T) band so the two coefficient
-% choices can be read off the same panel. No band, to keep the panel legible.
+% Thin dashed, mean-only line (per method) for the projection-coefficient (T_proj)
+% variant of an ID error, overlaid on the solid V_k-frame (T) line so the two
+% coefficient choices read off the same panel. On the noiseless ID row this is the
+% orthogonal-projection error itself (P_S A = A(:,S)[I, T_proj]), i.e. that method's
+% own conditioning-blind lower bound -- so the solid T line always sits above it.
 if isempty(sub); return; end
 [x, ym] = agg_by_k(sub, col);
 plot(ax, x, ym, '--', 'Color', color, 'LineWidth', 1.0, 'Marker', 'none', ...
     'DisplayName', name);
 end
 
-function ref_line(ax, sub, col)
-% Method-independent reference (mean over all rows at each k), dashed.
+function svdopt_line(ax, sub, col)
+% Best-possible rank-k error (SVD truncation): the absolute lower bound, below any
+% column-selection projection or ID error. Method-independent (constant per k),
+% black dotted.
 if isempty(sub); return; end
 [x, ym] = agg_by_k(sub, col);
-plot(ax, x, ym, 'k--', 'LineWidth', 1.0, 'DisplayName', 'projection error');
+plot(ax, x, ym, 'k:', 'LineWidth', 1.0, 'DisplayName', 'best rank-k (SVD)');
 end
 
 function [x, ym, ylo, yhi] = agg_by_k(sub, col)

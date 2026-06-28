@@ -194,11 +194,15 @@ magnitude `max|R11^{-1}R12|`, and the **rank-k ID reconstruction error**, split 
 its *noiseless* part (the oblique leading-k coefficients already push it above the
 orthogonal-projection optimum by a factor growing with `||R11^{-1}||`) and a *noisy*
 part (measurement noise on the selected columns propagated through `T ~ ||R11^{-1}||`).
-The dashed orthogonal-projection error is the method-independent lower bound.
+In the ID-error rows the dashed line is **each method's own** orthogonal-projection
+error (its conditioning-blind lower bound, `= A(:,S)[I,T_proj]`), and the black
+dotted line is the **best-possible rank-k error (SVD truncation)** — the absolute
+lower bound below any column selection. So each solid (oblique-`T`) line sits above
+its own dashed projection, which sits above the dotted SVD optimum.
 Families are the leverage profiles that make candidate columns near-collinear:
-`gaussian` (control), `spiked_leverage`, `collinear_cluster`. Swept over a dense
-linear `k` grid; the prescribed spectrum has a sharp cliff so the ID-error rows
-show a clear knee.
+`gaussian` (control), `spiked_leverage`, `collinear_cluster`. Swept over **every
+`k` up to 80** (linear axis); the prescribed spectrum has a sharp cliff at `k~50`
+so the ID-error rows show a clear knee.
 
 ```matlab
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"

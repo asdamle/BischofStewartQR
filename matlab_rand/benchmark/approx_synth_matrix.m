@@ -43,30 +43,28 @@ rng(seed + 99991);                              % independent stream for U
 U = orth(randn(m, r));                          % arbitrary orthonormal left vectors
 A = U * (s .* M);                               % = U diag(s) V', rank r
 
-info = struct('family', char(family), 'm', m, 'n', n, 'r', r, 'desc', ...
+info = struct('family', char(family), 'm', m, 'n', n, 'r', r, 'svals', s, 'desc', ...
     sprintf('%s leverage, prescribed spectrum, rank %d (%dx%d)', ...
     char(family), r, m, n));
 end
 
 % ---------------------------------------------------------------------------
 function s = synth_spectrum(r)
-% A deliberately structured, strictly decreasing spectrum with a sharp cliff partway
-% through the swept-k range, so the rank-k ID-error curves (rows 3-4 of the
-% conditioning figure) have a clear knee: a leading band of "significant" directions
-% decaying gently, a gentle mid decay, a SHARP cliff (a few indices, ~100x drop)
-% near the middle of the swept k, then a gentle tail. The optimal rank-k error is
-% then nearly flat before the cliff and plummets across it, so the conditioning
-% penalty (method ID error sitting above the projection optimum) is legible before
-% the cliff and the optimum drops sharply at it. Strictly decreasing so the singular
-% values stay distinct (no degenerate subspace -> V is exactly the prescribed family
-% vectors). Breakpoints scale with r.
-b1 = max(3, round(0.10 * r));                   % leading band end
-b2 = max(b1 + 5, round(0.50 * r));              % cliff start (~mid swept-k)
-bc = min(r - 1, b2 + max(3, round(0.04 * r)));  % cliff end (sharp: a few indices)
+% A deliberately structured, strictly decreasing spectrum: a steep initial decay
+% (the top ~5% of directions carry most of the energy, so the relative rank-k error
+% drops below 1 quickly), a gentle decay, then a SHARP cliff (a few indices, ~80x
+% drop) at k ~ 0.167*r, then a gentle tail. The optimal rank-k error falls steeply
+% at first and plummets across the cliff, giving the rank-k ID-error rows a clear
+% knee there. Strictly decreasing so the singular values stay distinct (no
+% degenerate subspace -> V is exactly the prescribed family vectors). Breakpoints
+% scale with r.
+b1 = max(3, round(0.05 * r));                   % steep initial decay end
+b2 = max(b1 + 5, round(0.167 * r));             % cliff start (~k=50 for r=300)
+bc = min(r - 1, b2 + max(3, round(0.025 * r))); % cliff end (sharp: a few indices)
 s = zeros(r, 1);
-s(1:b1)      = linspace(1.0, 0.3, b1);                          % leading band
-s(b1+1:b2)   = logspace(log10(0.3),  log10(0.05), b2 - b1);     % gentle mid decay
-s(b2+1:bc)   = logspace(log10(0.05), log10(5e-4), bc - b2);     % SHARP cliff (~100x)
+s(1:b1)      = logspace(log10(1.0),  log10(0.1),  b1);          % steep initial decay
+s(b1+1:b2)   = logspace(log10(0.1),  log10(0.04), b2 - b1);     % gentle decay to the cliff
+s(b2+1:bc)   = logspace(log10(0.04), log10(5e-4), bc - b2);     % SHARP cliff (~80x)
 s(bc+1:r)    = logspace(log10(5e-4), log10(1e-6), r - bc);      % gentle tail
 end
 
