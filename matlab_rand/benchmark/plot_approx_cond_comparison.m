@@ -52,25 +52,25 @@ methods = {'bsqr_rand', 'randomized BSQR', C.bsqr; ...
 % Frobenius and spectral; row 2 (max|R11^{-1}R12|) is max-norm in both.
 is2 = any(strcmpi(opt.norm, {'2', 'spec', 'spectral'}));
 if is2
-    need = {'specinv', 'osinsky2', 'proj_spec', 'id_spec', 'noisy_id_spec'};
+    need = {'specinv', 'osinsky2', 'proj_spec', 'id_spec', 'svdopt_spec'};
     if ~all(ismember(need, T.Properties.VariableNames))
         warning('CSV lacks spectral columns (%s); re-run run_approx_cond_comparison.', ...
             strjoin(need, ', ')); return;
     end
     T.condratio = T.specinv ./ T.osinsky2;
     stem = 'fig_approx_cond_quality_spec';
-    rowspec = {'condratio',     '||R_{11}^{-1}||_2 / bound',          '',                   ''; ...
-               'maxT',          'max |R_{11}^{-1}R_{12}|',            '',                   ''; ...
-               'id_spec',       'rank-k ID error (2-norm) / ||A||_2', 'proj_spec',          'svdopt_spec'; ...
-               'noisy_id_spec', 'noisy ID error (2-norm) / ||A||_2',  'noisy_id_spec_proj', 'svdopt_spec'};
+    rowspec = {'condratio',  '||R_{11}^{-1}||_2 / bound',           ''; ...
+               'maxT',       'max |R_{11}^{-1}R_{12}|',             ''; ...
+               'id_spec',    'rank-k ID error (2-norm) / ||A||_2',  'svdopt_spec'; ...
+               'proj_spec',  'projection error (2-norm) / ||A||_2', 'svdopt_spec'};
     normlabel = 'spectral';
 else
     T.condratio = T.frobinv ./ T.osinsky;
     stem = 'fig_approx_cond_quality';
-    rowspec = {'condratio',    '||R_{11}^{-1}||_F / bound',          '',                  ''; ...
-               'maxT',         'max |R_{11}^{-1}R_{12}|',            '',                  ''; ...
-               'id_err',       'rank-k ID error / ||A||_F',          'proj_frob',         'svdopt_frob'; ...
-               'noisy_id_err', 'noisy ID error / ||A||_F',           'noisy_id_err_proj', 'svdopt_frob'};
+    rowspec = {'condratio',  '||R_{11}^{-1}||_F / bound',           ''; ...
+               'maxT',       'max |R_{11}^{-1}R_{12}|',             ''; ...
+               'id_err',     'rank-k ID error / ||A||_F',           'svdopt_frob'; ...
+               'proj_frob',  'projection error / ||A||_F',          'svdopt_frob'};
     normlabel = 'Frobenius';
 end
 nr = size(rowspec, 1);
@@ -80,8 +80,7 @@ tl = tiledlayout(fig, nr, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
 ax = [];
 for ri = 1:nr
     col = rowspec{ri, 1};
-    projcol = rowspec{ri, 3};        % T_proj overlay column ('' = none)
-    svdoptcol = rowspec{ri, 4};      % SVD best-rank-k lower-bound column ('' = none)
+    svdoptcol = rowspec{ri, 3};      % SVD best-rank-k lower-bound column ('' = none)
     for fi = 1:nf
         fam = fams(fi); base = T.family == fam;
         ax = nexttile(tl); hold(ax, 'on');
@@ -89,15 +88,9 @@ for ri = 1:nr
         if strcmp(col, 'condratio')
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');     % the Osinsky bound
         end
-        for mi = 1:size(methods, 1)                              % solid: V_k-frame T
+        for mi = 1:size(methods, 1)                              % solid per-method curve
             band_line(ax, T(base & T.method == methods{mi, 1}, :), col, ...
                 methods{mi, 3}, methods{mi, 2});
-        end
-        if ~isempty(projcol)                                     % thin dashed: T_proj
-            for mi = 1:size(methods, 1)
-                proj_coeff_line(ax, T(base & T.method == methods{mi, 1}, :), projcol, ...
-                    methods{mi, 3}, [methods{mi, 2}, ' (proj. coeffs)']);
-            end
         end
         if ~isempty(svdoptcol)                                   % black dotted: SVD lower bound
             svdopt_line(ax, T(base, :), svdoptcol);
@@ -109,13 +102,10 @@ for ri = 1:nr
     end
 end
 lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
-eps_str = '';
-if ismember('noise_rel', T.Properties.VariableNames)
-    eps_str = sprintf(' (noise \\epsilon=%.0e)', T.noise_rel(1));
-end
-title(tl, {['Conditioning, coefficient magnitude, and rank-k ID error (noiseless & noisy', ...
-    eps_str, ') -- ', normlabel, ' norm'], ...
-    'ID rows: solid = T (V_k-frame), dashed = T_{proj} (projection), dotted = best rank-k (SVD)'});
+title(tl, {['Conditioning, coefficient magnitude, ID error, and projection error -- ', ...
+    normlabel, ' norm'], ...
+    ['Rows 3-4: rank-k ID error (oblique V_k-frame T) and orthogonal-projection error ', ...
+    '(median, min/max band); dotted = best rank-k error (SVD), the absolute lower bound']});
 save_fig(fig, fullfile(opt.plotdir, stem), opt.formats);
 end
 
@@ -130,18 +120,6 @@ fill(ax, [x; flipud(x)], [ylo; flipud(yhi)], color, 'FaceAlpha', 0.15, ...
 plot(ax, x, ym, '-', 'Color', color, 'LineWidth', 1.5, 'DisplayName', name);
 end
 
-function proj_coeff_line(ax, sub, col, color, name)
-% Thin dashed, mean-only line (per method) for the projection-coefficient (T_proj)
-% variant of an ID error, overlaid on the solid V_k-frame (T) line so the two
-% coefficient choices read off the same panel. On the noiseless ID row this is the
-% orthogonal-projection error itself (P_S A = A(:,S)[I, T_proj]), i.e. that method's
-% own conditioning-blind lower bound -- so the solid T line always sits above it.
-if isempty(sub); return; end
-[x, ym] = agg_by_k(sub, col);
-plot(ax, x, ym, '--', 'Color', color, 'LineWidth', 1.0, 'Marker', 'none', ...
-    'DisplayName', name);
-end
-
 function svdopt_line(ax, sub, col)
 % Best-possible rank-k error (SVD truncation): the absolute lower bound, below any
 % column-selection projection or ID error. Method-independent (constant per k),
@@ -152,13 +130,14 @@ plot(ax, x, ym, 'k:', 'LineWidth', 1.0, 'DisplayName', 'best rank-k (SVD)');
 end
 
 function [x, ym, ylo, yhi] = agg_by_k(sub, col)
-% Center = seed mean; band = seed min/max, consistent with the other rand figures
-% (and with 20 trials a 5/95 band would barely differ).
+% Center = seed median; band = seed min/max (with 20 trials a 5/95 band barely
+% differs). Median is robust to the occasional rejection_rpqr outlier seed; the
+% min/max band still shows the full spread.
 x = unique(sub.k); ym = zeros(size(x)); ylo = ym; yhi = ym;
 for i = 1:numel(x)
     v = sub.(col)(sub.k == x(i)); v = v(isfinite(v));
     if isempty(v); v = NaN; end
-    ym(i) = mean(v); ylo(i) = min(v); yhi(i) = max(v);
+    ym(i) = median(v); ylo(i) = min(v); yhi(i) = max(v);
 end
 end
 

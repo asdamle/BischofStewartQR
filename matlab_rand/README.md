@@ -189,17 +189,17 @@ gets the same coefficient row.)
 error depends only on the *span* of the selected columns, `||R11^{-1}||` is
 invisible to it (both methods come out near-optimal above). This companion measures
 the basis-dependent quantities a CUR / interpolative-decomposition pipeline
-actually pays for: `||R11^{-1}||_F / bound`, the interpolation-coefficient
-magnitude `max|R11^{-1}R12|`, and the **rank-k ID reconstruction error**, split into
-its *noiseless* part (the oblique leading-k coefficients already push it above the
-orthogonal-projection optimum by a factor growing with `||R11^{-1}||`) and a *noisy*
-part (measurement noise on the selected columns propagated through `T ~ ||R11^{-1}||`).
-In the ID-error rows the dashed line is **each method's own** orthogonal-projection
-error (its conditioning-blind lower bound, `= A(:,S)[I,T_proj]`), and the black
-dotted line is the **best-possible rank-k error (SVD truncation)** — the absolute
-lower bound below any column selection. So each solid (oblique-`T`) line sits above
-its own dashed projection, which sits above the dotted SVD optimum.
-Families are the leverage profiles that make candidate columns near-collinear:
+actually pays for, over four rows: `||R11^{-1}||_F / bound`, the interpolation-
+coefficient magnitude `max|R11^{-1}R12|`, the **rank-k ID reconstruction error**
+(row 3, with the oblique leading-`k` coefficients `T` — above the projection optimum
+by a factor growing with `||R11^{-1}||`), and the **orthogonal-projection error**
+(row 4, the conditioning-blind best fit in `span(A(:,S))`, near-identical per method).
+Both error rows include the black-dotted **best-possible rank-k error (SVD
+truncation)**, the absolute lower bound below any column selection — so the story
+reads as: projection (row 4) ≈ SVD optimum for both methods, but the oblique ID
+coefficients (row 3) lift `rejection_rpqr` well above BSQR. (Lines are seed medians;
+shaded bands are seed min/max. The runner also records a noisy-ID variant, not
+plotted.) Families are the leverage profiles that make candidate columns near-collinear:
 `gaussian` (control), `spiked_leverage`, `collinear_cluster`. Swept over **every
 `k` up to 80** (linear axis); the prescribed spectrum has a sharp cliff at `k~50`
 so the ID-error rows show a clear knee.
