@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: "BSQR — Bischof–Stewart column-pivoted QR"
+authors:
+  - family-names: Damle
+    given-names: Anil
+    email: asdamle@gmail.com
+version: 1.0.0
+license: MIT
+repository-code: "https://github.com/asdamle/BischofStewartQR"
+# TODO: add `date-released: YYYY-MM-DD` once the release date is set.
+# TODO: add `doi: 10.xxxx/xxxxx` once a DOI is assigned (e.g. via Zenodo).
+# TODO: once the accompanying paper is published, fill in and uncomment the
+# preferred-citation block below so citation tools point at the paper.
+# preferred-citation:
+#   type: article
+#   title: "<paper title>"
+#   authors:
+#     - family-names: Damle
+#       given-names: Anil
+#   year: <year>
+#   doi: "10.xxxx/xxxxx"
+#   # journal: "<journal name>"        # for a journal article
+#   # url: "https://arxiv.org/abs/xxxx.xxxxx"  # for a preprint
