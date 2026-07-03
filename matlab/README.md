@@ -11,6 +11,23 @@ R = bsqr(A)
 [Q,R,E_or_p,R11invR12] = bsqr(A, 'return_rinv_r12', true)
 ```
 
+Outputs, for `A` `m×n` and `k` factorization steps (default `k = min(m,n)`):
+
+- `R`: `k×n` upper-trapezoidal factor of the *permuted* columns; `R(1:k,1:k)` is
+  `R11`, `R(:,k+1:n)` is `R12`. For the default `k = min(m,n)`,
+  `A(:,p) = Q*R` (equivalently `A*E = Q*R`); with early stop (`k < min(m,n)`)
+  that holds only for the selected block, `A(:,p(1:k)) = Q*R(:,1:k)`, and
+  `R12 = Q'*A(:,p(k+1:n))` is the unselected columns' projection onto
+  `span(Q)`. With a single output the MEX backend skips materializing `Q`.
+- `Q`: `m×k` economy factor with orthonormal columns.
+- `E_or_p`: the permutation — an `n×n` permutation matrix `E` with
+  `A*E = A(:,p)` (`'matrix'`, the default, matching `qr(A)`'s three-output
+  form), or the `1×n` index row `p` itself (`'vector'`).
+- `R11invR12`: `k×(n−k)` matrix `R11^{-1}R12`, read directly from the kernel
+  workspace (no extra triangular solve); `[]` unless `'return_rinv_r12'` is true.
+- `trace` (5th output, requires `'trace', true`): per-step validation trace,
+  see the option below.
+
 Name-value options:
 
 - `'k'`: early-stop step count (default `min(size(A))`)

@@ -4,17 +4,42 @@ function varargout = bsqr(A, varargin)
 %   [Q,R] = BSQR(A)
 %   [Q,R,E_OR_P] = BSQR(A)
 %   [Q,R,E_OR_P,R11INV_R12] = BSQR(A,'return_rinv_r12',true)
+%   [Q,R,E_OR_P,R11INV_R12,TRACE] = BSQR(A,'trace',true)
+%
+% Outputs (for A m-by-n and k factorization steps, default k = min(m,n)):
+%   R          - k-by-n upper-trapezoidal factor of the PERMUTED columns;
+%                R(1:k,1:k) is R11, R(:,k+1:n) is R12. For the default
+%                k = min(m,n), A(:,p) = Q*R (equivalently A*E = Q*R). With
+%                early stop (k < min(m,n)) that holds only for the selected
+%                block, A(:,p(1:k)) = Q*R(:,1:k); the trailing block
+%                R12 = Q'*A(:,p(k+1:n)) is the unselected columns' projection
+%                onto span(Q). With a single output the MEX backend skips
+%                materializing Q.
+%   Q          - m-by-k economy factor with orthonormal columns.
+%   E_OR_P     - the permutation, as an n-by-n permutation matrix E with
+%                A*E = A(:,p) ('pivot_format','matrix', the default, matching
+%                qr(A)'s three-output form) or as the 1-by-n index row p
+%                itself ('pivot_format','vector').
+%   R11INV_R12 - k-by-(n-k) matrix R11^{-1}*R12, read directly from the
+%                kernel workspace (no extra triangular solve); [] unless
+%                'return_rinv_r12' is true.
+%   TRACE      - per-step validation trace; requires 'trace',true (below).
 %
 % Name-value options:
 %   'k'                - number of BSQR steps (default min(m,n))
 %   'return_rinv_r12'  - logical flag to return R11^{-1}R12 (default false)
 %   'pivot_format'     - 'matrix' (default) or 'vector'
 %   'backend'          - 'auto' (default), 'mfile', or 'mex'
+%   'norm_recomp_tol'  - running column-norm recompute safeguard, in [0,1]
+%                        (default sqrt(eps)): a downdated squared norm that
+%                        decays past this fraction of its last exact value is
+%                        recomputed from scratch (Businger-Golub safeguard)
+%   'check_finite'     - validate that A is finite (default true)
 %   'trace'            - logical flag enabling the per-step validation
 %                        trace as a fifth output: a struct with fields
-%                        'crit' (criterion value of the selected pivot)
-%                        and 'nrecomp' (norm-recompute events per step);
-%                        see docs/VALIDATION.md (V4)
+%                        'crit' (1-by-k, criterion value of the selected
+%                        pivot) and 'nrecomp' (1-by-k, norm-recompute events
+%                        per step); see docs/VALIDATION.md (V4)
 
 if nargout > 5
     error('bsqr:TooManyOutputs', 'bsqr supports at most 5 outputs.');
