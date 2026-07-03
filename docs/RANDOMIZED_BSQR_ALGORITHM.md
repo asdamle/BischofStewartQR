@@ -150,9 +150,11 @@ threshold (and the bound) proportionally.
   `c = ∞`), the input is numerically rank-deficient for this `k`; the algorithm
   stops with an error rather than propagating `∞` into `f` and `R₁₁`.
 
-**Outputs.** The permutation with `J` first, the accumulated Householder
-reflectors (an implicit `Q`), `R₁₁`, instrumentation, and — on request, via one
-extra reflector apply to the unselected columns — `R₁₂`.
+**Outputs.** The permutation with `J` first; the economy orthogonal factor `Q`
+(`m×k`), accumulated lazily from the stored Householder reflectors — one
+`O(mk²)` `dorgqr` pass, skipped when only the permutation is requested; `R₁₁`;
+instrumentation; and — on request, via one extra reflector apply to the
+unselected columns — `R₁₂`.
 
 ## 5. Cost
 

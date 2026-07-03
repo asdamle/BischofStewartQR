@@ -7,7 +7,7 @@ function startup(varargin)
 %
 %       R = bsqr(A)                            % deterministic BS pivoted QR
 %       [Q, R, p] = bsqr(A)
-%       [p, reflectors, R11] = bsqr_rand(A)    % randomized variant
+%       [p, Q, R11] = bsqr_rand(A)             % randomized variant
 %
 %   Both dispatch to the compiled MEX backend by default; pass
 %   'backend','mfile' for the pure-MATLAB reference implementation.
@@ -30,7 +30,7 @@ backend = 'MEX';
 if ~(ok_det && ok_rand); backend = 'pure-MATLAB fallback for the ones that failed'; end
 fprintf(['\nBSQR ready (%s).\n', ...
     '  R = bsqr(A)              [Q,R,p] = bsqr(A)            deterministic BS pivoted QR\n', ...
-    '  [p,reflectors,R11] = bsqr_rand(A)                    randomized variant\n', ...
+    '  [p,Q,R11] = bsqr_rand(A)                             randomized variant\n', ...
     'Pass ''backend'',''mfile'' for the pure-MATLAB reference; see the matlab/ and\n', ...
     'matlab_rand/ READMEs.\n'], backend);
 end

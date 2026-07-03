@@ -59,7 +59,7 @@ for fi = 1:numel(opt.families)
             M = rand_test_matrix(fam, k, n, seed);
             os = sqrt(k * (n - k + 1));
 
-            % --- randomized BSQR (MEX, [p,reflectors,R11], default block) ---
+            % --- randomized BSQR (MEX, [p,Q,R11], default block) ---
             % Norm-weighted sampling, matching rejection_rpqr's squared-column-norm
             % sampling -- the apples-to-apples choice (and the documented one for
             % concentrated leverage).

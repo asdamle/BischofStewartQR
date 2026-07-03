@@ -8,16 +8,20 @@ function results = run_rand_benchmarks(varargin)
 %       overhead for both and is not part of either algorithm.
 %     * timeit() handles warm-up and returns a robust median; only the kernel
 %       call is inside the timed thunk (matrix generation is outside).
-%     * Deterministic baseline: bsqr_mex(M,'k',k) with ONE output (R only).
-%       That is the cheapest deterministic call that still performs the column
-%       selection; it forms R12 as an unavoidable byproduct (the O(n*k^2) work
-%       the randomized variant skips) but does NOT materialize Q.
-%     * Randomized: bsqr_rand_mex(...) with THREE outputs [p, reflectors, R11]
-%       -- the "R12 not needed" product. No Q, no R12. Norm-weighted (column-norm)
-%       sampling, the standard choice for cross-method comparisons.
-%     * Built-in baseline: qr(M,'econ','vector') -- LAPACK dgeqp3, a different,
-%       vendor-tuned classical algorithm. spd_qr = t_qr / t_rand shows whether
-%       the randomized method beats the library call.
+%     * Deterministic baseline: bsqr_mex(M,'k',k) with THREE outputs [Q,R,p],
+%       matching the publication convention (Q, R, p materialized on every
+%       side). Forming Q is one O(k^3) dorgqr here (m = k in the GKS setting),
+%       invisible next to the kernel's O(n*k^2) scan; R12 arrives as an
+%       unavoidable byproduct of that scan (the work the randomized variant
+%       skips).
+%     * Randomized: bsqr_rand_mex(...) with THREE outputs [p, Q, R11] -- the
+%       "R12 not needed" product. Q is the economy factor via dorgqr (O(m*k^2),
+%       n-independent). No R12. Norm-weighted (column-norm) sampling, the
+%       standard choice for cross-method comparisons.
+%     * Built-in baseline: qr(M,'econ','vector') with three outputs [Q,R,p] --
+%       LAPACK dgeqp3, a different, vendor-tuned classical algorithm.
+%       spd_qr = t_qr / t_rand shows whether the randomized method beats the
+%       library call.
 %
 % Name-value options: 'sizes' (cell of [k n]), 'seed', 'block_size',
 %   'family' (see rand_test_matrix), 'outdir'.
@@ -58,8 +62,8 @@ for ci = 1:numel(opt.sizes)
     M = rand_test_matrix(opt.family, k, n, opt.seed + ci);
     if isempty(opt.block_size); bs = k; else; bs = opt.block_size; end   % batched default block
 
-    t_det = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
-    Rdet = bsqr_mex(M, 'k', k, 'check_finite', false);
+    t_det = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 3);
+    [~, Rdet, ~] = bsqr_mex(M, 'k', k, 'check_finite', false);
     frobinv_det = norm(1 ./ svd(triu(Rdet(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
 
     % Built-in column-pivoted QR (LAPACK dgeqp3): vendor-tuned classical baseline.

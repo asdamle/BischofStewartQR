@@ -101,7 +101,11 @@ randomized kernel is essentially **n-independent**, so the speedup grows linearl
 in `n` for `k << n`.
 
 Measured (Apple Silicon, MEX, k=64, `gaussian` orthonormal rows, default block
-`ceil(k/2)=32`, norm-weighted sampling, `t_rand` is `[p,reflectors,R11]` only):
+`ceil(k/2)=32`, norm-weighted sampling, `t_rand` is the default `[p,Q,R11]`
+product — measured before the lazy economy-`Q` output was added to it and
+before the deterministic baseline was widened to `[Q,R,p]`; both changes are
+n-independent `O(k³)`-scale `dorgqr` calls, so rerun numbers should be within
+noise of these):
 
 | size       | speedup vs det | speedup vs dgeqp3 |
 |------------|---------------:|------------------:|
@@ -124,10 +128,12 @@ the speedup is several × higher again (e.g. 345× vs det at 64×64000).
 
 ## 5. Outputs (`matlab_rand/bsqr_rand.m`)
 
-Default product (the timed path): `[p, reflectors, R11]`.
+Default product (the timed path): `[p, Q, R11]`.
 - `p` — permutation row vector; `p(1:k)` is the selected column subset.
-- `reflectors` — `struct('V', m×k unit-diagonal reflector store, 'tau', k×1, ...)`;
-  materialize Q with `bsqr_rand_formQ`.
+- `Q` — `m×k` economy orthogonal factor with `Q'*A(:,p(1:k)) = R11`. Formed
+  lazily (only when the output is requested) from the kernel's accumulated
+  Householder reflectors — LAPACK `dorgqr` in the MEX, one `O(m k²)`
+  n-independent pass. `p = bsqr_rand(A)` never pays for it.
 - `R11` — `k×k` upper-triangular factor of `A(:,p(1:k))`.
 
 Optional: `[..., stats]` (instrumentation, always cheap) and `[..., R12]`
@@ -197,12 +203,14 @@ is built to time the *kernels* and nothing else, and to compare fairly:
   identical overhead for both and is not part of either algorithm.
 - Only the kernel call is inside the `timeit` thunk; matrix generation is
   outside. `timeit` supplies warm-up and a robust median.
-- **Deterministic baseline:** `bsqr_mex(M,'k',k)` with one output (R only). This
-  is the cheapest deterministic call that still performs the selection; it forms
-  R12 as an unavoidable byproduct (the `O(nk^2)` work the randomized variant
-  skips) but does **not** materialize Q.
-- **Randomized:** `bsqr_rand_mex(...)` with three outputs `[p, reflectors, R11]`
-  — the "R12 not needed" product. No Q, no R12.
+- **Deterministic baseline:** `bsqr_mex(M,'k',k)` with three outputs `[Q,R,p]`,
+  matching the publication convention (Q, R, p materialized on every side) and
+  the built-in baseline. Forming Q is one `O(k³)` `dorgqr` (m = k in the GKS
+  setting), invisible next to the kernel's `O(nk²)` scan; R12 arrives as an
+  unavoidable byproduct of that scan (the work the randomized variant skips).
+- **Randomized:** `bsqr_rand_mex(...)` with three outputs `[p, Q, R11]` — the
+  "R12 not needed" product. Q is the economy factor via `dorgqr` (`O(mk²)`,
+  n-independent); no R12.
 
 Kernel optimizations landed (MEX), in order of impact for `k << n`:
 
@@ -288,7 +296,7 @@ is **omitted from the plots** to keep the narrative on the per-step-bounded
   `n = 8000 → 32000 → 64000` (vs `19× → 70× → 103×` without R12). It still wins —
   one clean `Q'`-apply versus the deterministic kernel's per-step W-maintenance
   over every column — but the advantage here is a modest constant, not orders of
-  magnitude. The big win is specifically the *R12-not-needed* (subset + reflectors
+  magnitude. The big win is specifically the *R12-not-needed* (subset + Q
   + R11) use case.
 - **Conditioning.** `running_mean` keeps `||R11^{-1}||_F` far under the bound on
   *all* families (ratio ≈ 0.007–0.28 at the default block) and within ≈ 1.0–1.6× of

@@ -1,16 +1,20 @@
 function varargout = bsqr_rand(A, varargin)
 %BSQR_RAND Randomized Bischof-Stewart column selection.
-%   [P, REFLECTORS, R11] = BSQR_RAND(A) selects k = min(size(A)) columns of A
+%   [P, Q, R11] = BSQR_RAND(A) selects k = min(size(A)) columns of A
 %   by the randomized acceptance rule and returns:
-%     P          - permutation row vector; P(1:k) are the selected columns
-%     REFLECTORS - struct('V', m-by-k unit-diagonal reflector store,
-%                          'tau', k-by-1, 'm', m, 'k', k); use BSQR_RAND_FORMQ
-%     R11        - k-by-k upper-triangular factor of A(:,P(1:k))
+%     P   - 1-by-n permutation row vector; P(1:k) are the selected columns,
+%           P(k+1:n) the unselected ones
+%     Q   - m-by-k economy orthogonal factor with A(:,P(1:k)) = Q*R11
+%           (equivalently Q'*A(:,P(1:k)) = R11). Formed lazily -- only when
+%           this output is requested -- from the kernel's accumulated
+%           Householder reflectors (LAPACK dorgqr in the MEX), one O(m*k^2)
+%           pass; callers that want only P never pay for it.
+%     R11 - k-by-k upper-triangular factor of A(:,P(1:k))
 %
-%   [P, REFLECTORS, R11, STATS]      also returns instrumentation (see below).
-%   [P, REFLECTORS, R11, STATS, R12] also returns R12 = Q(:,1:k)'*A(:,P(k+1:n)),
-%       but ONLY when 'return_r12' is true (it costs an extra O(n*k^2) pass and
-%       is off by default).
+%   [P, Q, R11, STATS]      also returns instrumentation (see below).
+%   [P, Q, R11, STATS, R12] also returns the k-by-(n-k) coupling block
+%       R12 = Q'*A(:,P(k+1:n)), but ONLY when 'return_r12' is true (it costs
+%       an extra O(n*k^2) pass and is off by default).
 %
 %   By default the kernel runs in-block ('batched', see below): each sampled
 %   block is brought to the current frame once, then BSQR is run within it to
@@ -74,7 +78,7 @@ function varargout = bsqr_rand(A, varargin)
 %   (the GKS setting, m = k). The algorithm still runs for general A, but
 %   only the orthonormal-row case is covered by the theory.
 %
-%   See also BSQR_RAND_FORMQ, docs/RANDOMIZED_BSQR_PLAN.md.
+%   See also docs/RANDOMIZED_BSQR_PLAN.md, docs/RANDOMIZED_BSQR_ALGORITHM.md.
 
 if nargout > 5
     error('bsqr_rand:TooManyOutputs', 'bsqr_rand supports at most 5 outputs.');
@@ -91,9 +95,12 @@ nout = max(nargout, 1);
 out = cell(1, nout);
 if should_use_mex(opts.backend)
     ensure_bsqr_rand_mex_ready();
-    [out{:}] = bsqr_rand_mex(A, varargin{:});
+    [out{:}] = bsqr_rand_mex(A, varargin{:});   % forms Q itself (dorgqr) when requested
 else
     [out{:}] = bsqr_rand_mfile(A, opts);
+    if nout >= 2
+        out{2} = bsqr_rand_formQ(out{2});       % lazy Q from the reflector store
+    end
 end
 varargout = out;
 end

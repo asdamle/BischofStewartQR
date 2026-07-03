@@ -911,17 +911,26 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     plhs[0] = pArr;
     if (nlhs == 1) return;
 
-    const char *rfields[] = {"V", "tau", "m", "k"};
-    mxArray *refl = mxCreateStructMatrix(1, 1, 4, rfields);
-    mxArray *Vm = mxCreateDoubleMatrix(m, k, mxREAL);
-    std::copy(V.begin(), V.end(), mxGetPr(Vm));
-    mxSetField(refl, 0, "V", Vm);
-    mxArray *taum = mxCreateDoubleMatrix(k, 1, mxREAL);
-    std::copy(tau.begin(), tau.end(), mxGetPr(taum));
-    mxSetField(refl, 0, "tau", taum);
-    mxSetField(refl, 0, "m", mxCreateDoubleScalar(static_cast<double>(m)));
-    mxSetField(refl, 0, "k", mxCreateDoubleScalar(static_cast<double>(k)));
-    plhs[1] = refl;
+    // Q (economy, m x k), formed lazily -- only when this output is requested.
+    // V is already in geqrf packed layout (reflector tails below the diagonal;
+    // dorgqr ignores the diagonal and above), so accumulate straight into the
+    // output buffer with one dorgqr call, O(m k^2).
+    mxArray *Qm = mxCreateDoubleMatrix(m, k, mxREAL);
+    if (k > 0) {
+        double *q = mxGetPr(Qm);
+        std::copy(V.begin(), V.end(), q);
+        ptrdiff_t mm = static_cast<ptrdiff_t>(m), kk = static_cast<ptrdiff_t>(k), info = 0;
+        double wq = 0.0;
+        ptrdiff_t lwork = -1;
+        dorgqr(&mm, &kk, &kk, q, &mm, tau.data(), &wq, &lwork, &info);  // workspace query
+        lwork = std::max<ptrdiff_t>(static_cast<ptrdiff_t>(wq), kk);
+        std::vector<double> work(static_cast<size_t>(lwork));
+        dorgqr(&mm, &kk, &kk, q, &mm, tau.data(), work.data(), &lwork, &info);
+        if (info != 0) {
+            fail("bsqr_rand:LapackError", "dorgqr failed to form Q.");
+        }
+    }
+    plhs[1] = Qm;
     if (nlhs == 2) return;
 
     mxArray *R11m = mxCreateDoubleMatrix(k, k, mxREAL);

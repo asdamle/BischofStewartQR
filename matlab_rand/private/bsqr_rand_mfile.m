@@ -18,7 +18,9 @@ function [p, reflectors, R11, stats, R12] = bsqr_rand_mfile(A, opts)
 %   rounding ties) it falls back to the global minimizer, guaranteed to exist.
 %
 %   Returns the column subset (p(1:k)), the accumulated reflectors, R11, an
-%   instrumentation struct, and -- only when requested -- R12.
+%   instrumentation struct, and -- only when requested -- R12. (The bsqr_rand
+%   dispatcher forms its public lazy Q output from the reflector store via
+%   bsqr_rand_formQ; the MEX backend uses LAPACK dorgqr instead.)
 
 Awork = double(A);
 [m, n] = size(Awork);

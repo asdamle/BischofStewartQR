@@ -21,15 +21,18 @@ in `matlab/` and `julia/`.
 addpath('matlab_rand'); addpath('matlab_rand/mex');   % mex auto-added by bsqr_rand
 
 M = orth(randn(2000, 32))';            % 32×2000, orthonormal rows (GKS setting)
-[p, reflectors, R11] = bsqr_rand(M);   % default product: subset + reflectors + R11
+[p, Q, R11] = bsqr_rand(M);            % default product: subset + economy Q + R11
 sel = p(1:32);                         % selected column indices
-Q   = bsqr_rand_formQ(reflectors);     % materialize Q on demand
 ```
+
+`Q` is the `m×k` economy factor with `Q'*M(:,p(1:k)) = R11`, formed lazily from
+the kernel's accumulated reflectors (LAPACK `dorgqr` in the MEX) only when the
+output is requested — `p = bsqr_rand(M)` never pays for it.
 
 `R12` is opt-in (it costs an extra `O(n k^2)` pass and is off by default):
 
 ```matlab
-[p, reflectors, R11, stats, R12] = bsqr_rand(M, 'return_r12', true);
+[p, Q, R11, stats, R12] = bsqr_rand(M, 'return_r12', true);
 ```
 
 ## Build the MEX backend
@@ -59,7 +62,7 @@ guarantees must hold.
 matlab -batch "addpath('matlab_rand'); addpath('matlab'); addpath('matlab_rand/benchmark'); run_rand_benchmarks"
 ```
 
-Compares the randomized selection (`[p, reflectors, R11]`, no `R12`) against the
+Compares the randomized selection (`[p, Q, R11]`, no `R12`) against the
 deterministic factor path and reports speedup, the conditioning ratio
 `||R11^{-1}||_F / sqrt(k(n-k+1))`, and candidate columns tested per pivot. Writes
 `benchmark/results/rand_timings.csv`.
@@ -241,6 +244,18 @@ mkdir -p ext_comparisons/data
 ```matlab
 run_approx_comparison('families', {'gmm_kernel', '<name>'});   % missing real names are skipped with a note
 ```
+
+## Outputs (`[p, Q, R11, stats, R12] = bsqr_rand(A, ...)`)
+
+For `A` `m×n` and `k` selected columns (default `k = min(m,n)`):
+
+| output | shape | meaning |
+|---|---|---|
+| `p` | `1×n` | permutation; `p(1:k)` is the selected subset (`A(:,p(1:k)) = Q*R11`), `p(k+1:n)` the unselected columns |
+| `Q` | `m×k` | economy orthogonal factor; formed lazily — only when the output is requested — from the kernel's accumulated reflectors (LAPACK `dorgqr` in the MEX), so `p = bsqr_rand(A)` never pays for it |
+| `R11` | `k×k` | upper-triangular factor of `A(:,p(1:k))` |
+| `stats` | struct | instrumentation (see the `stats` section below) |
+| `R12` | `k×(n−k)` | coupling block `Q'*A(:,p(k+1:n))`; **only** with `'return_r12', true` (an extra `O(nk^2)` pass) |
 
 ## Options (`bsqr_rand(A, 'name', value, ...)`)
 

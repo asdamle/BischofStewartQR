@@ -11,24 +11,24 @@ rng(seed);
 M = orth(randn(n, k))';
 end
 
-function check_factorization(testCase, M, p, reflectors, R11, k)
+function check_factorization(testCase, M, p, Q, R11, k)
 [m, n] = size(M);
 verifyEqual(testCase, sort(p), 1:n, 'p must be a permutation of 1:n');
 verifySize(testCase, R11, [k, k]);
 verifyEqual(testCase, R11, triu(R11), 'AbsTol', 0, 'R11 must be upper triangular');
+verifySize(testCase, Q, [m, k]);
 
 if k == 0
     return;
 end
-Qk = bsqr_rand_formQ(reflectors, k);          % m-by-k
 sel = p(1:k);
 scale = max(1, norm(M(:, sel), 'fro'));
 % Q' * A(:,sel) = R11
-verifyLessThan(testCase, norm(Qk' * M(:, sel) - R11, 'fro') / scale, 1e-10);
-% A(:,sel) = Q(:,1:k) * R11
-verifyLessThan(testCase, norm(M(:, sel) - Qk * R11, 'fro') / scale, 1e-10);
-% columns of Qk orthonormal
-verifyLessThan(testCase, norm(Qk' * Qk - eye(k), 'fro'), 1e-10);
+verifyLessThan(testCase, norm(Q' * M(:, sel) - R11, 'fro') / scale, 1e-10);
+% A(:,sel) = Q * R11
+verifyLessThan(testCase, norm(M(:, sel) - Q * R11, 'fro') / scale, 1e-10);
+% columns of Q orthonormal
+verifyLessThan(testCase, norm(Q' * Q - eye(k), 'fro'), 1e-10);
 end
 
 % ----- tests ---------------------------------------------------------------
@@ -38,8 +38,8 @@ cases = {[8, 40], [16, 64], [32, 200], [10, 10]};
 for c = 1:numel(cases)
     k = cases{c}(1); n = cases{c}(2);
     M = orthonormal_rows(k, n, 100 + c);
-    [p, reflectors, R11] = bsqr_rand(M, 'backend', 'mfile', 'seed', c);
-    check_factorization(testCase, M, p, reflectors, R11, k);
+    [p, Q, R11] = bsqr_rand(M, 'backend', 'mfile', 'seed', c);
+    check_factorization(testCase, M, p, Q, R11, k);
 end
 end
 
@@ -48,19 +48,18 @@ function testGeneralMatrix(testCase)
 rng(7);
 M = randn(20, 90);
 k = 12;
-[p, reflectors, R11] = bsqr_rand(M, 'k', k, 'backend', 'mfile', 'batched', false, 'seed', 3);
-check_factorization(testCase, M, p, reflectors, R11, k);
+[p, Q, R11] = bsqr_rand(M, 'k', k, 'backend', 'mfile', 'batched', false, 'seed', 3);
+check_factorization(testCase, M, p, Q, R11, k);
 end
 
 function testReturnR12(testCase)
 k = 12; n = 60;
 M = orthonormal_rows(k, n, 11);
-[p, reflectors, R11, ~, R12] = bsqr_rand(M, 'backend', 'mfile', ...
+[p, Q, R11, ~, R12] = bsqr_rand(M, 'backend', 'mfile', ...
     'seed', 5, 'return_r12', true);
-check_factorization(testCase, M, p, reflectors, R11, k);
-Qk = bsqr_rand_formQ(reflectors, k);
+check_factorization(testCase, M, p, Q, R11, k);
 verifySize(testCase, R12, [k, n - k]);
-verifyLessThan(testCase, norm(Qk' * M(:, p(k+1:n)) - R12, 'fro'), 1e-10);
+verifyLessThan(testCase, norm(Q' * M(:, p(k+1:n)) - R12, 'fro'), 1e-10);
 end
 
 function testR12RequiresOptIn(testCase)
@@ -74,10 +73,10 @@ end
 
 function testEdgeKZero(testCase)
 M = orthonormal_rows(5, 20, 1);
-[p, reflectors, R11, stats] = bsqr_rand(M, 'k', 0, 'backend', 'mfile');
+[p, Q, R11, stats] = bsqr_rand(M, 'k', 0, 'backend', 'mfile');
 verifyEqual(testCase, sort(p), 1:20);
 verifySize(testCase, R11, [0, 0]);
-verifySize(testCase, reflectors.V, [5, 0]);
+verifySize(testCase, Q, [5, 0]);
 verifyEqual(testCase, stats.total_tested, 0);
 end
 
@@ -86,8 +85,8 @@ function testEdgeKFull(testCase)
 rng(21);
 M = orth(randn(15, 15));
 k = 15;
-[p, reflectors, R11] = bsqr_rand(M, 'k', k, 'backend', 'mfile', 'seed', 1);
-check_factorization(testCase, M, p, reflectors, R11, k);
+[p, Q, R11] = bsqr_rand(M, 'k', k, 'backend', 'mfile', 'seed', 1);
+check_factorization(testCase, M, p, Q, R11, k);
 end
 
 function testDeterminismWithSeed(testCase)
@@ -107,8 +106,8 @@ opts = { ...
     {'threshold_mode', 'running_mean', 'sampling', 'normweighted', 'pick', 'best_in_block'}, ...
     {'threshold_mode', 'worstcase_allowance', 'sampling', 'normweighted', 'pick', 'first'}};
 for c = 1:numel(opts)
-    [p, reflectors, R11] = bsqr_rand(M, 'backend', 'mfile', 'seed', c, opts{c}{:});
-    check_factorization(testCase, M, p, reflectors, R11, 20);
+    [p, Q, R11] = bsqr_rand(M, 'backend', 'mfile', 'seed', c, opts{c}{:});
+    check_factorization(testCase, M, p, Q, R11, 20);
 end
 end
 
@@ -126,10 +125,10 @@ for batched = [false, true]   % both kernel paths: single-select and in-block
     for sampling = ["uniform", "normweighted"]
         for mode = ["running_mean", "worstcase_allowance"]
             for bs = [1, 7, 32]
-                [p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 4, ...
+                [p, Q, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 4, ...
                     'batched', batched, 'sampling', char(sampling), ...
                     'threshold_mode', char(mode), 'block_size', bs);
-                check_factorization(testCase, M, p, reflectors, R11, k);
+                check_factorization(testCase, M, p, Q, R11, k);
                 tol = 1e-9 * max(1, stats.Fhat(end));
                 verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
             end
@@ -148,9 +147,9 @@ repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(repo_root, 'matlab_rand', 'benchmark'));
 k = 16; n = 400;
 M = rand_test_matrix('needle', k, n, 23);
-[p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 2, ...
+[p, Q, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 2, ...
     'sampling', 'normweighted');
-check_factorization(testCase, M, p, reflectors, R11, k);
+check_factorization(testCase, M, p, Q, R11, k);
 verifyLessThanOrEqual(testCase, stats.f2(end), k * (n - k + 1) * (1 + 1e-8));
 end
 
@@ -162,11 +161,10 @@ if ~bsqr_rand_mex_available()
 end
 k = 14; n = 80;
 M = orthonormal_rows(k, n, 19);
-[p, reflectors, R11, ~, R12] = bsqr_rand(M, 'backend', 'mex', 'seed', 7, 'return_r12', true);
-check_factorization(testCase, M, p, reflectors, R11, k);
-Qk = bsqr_rand_formQ(reflectors, k);
+[p, Q, R11, ~, R12] = bsqr_rand(M, 'backend', 'mex', 'seed', 7, 'return_r12', true);
+check_factorization(testCase, M, p, Q, R11, k);
 verifySize(testCase, R12, [k, n - k]);
-verifyLessThan(testCase, norm(Qk' * M(:, p(k+1:n)) - R12, 'fro') / max(1, norm(R12, 'fro')), 1e-10);
+verifyLessThan(testCase, norm(Q' * M(:, p(k+1:n)) - R12, 'fro') / max(1, norm(R12, 'fro')), 1e-10);
 end
 
 function testMexPickFirst(testCase)
@@ -178,9 +176,9 @@ k = 16; n = 100;
 M = orthonormal_rows(k, n, 23);
 % pick only applies to the single-select path (the in-block path always takes
 % the in-block minimizer), so exercise it with batched=false.
-[p, reflectors, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 3, ...
+[p, Q, R11, stats] = bsqr_rand(M, 'backend', 'mex', 'seed', 3, ...
     'batched', false, 'pick', 'first');
-check_factorization(testCase, M, p, reflectors, R11, k);
+check_factorization(testCase, M, p, Q, R11, k);
 tol = 1e-9 * max(1, stats.Fhat(end));
 verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
 end
@@ -200,9 +198,9 @@ for fam = ["gaussian", "needle"]
     for bi = 1:numel(backends)
         for sampling = ["uniform", "normweighted"]
             for bs = [k, 2 * k]
-                [p, reflectors, R11, stats] = bsqr_rand(M, 'k', k, 'backend', backends{bi}, ...
+                [p, Q, R11, stats] = bsqr_rand(M, 'k', k, 'backend', backends{bi}, ...
                     'batched', true, 'block_size', bs, 'sampling', char(sampling), 'seed', 5);
-                check_factorization(testCase, M, p, reflectors, R11, k);
+                check_factorization(testCase, M, p, Q, R11, k);
                 tol = 1e-8 * max(1, stats.Fhat(end));
                 verifyLessThanOrEqual(testCase, stats.f2(:), stats.Fhat(:) + tol);
             end
@@ -245,9 +243,9 @@ for fam = ["coherent", "collinear_cluster", "needle"]
     M = rand_test_matrix(char(fam), k, n, 29);
     bound = k * (n - k + 1);
     for tol = [0, sqrt(eps), 1]   % pure-downdate / default / recompute-every-step
-        [p, reflectors, R11, stats] = bsqr_rand(M, 'k', k, 'backend', 'mex', ...
+        [p, Q, R11, stats] = bsqr_rand(M, 'k', k, 'backend', 'mex', ...
             'seed', 8, 'batched', true, 'norm_recomp_tol', tol);
-        check_factorization(testCase, M, p, reflectors, R11, k);
+        check_factorization(testCase, M, p, Q, R11, k);
         verifyLessThanOrEqual(testCase, stats.f2(:), ...
             stats.Fhat(:) + 1e-8 * max(1, stats.Fhat(end)));
         sv = svd(R11);                       % realized ||R11^{-1}||_F^2, inv-free
@@ -265,12 +263,12 @@ verifyError(testCase, @() bsqr_rand(M, 'backend', 'mfile', 'norm_recomp_tol', -0
     'bsqr_rand:InvalidNormRecompTol');
 verifyError(testCase, @() bsqr_rand(M, 'backend', 'mfile', 'norm_recomp_tol', 1.5), ...
     'bsqr_rand:InvalidNormRecompTol');
-[p, reflectors, R11] = bsqr_rand(M, 'backend', 'mfile', 'norm_recomp_tol', 1e-3, 'seed', 1);
-check_factorization(testCase, M, p, reflectors, R11, 8);
+[p, Q, R11] = bsqr_rand(M, 'backend', 'mfile', 'norm_recomp_tol', 1e-3, 'seed', 1);
+check_factorization(testCase, M, p, Q, R11, 8);
 if bsqr_rand_mex_available()
     verifyError(testCase, @() bsqr_rand(M, 'backend', 'mex', 'norm_recomp_tol', -0.1), ...
         'bsqr_rand:InvalidNormRecompTol');
-    [pm, rm, R11m] = bsqr_rand(M, 'backend', 'mex', 'norm_recomp_tol', 0.5, 'seed', 1);
-    check_factorization(testCase, M, pm, rm, R11m, 8);
+    [pm, Qm, R11m] = bsqr_rand(M, 'backend', 'mex', 'norm_recomp_tol', 0.5, 'seed', 1);
+    check_factorization(testCase, M, pm, Qm, R11m, 8);
 end
 end
