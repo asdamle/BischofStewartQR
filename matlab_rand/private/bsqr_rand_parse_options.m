@@ -51,7 +51,7 @@ if isempty(opts.block_size)
     if opts.batched
         opts.block_size = max(opts.k, 1);
     else
-        opts.block_size = rand_default_block(opts.k);   % ceil(k/2) clamped to [16,128]
+        opts.block_size = rand_default_block(opts.k);   % ceil(k/2) clamped to [16,64]
     end
 else
     opts.block_size = max(1, round(double(opts.block_size)));

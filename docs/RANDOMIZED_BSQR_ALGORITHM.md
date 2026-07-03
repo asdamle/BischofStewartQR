@@ -1,12 +1,11 @@
 # Randomized Bischof–Stewart Column Selection
 
-A description of the randomized column-selection algorithm implemented in
-`matlab_rand/` (`bsqr_rand`). It selects a well-conditioned set of `k` columns
-with the *same* worst-case guarantee on `‖R₁₁⁻¹‖` as the deterministic
-Bischof–Stewart pivoted QR, but at a cost that is essentially independent of the
-number of candidate columns `n`. The first part is a prose description; the second
-is a LaTeX draft of the same algorithm using the `algorithm` / `algpseudocode`
-packages.
+The randomized column-selection algorithm implemented in `matlab_rand/`
+(`bsqr_rand`). It selects `k` well-conditioned columns with the *same*
+worst-case guarantee on `‖R₁₁⁻¹‖` as deterministic Bischof–Stewart pivoted QR,
+but without the `O(n k²)` all-column scan that dominates the deterministic cost
+when `k ≪ n`. Sections 1–5 are prose; §6 is a LaTeX draft of the algorithm
+statement (`algorithm` / `algpseudocode`).
 
 ---
 
@@ -14,9 +13,9 @@ packages.
 
 Given `A ∈ ℝ^{m×n}` and a target `k ≤ min(m,n)`, choose an index set `J` of `k`
 columns. Let `A(:,J) = Q [R₁₁; 0]` be the (unpivoted) QR factorization of the
-selected columns, with `R₁₁ ∈ ℝ^{k×k}` upper triangular. The quality of the
-selection is measured by how small `‖R₁₁⁻¹‖` is — equivalently, how far the
-selected columns are from being linearly dependent.
+selected columns, with `R₁₁ ∈ ℝ^{k×k}` upper triangular. Selection quality is
+measured by `‖R₁₁⁻¹‖`: the smaller it is, the farther the selected columns are
+from linear dependence.
 
 The canonical setting is **orthonormal-row input**: `A` is `k×n` with `A Aᵀ = I_k`
 (for example, `A = Vₖᵀ`, the leading-`k` right singular vectors of some matrix to
@@ -27,25 +26,28 @@ bounds
 ‖R₁₁⁻¹‖_F ≤ √( k (n − k + 1) ),        ‖R₁₁⁻¹‖₂ ≤ √( 1 + k (n − k) ).
 ```
 
-The randomized algorithm maintains these same bounds.
+The randomized algorithm maintains these same bounds. (The spectral bound
+follows from the Frobenius one: orthonormal rows force `σ_max(R₁₁) ≤ 1`, so the
+other `k − 1` singular values of `R₁₁⁻¹` each contribute at least 1 to
+`‖R₁₁⁻¹‖_F²`.)
 
 ## 2. The deterministic criterion (background)
 
-Process columns one at a time. Suppose `i` columns have been selected, with
-triangular factor `R₁₁ ∈ ℝ^{i×i}` and accumulated orthogonal `Qᵢ` (a product of
-`i` Householder reflectors). Bring a candidate column `aⱼ` into the current frame,
-`x = Qᵢᵀ aⱼ`, and split it into a **head** `x_{1:i}` and a **tail** `x_{i+1:m}`.
-Define
+Columns are selected one at a time. After `i` selections we have the leading
+triangular block `R₁₁ ∈ ℝ^{i×i}` and an accumulated orthogonal `Qᵢ` (a product
+of `i` Householder reflectors). Bring a candidate column `aⱼ` into the current
+frame, `x = Qᵢᵀ aⱼ`, and split it into a **head** `x_{1:i}` and a **tail**
+`x_{i+1:m}`. Define
 
 ```
-ρⱼ²  = ‖x_{i+1:m}‖²            (the squared residual; ρⱼ is the new diagonal of R₁₁)
-wⱼ   = R₁₁⁻¹ x_{1:i}           (how the candidate is expressed in the current basis)
+ρⱼ²  = ‖x_{i+1:m}‖²            (the squared residual; ±ρⱼ is the next diagonal of R₁₁)
+wⱼ   = R₁₁⁻¹ x_{1:i}           (the candidate's coefficients in the selected basis)
 cⱼ   = (1 + ‖wⱼ‖²) / ρⱼ².      (the Bischof–Stewart criterion)
 ```
 
-The criterion is exactly the **growth of the squared inverse Frobenius norm**.
-Writing `f = ‖R₁₁⁻¹‖_F²`, the rank-one bordered-inverse formula gives, when column
-`j` is appended,
+The criterion is exactly the **growth of the squared inverse Frobenius norm**:
+writing `f_i = ‖R₁₁⁻¹‖_F²` after `i` selections, the rank-one bordered-inverse
+formula gives, when column `j` is appended,
 
 ```
 f_{i+1} = f_i + cⱼ.            (exact — Eq. (growth))
@@ -53,15 +55,15 @@ f_{i+1} = f_i + cⱼ.            (exact — Eq. (growth))
 
 So the criterion penalizes a candidate that is nearly in the span of the already
 selected columns (`‖wⱼ‖` large) or that has a small residual (`ρⱼ` small): either
-inflates `‖R₁₁⁻¹‖_F`. The deterministic kernel selects `argminⱼ cⱼ` at every step.
-Computing it requires `R₁₁⁻¹R₁₂` and the running residual norms for **all** trailing
-columns at every step — the `O(n k²)` work that dominates the short-wide (`k ≪ n`)
-regime.
+inflates `‖R₁₁⁻¹‖_F`. The deterministic kernel selects `argminⱼ cⱼ` at every step,
+which requires maintaining `R₁₁⁻¹R₁₂` and running residual norms for **all**
+trailing columns — the `O(n k²)` total work that dominates the short-wide
+(`k ≪ n`) regime.
 
 ## 3. Randomization: sample, don't scan
 
-The guarantee does not need the exact `argmin`. It only needs each step's increment
-`cⱼ` to keep the running `f` under a per-step threshold. Define the
+The guarantee does not need the exact `argmin` — only that each step's increment
+`cⱼ` keeps the running `f` under a per-step threshold. Define the
 **running-mean threshold**
 
 ```
@@ -72,32 +74,39 @@ For orthonormal-row input this is precisely the `ρ²`-weighted mean of the crit
 over the remaining columns (using `Σ ρⱼ² = k − i` and `Σ ‖wⱼ‖² = f_i − i`). Two
 consequences follow:
 
-1. **Feasibility.** Since the minimum is at most the mean, at least one remaining
-   column satisfies `cⱼ ≤ θᵢ` — so accepting *any* column that meets the threshold
-   never stalls the algorithm.
-2. **The bound.** Enforcing `cⱼ ≤ θᵢ` at every step telescopes (`f_{i+1} ≤
-   ((k−i+1)/(k−i)) f_i + (n−2i)/(k−i)`) to `f_k ≤ k(n−k+1)`, i.e. Osinsky's bound,
-   together with its per-singular-value refinement.
+1. **Feasibility.** The minimum is at most the mean, so at least one remaining
+   column satisfies `cⱼ ≤ θᵢ` — accepting *any* column that meets the threshold
+   can never stall the algorithm.
+2. **The bound.** Enforcing `cⱼ ≤ θᵢ` at every step preserves
+   `f_i ≤ F̂_i = i(n−i+1)/(k−i+1)` by induction (the per-step recursion
+   `f_{i+1} ≤ ((k−i+1) f_i + n − 2i)/(k−i)` maps `F̂_i` to exactly `F̂_{i+1}`),
+   hence `f_k ≤ F̂_k = k(n−k+1)` — Osinsky's bound, together with its
+   per-singular-value refinement (writeup Thm. 3.4 / Cor. 3.2).
 
-Because a constant fraction of columns clears the mean, we can **sample** a small
-block of candidates, bring only those up to date, and accept one that meets the
-threshold — never touching the columns we do not sample. This removes the `O(n)`
-per-step scan; the per-step work depends on the block size, not on `n`.
+In practice a large fraction of the remaining columns clears a mean threshold, so
+it suffices to **sample** a small block of candidates, bring only those up to
+date, and accept one that qualifies — never touching the columns we do not sample.
+(The rare block with no qualifying column is handled by the feasibility net of
+§4.) This removes the `O(n)` per-step scan; per-step work depends on the block
+size, not on `n`.
 
-Candidates are drawn **without replacement, weighted by their starting squared
-column norms** `gⱼ = ‖aⱼ‖²` (robust across leverage profiles), or uniformly when
-leverage is known to be flat. Weighted sampling uses Efraimidis–Spirakis keys
-`−log(uⱼ)/gⱼ`, `uⱼ ∼ Unif(0,1)`, taking the smallest keys.
+Within a block, candidates are drawn **without replacement, weighted by their
+initial squared column norms** `gⱼ = ‖aⱼ‖²` (robust across leverage profiles;
+uniform sampling is available when leverage is known to be flat), using
+Efraimidis–Spirakis keys `−log(uⱼ)/gⱼ`, `uⱼ ∼ Unif(0,1)`, smallest keys first.
+Sampled-but-rejected columns stay in the pool and can be drawn again in later
+blocks.
 
 ## 4. The algorithm (batched in-block selection — the default)
 
-Sampling a block and bringing it into the current frame costs one application of
-the accumulated reflectors — the dominant per-block cost. To amortize it, once a
-block is reduced we run Bischof–Stewart **within the block**: repeatedly take the
-in-block minimizer, append it, update `f` and re-derive `θ`, and downdate the rest
-of the block by the new reflector — continuing while the in-block minimizer still
-clears the (now updated) threshold. One expensive apply thus yields several
-selections, cutting the dominant cost from `O(k⁴)` to `O(k³)`.
+Bringing a sampled block into the current frame costs one application of the
+accumulated reflectors — the dominant per-block cost. To amortize it, once a
+block is reduced we run Bischof–Stewart **within the block**: repeatedly take
+the in-block minimizer, append it, update `f` and `θ`, and downdate the rest of
+the block by the new reflector — continuing while the in-block minimizer still
+clears the updated threshold. One expensive apply thus yields several
+selections; for the canonical `k×n` input this cuts the dominant cost from
+`O(k⁴)` to `O(k³)`. The default block size on this path is `b = k`.
 
 The loop, per sampled block `B` (with reduced columns `X = Qᵢᵀ A(:,B)`):
 
@@ -114,41 +123,54 @@ The loop, per sampled block `B` (with reduced columns `X = Qᵢᵀ A(:,B)`):
 
 Stop when `|J| = k`.
 
-**Single-select variant (`batched = false`).** Instead of selecting repeatedly
-inside a block, scan sampled blocks in weighted order until a column with `c ≤ θ` is
-found (best-in-block or first-fit), accept that one column, and resample for the
-next step. This makes one reflector apply per *selection* (the `O(k⁴)` path) but
-yields realized `‖R₁₁⁻¹‖_F` slightly closer to the deterministic value; the
+**Single-select variant (`batched = false`).** Each step draws one weighted
+visiting order over *all* remaining columns and scans it block by block
+(default block size `⌈k/2⌉` clamped to `[16, 64]`) until a column qualifies:
+`pick = 'best_in_block'` (the default) accepts the first block whose minimizer
+has `c ≤ θ`, `pick = 'first'` accepts the first qualifying column. That column
+is appended and the next step resamples. This costs one reflector apply per
+*scanned block*, at least one block per selection — the `O(k⁴)` path — but the
+realized `‖R₁₁⁻¹‖_F` lands slightly closer to the deterministic value; the
 guarantee is identical.
 
-**Threshold variants.** `running_mean` (above) is the default. A more permissive
-`worstcase_allowance` mode sets `θᵢ = F̂_{i+1} − f_i` with `F̂_m = m(n−m+1)/(k−m+1)`,
-spending the slack between the *actual* running `f_i` and the deterministic worst
-case `F̂_i`; it accepts with fewer samples and still keeps `f_k ≤ k(n−k+1)`. A
-`slack ≥ 1` multiplier loosens either threshold (and the bound) proportionally.
+**Threshold variants.** `running_mean` (above) is the default. The more
+permissive `worstcase_allowance` mode sets `θᵢ = F̂_{i+1} − f_i`, spending the
+slack between the *actual* running `f_i` and the deterministic worst case
+`F̂_i`; it accepts with fewer samples and still keeps `f_k ≤ k(n−k+1)`, at the
+cost of a looser realized `‖R₁₁⁻¹‖_F`. A `slack ≥ 1` multiplier loosens either
+threshold (and the bound) proportionally.
 
 **Safeguards.**
-- *Feasibility net.* If many columns have been sampled since the last selection
-  without success (only near-rounding ties), force one pass over **all** remaining
-  columns; the global minimizer is then guaranteed to clear the threshold in exact
-  arithmetic.
-- *Rank guard.* If every remaining column has `ρ² ≈ 0` (so `c = ∞`), the input is
-  numerically rank-deficient for this `k`; the algorithm stops with an error rather
-  than propagating `∞` into `f` and `R₁₁`.
+- *Feasibility net.* Once as many candidates have been sampled since the last
+  selection as there are remaining columns, the next "block" is a forced pass
+  over **all** remaining columns. Its minimizer clears the threshold in exact
+  arithmetic (feasibility above), so it is accepted even if rounding leaves it
+  marginally over.
+- *Rank guard.* If in that forced pass every remaining column has `ρ² ≈ 0` (so
+  `c = ∞`), the input is numerically rank-deficient for this `k`; the algorithm
+  stops with an error rather than propagating `∞` into `f` and `R₁₁`.
 
-**Outputs.** The permutation with `J` first, the accumulated Householder reflectors
-(an implicit `Q`), `R₁₁`, instrumentation, and — on request, via one extra
-`O(n k²)` apply — `R₁₂`.
+**Outputs.** The permutation with `J` first, the accumulated Householder
+reflectors (an implicit `Q`), `R₁₁`, instrumentation, and — on request, via one
+extra reflector apply to the unselected columns — `R₁₂`.
 
 ## 5. Cost
 
-| | deterministic BSQR | randomized (this algorithm) |
-|---|---|---|
-| per step | `O(n k)` (scan all columns) | `O(b·k)` candidates, `b = O(1)` blocks |
-| total | `O(n k²)` | `O(k³)` + `O(mn)` (norm precompute) + `O(n)` |
+Deterministic BSQR maintains the criterion for all trailing columns: `O(n i)`
+work at step `i`, `O(n k²)` total. The randomized algorithm touches only the
+columns it samples:
 
-For `k ≪ n` the randomized cost is essentially independent of `n`, so the speedup
-grows linearly in `n` while `‖R₁₁⁻¹‖` stays under the same guarantee.
+- one-time: `O(n)` pool setup, plus `O(m n)` column norms for norm-weighted
+  sampling (skipped when sampling uniformly);
+- per sampled block: one reflector apply, `O(m b i)`, plus one triangular solve,
+  `O(b i²)` — independent of `n`;
+- total, for the canonical `k×n` input on the batched path: `O(k³)` when blocks
+  yield a constant fraction of their columns (the typical case; the
+  instrumentation reports realized sample counts).
+
+For `k ≪ n` everything that grows with `n` is a single linear pass, so the
+speedup over the deterministic `O(n k²)` grows with `n` while `‖R₁₁⁻¹‖` stays
+under the same guarantee.
 
 ---
 
@@ -156,14 +178,19 @@ grows linearly in `n` while `‖R₁₁⁻¹‖` stays under the same guarantee.
 
 Compile with `\usepackage{algorithm}`, `\usepackage{algpseudocode}`, and
 `\usepackage{amsmath,amssymb}` (the latter for `\mathbb`). The growth identity
-referenced in the main routine is
+referenced in the main routine is (for a candidate column brought into the
+current frame, `x = Qᵢᵀ aⱼ`, after `i` selections):
 
 ```latex
+Appending column $j$ grows the squared inverse Frobenius norm by exactly
 \begin{equation}\label{eq:growth}
-  \bigl\|R_{11}^{-1}\bigr\|_F^2 \;\text{increases by exactly}\;
-  c_j = \frac{1 + \|w_j\|^2}{\rho_j^2}
-  \quad\text{when column $j$ is appended.}
+  \bigl\|R_{11}^{-1}\bigr\|_F^2
+  \;\longleftarrow\;
+  \bigl\|R_{11}^{-1}\bigr\|_F^2 + c_j,
+  \qquad
+  c_j = \frac{1 + \|w_j\|^2}{\rho_j^2},
 \end{equation}
+where $w_j = R_{11}^{-1} x_{1:i}$ and $\rho_j = \|x_{i+1:m}\|$.
 ```
 
 ```latex
@@ -171,7 +198,7 @@ referenced in the main routine is
 \caption{Randomized Bischof--Stewart column selection (batched; default path)}
 \label{alg:randbsqr}
 \begin{algorithmic}[1]
-\Require $A\in\mathbb{R}^{m\times n}$; rank $k\le\min(m,n)$; block size $b$ (default $b=k$);
+\Require $A\in\mathbb{R}^{m\times n}$; subset size $k\le\min(m,n)$; block size $b$ (default $b=k$);
          weights $g_j$ (default $g_j=\|a_j\|^2$, or $g_j\equiv1$ for uniform sampling)
 \Ensure index set $J$, $|J|=k$, and upper-triangular $R\in\mathbb{R}^{k\times k}$ with
         $\|R^{-1}\|_F\le\sqrt{k(n-k+1)}$ for orthonormal-row $A$
@@ -185,7 +212,7 @@ referenced in the main routine is
   \State mark every column of $X$ \emph{active}
   \While{$|J|<k$ \textbf{and} some column of $X$ is active}
     \State $i\gets|J|$;\qquad $\theta\gets(f+n-2i)/(k-i)$
-           \Comment{per-step threshold $=$ weighted mean of $c$}
+           \Comment{$=\rho^2$-weighted mean of $c$ over $\mathcal{R}$ for orthonormal-row $A$}
     \ForAll{active columns $x$ of $X$}
       \State $\rho^2\gets\|x_{i+1:m}\|^2$;\quad
              $w\gets R_{1:i,\,1:i}^{-1}\,x_{1:i}$;\quad
@@ -218,6 +245,7 @@ referenced in the main routine is
   \Comment{weighted sampling without replacement (Efraimidis--Spirakis)}
   \State for each $j\in\mathcal{R}$ draw $u_j\sim\mathrm{Unif}(0,1)$ and set
          $\mathrm{key}_j\gets-\log(u_j)/\max(g_j,\varepsilon)$
+         \Comment{$\varepsilon>0$ guards zero weights}
   \State \Return the indices of the $\min(b,|\mathcal{R}|)$ smallest keys
          \Comment{uniform sampling is $g_j\equiv1$}
 \EndProcedure
@@ -235,6 +263,16 @@ referenced in the main routine is
 ```
 
 > **Remark (single-select variant).** Replacing the inner `\While` by a scan that
-> accepts the first sampled column with `$c\le\theta$` and then resamples gives the
-> `batched=false` path: one `\Call{Reduce}{}` per selected column rather than per
-> block. The outer structure, threshold, and guarantee are unchanged.
+> stops at the first sampled column with `$c\le\theta$` and then resamples gives
+> the `batched=false` path: each `\Call{Reduce}{}` yields at most one selection,
+> instead of the several per block above. The outer structure, threshold, and
+> guarantee are unchanged.
+
+> **Remark (safeguards).** Two safeguards are omitted from the listing for
+> clarity. Once as many candidates have been sampled since the last selection as
+> `$|\mathcal{R}|$`, the next block is a forced pass over all of `$\mathcal{R}$`;
+> for orthonormal-row `$A$` its minimizer satisfies `$c\le\theta$` in exact
+> arithmetic (the minimum is at most the $\rho^2$-weighted mean, which equals
+> $\theta$), so it is accepted even on a rounding tie. If that pass finds
+> `$\rho^2\approx 0$` for every remaining column, `$A$` is numerically
+> rank-deficient for this `$k$` and the algorithm stops with an error.
