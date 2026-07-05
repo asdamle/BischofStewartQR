@@ -85,7 +85,12 @@ verifySize(testCase, rinv, [k, 12 - k]);
 expected = R(1:k, 1:k) \ R(1:k, k+1:end);
 err = norm(rinv - expected, 'fro') / max(norm(expected, 'fro'), eps('double'));
 verifyLessThan(testCase, err, 2e-8);
-verifyLessThan(testCase, rel_resid(A(:, p), Q * R), 1.0);
+% k < min(m,n): the tight identities are selected-block reconstruction and
+% the R12 projection (A(:,p) = Q*R does not hold under early stop).
+verifyLessThan(testCase, rel_resid(A(:, p(1:k)), Q * R(:, 1:k)), scaled_tol(size(A)));
+verifyLessThan(testCase, ...
+    norm(Q' * A(:, p(k+1:end)) - R(:, k+1:end), 'fro') / max(norm(A, 'fro'), eps('double')), ...
+    scaled_tol(size(A)));
 
 [~, ~, ~, rinv0] = bsqr(A, 'k', 0, 'return_rinv_r12', true, 'pivot_format', 'vector');
 verifySize(testCase, rinv0, [0, size(A, 2)]);
