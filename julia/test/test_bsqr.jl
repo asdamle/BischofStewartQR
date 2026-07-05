@@ -522,3 +522,145 @@ end
         end
     end
 end
+
+# Deep numerical verification (publication audit): over many seeded matrices
+# spanning shapes and conditionings, cross-check the unblocked reference kernel
+# (BS_PANEL_NB=0) against the default panel kernel at several widths (nb in
+# {2,4,8}). The two are mathematically identical in exact arithmetic (regrouped
+# sums; docs/P3_BLOCKED_BSQR.md), so they must select the SAME pivots and build
+# the SAME R and W = R11^{-1}R12 up to rounding.
+#
+# Subtlety pinned by this testset (verified benign, NOT a bug): once a matrix is
+# numerically rank-deficient, the trailing pivots choose among columns whose
+# residual norms sit at the noise floor, where the two summation regroupings
+# round differently and can legitimately pick different columns. So strict pivot/
+# R agreement is asserted only on the leading numerical-rank block (the well-
+# determined triangular core), while reconstruction and orthogonality -- which
+# hold regardless of tail pivot order -- are asserted on the full factorization
+# for every path. The exact strict-'<' tie-break itself is unit-tested directly
+# in "Kernel helper invariants and fastpath knobs".
+@testset "Unblocked vs panel kernel parity (randomized property)" begin
+    # Leading contiguous block of R rows whose pivot magnitude is safely above
+    # the noise floor; the panel and unblocked paths must agree exactly here.
+    function _leading_numerical_rank(F::BSQRPivoted)
+        k = F.ksteps
+        k == 0 && return 0
+        d1 = abs(F.factors[1, 1])
+        tol = sqrt(eps(Float64)) * d1 * max(size(F.factors)...)
+        r = 0
+        @inbounds for i in 1:k
+            abs(F.factors[i, i]) > tol || break
+            r += 1
+        end
+        return r
+    end
+
+    function _bsqr_unblocked(A, k)
+        return withenv("BS_PANEL_NB" => "0") do
+            bsqr(A; k = k, return_rinv_r12 = true)
+        end
+    end
+
+    function _bsqr_panel(A, k, nb)
+        # BS_PANEL_MIN_KN=0 forces the panel path even on these small matrices,
+        # which otherwise fall below the crossover and use the unblocked kernel.
+        return withenv("BS_PANEL_NB" => string(nb), "BS_PANEL_MIN_KN" => "0") do
+            bsqr(A; k = k, return_rinv_r12 = true)
+        end
+    end
+
+    function _build_case(rng, kind, m, n)
+        p = min(m, n)
+        r = max(1, p ÷ 2)
+        if kind === :gaussian
+            return randn(rng, m, n)
+        elseif kind === :decaying
+            U = Matrix(qr(randn(rng, m, p)).Q)
+            Vt = Matrix(qr(randn(rng, n, p)).Q)'
+            return U * Diagonal(exp10.(range(0.0, -8.0; length = p))) * Vt
+        elseif kind === :clustered
+            U = Matrix(qr(randn(rng, m, p)).Q)
+            Vt = Matrix(qr(randn(rng, n, p)).Q)'
+            sv = ones(p)
+            sv[(r + 1):end] .= 1e-9
+            return U * Diagonal(sv) * Vt
+        elseif kind === :rankdef
+            # Exact rank-r matrix (r < min(m,n)): exercises the rank-deficient
+            # tail and the noise-floor tie-break between the two paths.
+            return randn(rng, m, r) * randn(rng, r, n)
+        elseif kind === :tied
+            # Equal (unit) column norms so step 1 is a near-tie in the pivot
+            # criterion, stressing the strict-'<' first-wins rule.
+            B = randn(rng, m, n)
+            for j in 1:n
+                B[:, j] ./= norm(B[:, j])
+            end
+            return B .* 2.5
+        else
+            error("unknown case kind $kind")
+        end
+    end
+
+    rng = MersenneTwister(20260630)
+    shapes = ((30, 18), (18, 30), (24, 24), (12, 40), (40, 12), (50, 9), (9, 50))
+    kinds = (:gaussian, :decaying, :clustered, :rankdef, :tied)
+    panel_widths = (2, 4, 8)
+
+    for kind in kinds, (m, n) in shapes
+        A = _build_case(rng, kind, m, n)
+        k = min(m, n)
+
+        Fu = _bsqr_unblocked(A, k)
+        nru = _leading_numerical_rank(Fu)
+
+        # The unblocked path itself must reconstruct A and stay orthogonal.
+        resid_u, orth_u = _residual_and_orthogonality(A, Fu)
+        @test resid_u <= 1e-12
+        @test orth_u <= 1e-12
+
+        for nb in panel_widths
+            Fp = _bsqr_panel(A, k, nb)
+
+            @test Fp.ksteps == Fu.ksteps
+
+            # (a) Identical pivots and R on the leading numerical-rank block.
+            nr = min(nru, _leading_numerical_rank(Fp))
+            @test perm(Fu)[1:nr] == perm(Fp)[1:nr]
+            if nr > 0
+                Ru = triu(view(Fu.factors, 1:nr, 1:nr))
+                Rp = triu(view(Fp.factors, 1:nr, 1:nr))
+                @test norm(Ru - Rp) <= 1e-13 * max(norm(Ru), eps(Float64))
+            end
+
+            # (b) Full-factorization reconstruction and orthogonality at
+            # machine precision, independent of tail pivot order.
+            resid_p, orth_p = _residual_and_orthogonality(A, Fp)
+            @test resid_p <= 1e-12
+            @test orth_p <= 1e-12
+
+            # (c) When the matrix is full numerical rank and the two paths share
+            # the ENTIRE pivot sequence, the incrementally maintained W must
+            # match between paths at machine precision. (Full rank is required:
+            # W columns tied to a rank-deficient tail divide by noise-floor R11
+            # diagonals and are ill-determined even when the pivots agree.)
+            if nru == k && k < n && perm(Fu) == perm(Fp)
+                @test norm(Fu.rinv_r12 - Fp.rinv_r12) <=
+                      1e-12 * max(norm(Fu.rinv_r12), eps(Float64))
+            end
+        end
+
+        # (c') On the full-rank leading block, the incrementally maintained
+        # W = R11^{-1}R12 must match an INDEPENDENT from-scratch solve R11 \ R12
+        # extracted from the final R -- validating the W recurrence and running-
+        # norm downdates against a direct recompute.
+        if nru == k && k < n
+            T = BSPivotQR._packed_to_qt(Fu)
+            R11 = UpperTriangular(Matrix(view(T, 1:k, 1:k)))
+            R12 = Matrix(view(T, 1:k, (k + 1):n))
+            Wdirect = Matrix(R11 \ R12)
+            @test size(Fu.rinv_r12) == size(Wdirect)
+            @test norm(Fu.rinv_r12 - Wdirect) <=
+                  1e-12 * max(norm(Wdirect), eps(Float64))
+        end
+    end
+end
