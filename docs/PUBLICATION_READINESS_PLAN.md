@@ -17,19 +17,22 @@ tree (the planned benchmark rerun) and gates passing.
 
 ---
 
-## Phase 0 — Baseline (half a session)
+## Phase 0 — Baseline (half a session) — DONE 2026-07-05
 
 Establish a known-good starting point before changing anything.
 
-- [ ] `julia --project=julia -e 'using Pkg; Pkg.test()'` green.
-- [ ] `matlab -batch "addpath('matlab/tests'); run_tests"` green (MEX built).
-- [ ] `matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/tests'); run_rand_tests"` green (MEX built).
-- [ ] Parity drift guard passes (fixtures in `parity/` current w.r.t. `parity_zoo.m`).
-- [ ] Record baseline timings: `run_publication_smoke_benchmark` (both languages)
-      stashed for later perf-gate comparison.
-- [ ] `git status` clean; note the toolchain (MATLAB version, Julia version,
-      BLAS backend, macOS/Accelerate) in a scratch note — the publication
-      metadata.txt files must match the final rerun environment.
+- [x] `julia --project=julia -e 'using Pkg; Pkg.test()'` green.
+- [x] `matlab -batch "addpath('matlab/tests'); run_tests"` green (MEX built).
+- [x] `matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/tests'); run_rand_tests"` green (MEX built).
+- [x] Parity drift guard passes (fixtures in `parity/` current w.r.t. `parity_zoo.m`).
+- [x] Record baseline timings: `run_publication_smoke_benchmark` (both languages)
+      stashed for later perf-gate comparison. Stashed (local, gitignored) at
+      `julia/benchmark/results/tmp_phase0_baseline/` and
+      `matlab/benchmark/results/tmp_phase0_baseline/` (timings CSV +
+      metadata + environment note each).
+- [x] `git status` clean; toolchain recorded in the stash's
+      `phase0_env.txt`: commit `c480c58`, macOS 15.7.7 arm64, Julia 1.11.6
+      (Accelerate for benchmarks), MATLAB R2025b.
 
 ## Phase 1 — Correctness verification (1–2 sessions)
 
