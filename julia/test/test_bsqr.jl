@@ -82,6 +82,36 @@ end
     @test all(isfinite, Ffixed.factors)
 end
 
+@testset "Q accessor (economy factor)" begin
+    rng = MersenneTwister(20260703)
+    m, n = 12, 20
+    A = randn(rng, m, n)
+    tol = 2.5e2 * eps(Float64) * max(m, n)
+
+    # Full factorization: A[:, p] = Q * R exactly.
+    F = bsqr(A)
+    k = F.ksteps
+    Qf = Q(F)
+    @test size(Qf) == (m, k)
+    @test norm(I - Qf' * Qf) <= tol
+    @test norm(A[:, perm(F)] - Qf * R(F)) <= tol * norm(A)
+
+    # Early stop: the identity holds for the selected block only, and the
+    # trailing R block is the unselected columns' projection onto span(Q).
+    ke = 5
+    Fe = bsqr(A; k = ke)
+    Qe = Q(Fe)
+    p = perm(Fe)
+    @test size(Qe) == (m, ke)
+    @test norm(I - Qe' * Qe) <= tol
+    @test norm(A[:, p[1:ke]] - Qe * R(Fe)[:, 1:ke]) <= tol * norm(A)
+    @test norm(Qe' * A[:, p[(ke + 1):n]] - R(Fe)[:, (ke + 1):n]) <= tol * norm(A)
+
+    # k = 0 edge: an m-by-0 factor.
+    F0 = bsqr(A; k = 0)
+    @test size(Q(F0)) == (m, 0)
+end
+
 @testset "Rank-stop policy" begin
     rng = MersenneTwister(2028)
     B = [ones(30) ones(30) randn(rng, 30, 10)]

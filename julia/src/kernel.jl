@@ -1,3 +1,27 @@
+"""
+    BSQRPivoted <: Factorization{Float64}
+
+Result of [`bsqr`](@ref)/[`bsqr!`](@ref): a Bischof-Stewart column-pivoted QR.
+Access the results with the exported accessors [`R`](@ref), [`Q`](@ref),
+[`perm`](@ref), [`rinv_r12`](@ref), and [`reconstruct`](@ref); see `R` for the
+factorization identities (including the early-stop case `ksteps < min(m, n)`).
+
+Fields:
+- `factors` — the reduced `m×n` matrix in LAPACK packed form: the upper
+  trapezoid of the first `ksteps` rows holds `R`; the Householder reflector
+  tails sit below the diagonal of the first `ksteps` columns. Together with
+  `tau` they define `Q` implicitly (materialize with `Q(F)`).
+- `tau` — the `ksteps` Householder coefficients.
+- `jpvt` — the length-`n` column permutation (`jpvt[1:ksteps]` are the
+  selected columns, in pivot order).
+- `ksteps` — factorization steps performed: the requested `k` unless
+  `rank_stop` fired earlier.
+- `frob_inv_trace` — per-step pivot-criterion values, i.e. the exact
+  increments to `‖R11⁻¹‖_F²` (their cumulative sum is the running squared
+  inverse Frobenius norm); `nothing` unless `track_inverse_frob = true`.
+- `rinv_r12` — the `ksteps×(n-ksteps)` matrix `R11⁻¹R12`; `nothing` unless
+  `return_rinv_r12 = true`.
+"""
 struct BSQRPivoted <: Factorization{Float64}
     factors::Matrix{Float64}
     tau::Vector{Float64}
@@ -95,7 +119,29 @@ end
     bsqr(A; kwargs...) -> BSQRPivoted
 
 Out-of-place Bischof-Stewart column-pivoted QR. Converts `A` to `Float64`,
-factorizes in-place on a copy, and returns a `BSQRPivoted` wrapper.
+factorizes in-place on a copy, and returns a [`BSQRPivoted`](@ref); access the
+results with [`R`](@ref), [`Q`](@ref), [`perm`](@ref), [`rinv_r12`](@ref), and
+[`reconstruct`](@ref).
+
+# Keyword arguments
+- `k::Integer = min(size(A)...)`: number of factorization steps. Early stop
+  (`k < min(m, n)`) selects and reduces only `k` columns; see [`R`](@ref) for
+  the identities that hold in that case.
+- `check::Bool = true`: validate that `A` is finite.
+- `track_inverse_frob::Bool = false`: record the per-step pivot criterion
+  (the exact increment to `‖R11⁻¹‖_F²`) in the result's `frob_inv_trace`.
+- `return_rinv_r12::Bool = false`: store `R11⁻¹R12` in the result's
+  `rinv_r12`, read directly from the kernel workspace (no extra triangular
+  solve); retrieve it with [`rinv_r12`](@ref).
+- `rank_stop::Bool = false`: stop early once the selected pivot column is
+  numerically negligible (running squared norm at or below an
+  `eps·max(m,n)`-scaled tolerance); the result's `ksteps` records the steps
+  actually taken.
+- `norm_recomp_tol::Float64 = sqrt(eps)`: running column-norm recompute
+  safeguard in `[0, 1]` (Businger-Golub): a downdated squared norm that decays
+  past this fraction of its last exact value is recomputed from scratch.
+- `blas_threads::Union{Nothing,Integer} = nothing`: temporarily pin the BLAS
+  thread count for the duration of the call (restored afterwards).
 """
 function bsqr(
     A::AbstractMatrix{<:Real};
@@ -124,8 +170,20 @@ end
 """
     bsqr!(A, tau, jpvt, workspace; kwargs...) -> ksteps
 
-Allocation-minimal in-place Bischof-Stewart kernel for repeated calls.
-`tau`, `jpvt`, and `workspace` are caller-provided scratch/state buffers.
+Allocation-minimal in-place Bischof-Stewart kernel for repeated calls. No
+`BSQRPivoted` is built; the results live in the caller-provided buffers:
+`A` is overwritten with the packed factorization (upper trapezoid of the
+first `ksteps` rows = `R`, reflector tails below the diagonal), `tau`
+(`length ≥ k` required) receives the Householder coefficients, `jpvt`
+(`length ≥ n` required) the column permutation. Returns the number of steps
+performed (< `k` only when `rank_stop` fires).
+
+Keyword arguments as in [`bsqr`](@ref) (`k`, `check`, `rank_stop`,
+`norm_recomp_tol`, `blas_threads`), except:
+- `reset_pivots::Bool = true`: reinitialize `jpvt` to `1:n` before running.
+- `frob_inv_trace::Union{Nothing,Vector{Float64}} = nothing`: caller-provided
+  vector for the per-step criterion trace (emptied, then appended to at each
+  step) — the preallocated counterpart of `track_inverse_frob`.
 """
 function bsqr!(
     A::StridedMatrix{Float64},
@@ -180,8 +238,11 @@ end
 """
     bsqr!(A; kwargs...) -> BSQRPivoted
 
-In-place Bischof-Stewart factorization on `A::StridedMatrix{Float64}` that
-allocates internal scratch unless `workspace` is provided.
+In-place variant of [`bsqr`](@ref) on `A::StridedMatrix{Float64}`: `A` is
+overwritten with the packed factorization and becomes the `factors` field of
+the returned [`BSQRPivoted`](@ref). Accepts the same keyword arguments as
+`bsqr`, plus `workspace::Union{Nothing,BSWorkspace} = nothing` to reuse
+preallocated scratch across calls (allocated internally when `nothing`).
 """
 function bsqr!(
     A::StridedMatrix{Float64};

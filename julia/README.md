@@ -9,10 +9,37 @@ benchmark/dev dependencies live in the separate `julia/benchmark/` environment.
 ```julia
 julia> include("startup.jl")        # from the repo root: activate + instantiate, then `using BSPivotQR`
 julia> F = bsqr(A)                  # deterministic BS pivoted QR -> BSQRPivoted
-julia> R(F), perm(F)               # R factor, column permutation
+julia> Q(F), R(F), perm(F)          # economy Q, R factor, column permutation
 ```
 
 Equivalently: `julia --project=julia` then `using BSPivotQR`.
+
+## Results and accessors
+
+`bsqr(A; ...)` / `bsqr!(A; ...)` return a `BSQRPivoted` holding the packed
+factorization (`k` steps, default `k = min(m,n)`); the exported accessors
+materialize the pieces:
+
+- `R(F)`: `k×n` upper-trapezoidal factor of the *permuted* columns;
+  `R(F)[1:k,1:k]` is `R11`, `R(F)[:,k+1:n]` is `R12`. For the default full
+  `k`, `A[:, perm(F)] ≈ Q(F)*R(F)`; with early stop (`k < min(m,n)`) that
+  holds only for the selected block, `A[:, perm(F)[1:k]] ≈ Q(F)*R(F)[:,1:k]`,
+  and `R12 = Q(F)'*A[:, perm(F)[k+1:n]]` is the unselected columns'
+  projection onto `span(Q)`.
+- `Q(F)`: `m×k` economy factor with orthonormal columns, materialized on each
+  call from the packed reflectors (LAPACK `orgqr`, one `O(mk²)` pass).
+- `perm(F)`: the length-`n` column permutation; `perm(F)[1:k]` are the
+  selected columns in pivot order.
+- `rinv_r12(F)`: `k×(n−k)` matrix `R11⁻¹R12`, captured from the kernel
+  workspace with no extra solve — `nothing` unless the factorization was run
+  with `return_rinv_r12 = true`.
+- `reconstruct(F, A)`: rebuilds the original matrix from the factorization
+  (validation/tests).
+
+Kernel keyword arguments (`k`, `check`, `track_inverse_frob`,
+`return_rinv_r12`, `rank_stop`, `norm_recomp_tol`, `blas_threads`, and the
+preallocated `bsqr!(A, tau, jpvt, workspace; ...)` form) are documented in
+the docstrings — `?bsqr`, `?bsqr!`, `?BSQRPivoted`.
 
 ## Setup
 

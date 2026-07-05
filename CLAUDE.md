@@ -103,7 +103,7 @@ python3 julia/benchmark/compare_matlab_julia_timings.py \
 - `workspace.jl` — `BSWorkspace`: preallocated scratch buffers (`W`, running norms `s`/`s_ref`, `wnorm2`, etc.) so repeated factorizations are allocation-minimal.
 - `kernel.jl` — the core. `BSQRPivoted <: Factorization` result type; three entry points: `bsqr(A)` (copies), `bsqr!(A; ...)` (in-place, allocates scratch), and `bsqr!(A, tau, jpvt, workspace; ...)` (fully preallocated, returns `ksteps`). `_bsqr_kernel!` is the unblocked loop. The kernel incrementally maintains `W = R11^{-1} R12` in `ws.W` — that is both the pivot-criterion state and why `return_rinv_r12` is cheap (extracted directly from the workspace, no solve).
 - `kernel_panel.jl` — the default execution path: a dlaqps-style panel/blocked kernel (`_bsqr_kernel_panel!`, width `BS_PANEL_NB`, default 8; `0`/`1` falls back to the unblocked loop). Mathematically identical to the unblocked kernel (regrouped sums; see `docs/P3_BLOCKED_BSQR.md`); the MEX has a line-for-line port, and both must stay in lockstep.
-- `interface.jl` — accessors on `BSQRPivoted`: `R`, `perm`, `rinv_r12`, `reconstruct`. Q is stored implicitly as Householder vectors in `factors` + `tau` (LAPACK `ormqr` to materialize).
+- `interface.jl` — accessors on `BSQRPivoted`: `Q`, `R`, `perm`, `rinv_r12`, `reconstruct`. Q is stored implicitly as Householder vectors in `factors` + `tau`; the `Q(F)` accessor materializes the economy factor with LAPACK `orgqr`.
 
 Kernel knobs that tests rely on: `k` (early stop), `rank_stop`, `norm_recomp_tol`, `blas_threads` (temporarily pins BLAS thread count), `track_inverse_frob`.
 
