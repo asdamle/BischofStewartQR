@@ -122,6 +122,13 @@ Techniques, in order of expected yield:
       against Julia via CSV interchange; any divergence is a bug by the
       repo's own lockstep contract. Run a large batch (10⁴–10⁵ cases)
       overnight; keep the driver in the repo as an opt-in stress tool.
+      *Partially covered 2026-07-05 by merging the stale `audit/*` branches:*
+      `matlab/tests/test_mfile_mex_fuzz.m` (seeded mfile-vs-MEX differential
+      fuzz, now a standing test), a randomized unblocked-vs-panel Julia
+      parity testset, and six new parity-zoo stress corners (near-tied
+      norms, exact rank deficiency, clustered/graded spectra). Remaining:
+      the cross-language (Julia↔MATLAB) fuzz half and the large overnight
+      batch.
 - [ ] **Sanitizer builds of both MEX kernels.** Build with
       `-fsanitize=address,undefined` (mex CXXFLAGS variant) and run the full
       MATLAB suites + the fuzz driver under them. This is the only realistic
