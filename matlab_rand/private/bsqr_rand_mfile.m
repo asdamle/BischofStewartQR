@@ -272,6 +272,7 @@ stats.fallback = false(1, k);
 stats.frob_inv = 0;
 stats.osinsky_bound = sqrt(k * (n - k + 1));
 stats.total_tested = 0;
+stats.blocks_sampled = 0;
 end
 
 function ids = sample_block(remaining, bcount, needweights, g)
