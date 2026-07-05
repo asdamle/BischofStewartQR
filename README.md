@@ -46,3 +46,14 @@ MATLAB-only.) See [julia/README.md](julia/README.md).
 - `startup.m` / `startup.jl` — one-shot setup for MATLAB / Julia.
 
 See [CLAUDE.md](CLAUDE.md) for the full command set (tests, benchmarks, builds).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## How to cite
+
+If you use this software, please cite it. Citation metadata lives in
+[CITATION.cff](CITATION.cff); GitHub renders a "Cite this repository" widget
+from it. A DOI and the accompanying paper reference are forthcoming and will be
+added there once available.
