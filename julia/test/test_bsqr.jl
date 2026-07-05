@@ -199,6 +199,29 @@ end
     @test bsqr(strided).ksteps == min(10, 30)
 end
 
+@testset "Coverage: long-tail norm recompute and panel rank-stop" begin
+    # norm_recomp_tol = 1 forces an exact recompute at every step; with
+    # m - i - 1 > 256 the recompute takes the BLAS.nrm2 branch of
+    # _recompute_norm2 rather than the short-tail scalar loop.
+    rng = MersenneTwister(20260713)
+    A = randn(rng, 320, 24)
+    F = bsqr(A; norm_recomp_tol = 1.0)
+    k = F.ksteps
+    @test norm(A[:, perm(F)[1:k]] - Q(F) * R(F)[:, 1:k]) <=
+          2.5e2 * eps(Float64) * 320 * norm(A)
+
+    # rank_stop inside the panel kernel (the unblocked path is covered by
+    # the "Rank-stop policy" testset; force the panel dispatch here).
+    B = [ones(30) ones(30) randn(rng, 30, 10)]
+    withenv("BS_PANEL_NB" => "8", "BS_PANEL_MIN_KN" => "0") do
+        Fp = bsqr(B; rank_stop = true)
+        @test Fp.ksteps < min(size(B)...)
+        @test all(isfinite, Fp.factors)
+        @test norm(B[:, perm(Fp)[1:Fp.ksteps]] - Q(Fp) * R(Fp)[:, 1:Fp.ksteps]) <=
+              2.5e2 * eps(Float64) * 30 * norm(B)
+    end
+end
+
 @testset "Rank-stop policy" begin
     rng = MersenneTwister(2028)
     B = [ones(30) ones(30) randn(rng, 30, 10)]

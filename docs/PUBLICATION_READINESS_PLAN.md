@@ -157,12 +157,26 @@ Techniques, in order of expected yield:
       `dnrm2` with len 0 never dereferences). After the fix, both full
       suites plus a 720-run randomized stress sweep run clean under
       instrumentation.
-- [ ] **Coverage-guided gap analysis.** Julia `Pkg.test(coverage=true)` and
-      MATLAB profiler coverage over the suites; list uncovered branches in
-      kernel files (candidates: recompute safeguards, rank-stop inside the
-      panel kernel, Fenwick degenerate paths `total <= 0`, the batched
-      feasibility net, swap-pop pool maintenance). Write a test per uncovered
-      branch or justify why it is unreachable.
+- [x] **Coverage-guided gap analysis** (2026-07-05). Julia
+      `Pkg.test(coverage=true)`: interface/workspace 100%; kernel 280/294,
+      panel 144/151 executable lines. MATLAB `CodeCoveragePlugin` (Cobertura)
+      over both suites: kernels 93–100% per file. Gaps classified:
+      *(a) instrumentation hooks* (`kernel_stats` timing, `recomp_history`,
+      `pivot_history` in the panel) — benchmark-only plumbing, justified;
+      *(b) unreachable-by-design* — `bsqr_rand_threshold`'s `otherwise` (mode
+      validated upstream), the single-select rounding-tie fallback
+      (`accept_id == 0` requires the scanned global minimizer to fail the
+      threshold, impossible in exact arithmetic), one `return_r12` arm only
+      reachable by bypassing the dispatcher; *(c) real test gaps — all now
+      closed with committed tests*: long-tail (>256) BLAS recompute branch
+      (Julia), rank-stop inside the panel kernel (Julia), exact rank
+      deficiency past the numerical rank mid-kernel (`beta = 0` →
+      `invdiag = 0`/`tau = 0` guards, both MATLAB backends), zero-tail
+      Householder in the rand kernel, single-select uniform visiting order
+      and `pick = 'first'` (the knob test ran them batched, where `pick` is
+      ignored), the single-select rank guard, `R12` at `k = n`, m-file
+      `k = 0` rinv branch, and every parser rejection identifier in both
+      dispatchers.
 - [x] **Targeted adversarial cases** — probed on both backends (some under
       the instrumented MEXes) and codified as `testAdversarialCorners` in the
       randomized suite: `block_size = 1` (both kernel paths) and `10·n`,

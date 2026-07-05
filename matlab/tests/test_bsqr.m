@@ -94,6 +94,9 @@ verifyLessThan(testCase, ...
 
 [~, ~, ~, rinv0] = bsqr(A, 'k', 0, 'return_rinv_r12', true, 'pivot_format', 'vector');
 verifySize(testCase, rinv0, [0, size(A, 2)]);
+[~, ~, ~, rinv0m] = bsqr(A, 'k', 0, 'return_rinv_r12', true, ...
+    'pivot_format', 'vector', 'backend', 'mfile');   % m-file k = 0 branch too
+verifySize(testCase, rinv0m, [0, size(A, 2)]);
 
 B = randn(10, 10);
 [~, ~, ~, rinv_sq] = bsqr(B, 'k', 10, 'return_rinv_r12', true, 'pivot_format', 'vector');
@@ -197,6 +200,38 @@ for idx = order
     verifyLessThan(testCase, rel_resid(cases{idx}(:, p(1:k)), Q * R(:, 1:k)), ...
         scaled_tol(size(cases{idx})));
 end
+end
+
+function testExactRankDeficiencyFullK(testCase)
+% k past the exact rank without rank stopping (the MATLAB API has no
+% rank_stop): mid-kernel the pivot column is exactly zero, so beta = 0 and
+% the invdiag = 0 / tau = 0 guards must hold (no division by zero, reflector
+% apply skipped). Reconstruction must remain exact -- the trailing R rows
+% are simply zero. Both backends.
+rng(20260714, 'twister');
+r = 4;
+A = randn(12, r) * randn(r, 8);   % exact rank 4, k = min(m,n) = 8 > 4
+backends = {'mfile'};
+if bsqr_mex_available(); backends{end+1} = 'mex'; end
+for bi = 1:numel(backends)
+    [Q, R, p] = bsqr(A, 'backend', backends{bi}, 'pivot_format', 'vector');
+    verifyTrue(testCase, all(isfinite(Q(:))) && all(isfinite(R(:))));
+    verifyLessThan(testCase, rel_resid(A(:, p), Q * R), scaled_tol(size(A)));
+    verifyLessThan(testCase, orth_err(Q), scaled_tol(size(A)));
+end
+end
+
+function testArgumentValidation(testCase)
+% Each parser rejection branch, by identifier.
+A = randn(6, 8);
+verifyError(testCase, @() bsqr(A + 1i), 'bsqr:InvalidInput');
+verifyError(testCase, @() bsqr(randn(3, 3, 3)), 'bsqr:InvalidInput');
+verifyError(testCase, @() bsqr(A, 'k', 1.5), 'bsqr:InvalidK');
+verifyError(testCase, @() bsqr(A, 'k', 99), 'bsqr:InvalidK');
+verifyError(testCase, @() bsqr(A, 'pivot_format', 'bogus'), 'bsqr:InvalidPivotFormat');
+verifyError(testCase, @() bsqr(A, 'backend', 'bogus'), 'bsqr:InvalidBackend');
+verifyError(testCase, @() bsqr(A, 'norm_recomp_tol', 2), 'bsqr:InvalidNormRecompTol');
+verifyError(testCase, @() bsqr([1 Inf; 2 3]), 'bsqr:NonFiniteInput');
 end
 
 function testEdgeShapes(testCase)

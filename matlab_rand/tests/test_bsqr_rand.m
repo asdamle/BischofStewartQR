@@ -108,7 +108,65 @@ opts = { ...
 for c = 1:numel(opts)
     [p, Q, R11] = bsqr_rand(M, 'backend', 'mfile', 'seed', c, opts{c}{:});
     check_factorization(testCase, M, p, Q, R11, 20);
+    % pick/visiting-order only matter on the single-select path (the batched
+    % kernel always takes the in-block minimizer), so run each combination
+    % there too -- this is what actually exercises pick='first' and the
+    % uniform random-permutation visit order.
+    [p2, Q2, R11b] = bsqr_rand(M, 'backend', 'mfile', 'seed', c, 'batched', false, opts{c}{:});
+    check_factorization(testCase, M, p2, Q2, R11b, 20);
 end
+end
+
+function testSingleSelectRankGuard(testCase)
+% The rank guard has separate code on the batched and single-select paths;
+% testRankDeficientErrors covers batched (the default), this covers
+% batched=false on both backends.
+rng(33);
+k = 6; n = 40;
+M = [randn(k, k - 1), zeros(k, n - (k - 1))];
+verifyError(testCase, @() bsqr_rand(M, 'k', k, 'backend', 'mfile', 'batched', false), ...
+    'bsqr_rand:RankDeficient');
+if bsqr_rand_mex_available()
+    verifyError(testCase, @() bsqr_rand(M, 'k', k, 'backend', 'mex', 'batched', false), ...
+        'bsqr_rand:RankDeficient');
+end
+end
+
+function testR12FullSelection(testCase)
+% return_r12 with k = n: R12 is k-by-0 (no unselected columns).
+M = orth(randn(10, 10));
+backends = {'mfile'};
+if bsqr_rand_mex_available(); backends{end+1} = 'mex'; end
+for bi = 1:numel(backends)
+    [p, Q, R11, ~, R12] = bsqr_rand(M, 'k', 10, 'backend', backends{bi}, ...
+        'seed', 2, 'return_r12', true);
+    check_factorization(testCase, M, p, Q, R11, 10);
+    verifySize(testCase, R12, [10, 0]);
+end
+end
+
+function testZeroTailHouseholder(testCase)
+% A selected column whose below-pivot tail is exactly zero exercises the
+% xnorm == 0 early return in bsqr_rand_householder (tau = 0, beta = alpha).
+rng(20260715);
+m = 8; n = 30;
+M = [[5; zeros(m - 1, 1)], 0.1 * randn(m, n - 1)];   % col 1: largest norm, zero tail
+[p, Q, R11] = bsqr_rand(M, 'k', 4, 'backend', 'mfile', 'seed', 1);
+verifyEqual(testCase, p(1), 1);
+check_factorization(testCase, M, p, Q, R11, 4);
+end
+
+function testRandArgumentValidation(testCase)
+% Each parser rejection branch, by identifier.
+W = orthonormal_rows(6, 20, 4);
+verifyError(testCase, @() bsqr_rand(W + 1i), 'bsqr_rand:InvalidInput');
+verifyError(testCase, @() bsqr_rand(W, 'k', 1.5), 'bsqr_rand:InvalidK');
+verifyError(testCase, @() bsqr_rand(W, 'k', 99), 'bsqr_rand:InvalidK');
+verifyError(testCase, @() bsqr_rand(W, 'threshold_mode', 'bogus'), 'bsqr_rand:InvalidThresholdMode');
+verifyError(testCase, @() bsqr_rand(W, 'sampling', 'bogus'), 'bsqr_rand:InvalidSampling');
+verifyError(testCase, @() bsqr_rand(W, 'pick', 'bogus'), 'bsqr_rand:InvalidPick');
+verifyError(testCase, @() bsqr_rand(W, 'backend', 'bogus'), 'bsqr_rand:InvalidBackend');
+verifyError(testCase, @() bsqr_rand([1 Inf; 2 3]), 'bsqr_rand:NonFiniteInput');
 end
 
 function testMexAgreesOnInvariants(testCase)
