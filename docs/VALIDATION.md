@@ -95,22 +95,47 @@ moderate. The selection rule itself provides the protection Stewart's remedy tar
 `rinv_r12` accuracy) and the Julia testset "Cancellation stress: wnorm2/W recurrence drift"
 (internal three-layer drift probe via the workspace).
 
+## Re-audit (2026-07-05, publication readiness Phase 1)
+
+Re-diffed all four kernel paths — Julia unblocked (`_bsqr_kernel!`), Julia panel
+(`_bsqr_kernel_panel!`), MATLAB m-file, and the MEX unblocked + panel paths — against
+`oracle_bsqr.m` and the writeup. No undocumented kernel/oracle mismatch was found. Changes to
+this file from the re-audit: added deviations #10–#11 (the panel kernel's deferred/regrouped
+updates and its batched norm-recompute refresh, previously documented only in
+`docs/P3_BLOCKED_BSQR.md`) and #12 (the zero-tail-norm/rank-deficiency extension shared with
+the oracle's guard); widened #5's scope to include the m-file; replaced the stale "pending"
+note in #6 (the V3 fixtures landed); added the dedicated Phase 1 tie tests to #8's pins; and
+scoped #7 to the unblocked kernel.
+
 ## Deviation table
 
 Sanctioned deviations from the literal Algorithm 1. "Pinned by" names the test that fails if the
 equivalence claim is wrong.
 
+"All three kernels" means the Julia, MATLAB m-file, and MEX implementations. Since P3
+(2026-06-11) Julia and the MEX also have a panel/blocked kernel
+(`julia/src/kernel_panel.jl`, the panel path in `bsqr_mex.cpp`), which is the **default**
+dispatch when `k·n ≥ 24576` (`BS_PANEL_NB=0` forces the unblocked kernel). The panel kernel
+inherits deviations #1–#5, #8, #9 unchanged and adds #10–#11; its state symbols (`V`, `Fa`,
+`B`, `Bsel`, `Ω`) are mapped in `docs/P3_BLOCKED_BSQR.md` §2. All implementations (and the
+oracle) also generalize Algorithm 1's `k×n` orthonormal-rows input to a general `m×n` matrix
+with a step-count option `k` (Stewart's Householder variant, per the V0 audit above); this
+changes nothing in the per-step arithmetic.
+
 | # | Deviation | Where | Why mathematically equivalent | Pinned by |
 |---|---|---|---|---|
 | 1 | Norm downdate `s_j -= α_j²` with recompute guard `s_j ≤ s_ref_j·tol` instead of from-scratch norms | all three kernels | recomputation returns the same mathematical quantity; guard is the writeup's Remark "Column norm downdating" | `test_oracle_parity` (oracle uses exact norms; pivot sequences must still match); Julia testset "Norm recompute tolerance knob" |
-| 2 | Householder sign convention `ρ = -sign(x₁)‖x‖` (LAPACK), identity reflector when the tail is zero; writeup states `ρ = ‖x‖ ≥ 0` | all three kernels and the oracle (Julia and MEX both call `dlarfg` directly since V5) | row sign flips cancel in `(D·R11)⁻¹(D·R12)`, so every `w_j` and the criterion are unchanged; `Q` absorbs `D` (proof sketch in `oracle_bsqr.m` header) | direct (sign-normalization-free) Q/R comparison in `test_oracle_parity` |
+| 2 | Householder sign convention `ρ = -sign(x₁)‖x‖` (LAPACK), identity reflector when the tail is zero; writeup states `ρ = ‖x‖ ≥ 0` | all three kernels and the oracle (Julia and MEX both call `dlarfg` directly since V5; the m-file and the oracle implement the same convention in plain MATLAB — hypot-based, without `dlarfg`'s subnormal rescaling loop, which is inert within the documented column-norm domain) | row sign flips cancel in `(D·R11)⁻¹(D·R12)`, so every `w_j` and the criterion are unchanged; `Q` absorbs `D` (proof sketch in `oracle_bsqr.m` header) | direct (sign-normalization-free) Q/R comparison in `test_oracle_parity` |
 | 3 | Clamp `wnorm2` and `s` at 0 after downdates | all three kernels | guards `-eps`-level negatives of nonnegative quantities | indirectly by parity; dedicated near-zero unit test pending |
 | 4 | `s(i) = β_i²` refresh of the pivot column post-reflection | all three kernels | exact identity after the reflection | `test_oracle_parity` |
-| 5 | BLAS-2 organization of the W update (`gemv` for dots, `ger` for the rank-1) | Julia, MEX | writeup Remark "Practical considerations"; same recurrence, regrouped | `test_oracle_parity` (oracle has no recurrence at all) |
-| 6 | `rank_stop` early-exit option | Julia only, off by default in `bsqr` | extension, not in Algorithm 1; cross-language defaults agree (no early exit) | Julia testset "Rank-stop policy"; cross-language default parity pending (V3 fixtures) |
-| 7 | Short-wide fastpath (inline W-row materialization) | Julia only | pure memory-layout reordering; identical arithmetic | Julia testset "Kernel helper invariants and fastpath knobs" |
-| 8 | First-minimum tie-breaking via strict `<` | all three kernels and the oracle | writeup's argmin leaves ties unspecified; consistent with Stewart's "ties by doing nothing" | `testPivotTieStability` (MATLAB); Julia "Criterion-consistent pivot sequence" |
+| 5 | BLAS-2 organization of the W update: all dots `w_jᵀw*` computed from the pre-update `W` prefix (`gemv`), then the rank-1 update (`ger`) | all three kernels (the m-file via the equivalent vectorized matrix ops) | writeup Remark "Practical considerations"; same recurrence, regrouped | `test_oracle_parity` (oracle has no recurrence at all) |
+| 6 | `rank_stop` early-exit option | Julia only, off by default in `bsqr` | extension, not in Algorithm 1; cross-language defaults agree (no early exit) | Julia testset "Rank-stop policy"; default-behavior parity pinned by the V3 fixture suite (both languages run at defaults) |
+| 7 | Short-wide fastpath (inline W-row materialization) | Julia unblocked kernel only (above the panel crossover it is reached only with `BS_PANEL_NB=0`) | pure memory-layout reordering; identical arithmetic | Julia testset "Kernel helper invariants and fastpath knobs" |
+| 8 | First-minimum tie-breaking via strict `<` | all three kernels and the oracle | writeup's argmin leaves ties unspecified; consistent with Stewart's "ties by doing nothing" | dedicated exact-tie tests: `testTieBreakFirstMinimum` (MATLAB, both backends) and Julia "Exact criterion ties: first minimum wins"; also `testPivotTieStability` (MATLAB), Julia "Criterion-consistent pivot sequence" |
 | 9 | `‖w_j‖²` maintained by the writeup's O(1) recurrence instead of Stewart's direct `σ_j = ‖s_j‖` recomputation | all three kernels | algebraic expansion of `‖s_j − β_j s_k‖² + β_j²`; identical in exact arithmetic | `test_oracle_parity` (oracle computes `‖w_j‖` from scratch) |
+| 10 | Panel/blocked execution (dlaqps-style): within a width-`nb` panel the trailing block of `A` and the prefix rows of `W` receive no per-step writes — Householder applications accumulate in `V`/`Fa` and W-prefix rank-1s in `Ω`/`Bsel` (panel rows of `W` eagerly in `B`), flushed as rank-`nb` `gemm`s at panel end; criterion dots come from the deferred representation, `d = W₀ᵀω − Bselᵀ(Ωᵀω) + Bᵀq` | Julia + MEX panel kernels (the default path; see preamble) | regrouped sums only: every selection quantity, every reflector, and the final `R`/`W` equal the unblocked kernel's in exact arithmetic (derivation in `docs/P3_BLOCKED_BSQR.md` §§2–3, 6) | fixture suite in forced-panel mode: Julia `test_parity_fixtures.jl` ("forced panel" mode) and MATLAB `testMexPanelKernelMatchesFixtures` |
+| 11 | Batched norm-recompute refresh: a guard trip mid-panel flags the column (once per panel) and the exact refresh happens at panel flush, up to `nb−1` steps later, instead of immediately | Julia + MEX panel kernels | the one panel change that alters values selection sees in floating point: only the flagged column's criterion denominator is affected, its gap to the refreshed value stays frozen at the downdate-noise floor, and a flagged column (`s ≤ tol·s_ref`) cannot win a selection inside the window — safety analysis in `docs/P3_BLOCKED_BSQR.md` §5. Trace consequence: per-step `nrecomp` counts one flag per column per panel, not per-trip | forced-panel fixture parity (incl. the recompute-heavy zoo members); the mfile↔MEX `nrecomp` trace-equality test pins `BS_PANEL_NB=0` for this reason |
+| 12 | Zero-tail-norm handling: a column with running `s_j = 0` gets criterion `c_j = Inf` (ineligible) and its norm state is frozen at 0 (downdates and recompute checks skipped); `β_j` is taken as 0 when `ρ_i = 0`; if every remaining column is zero the kernels continue with identity reflectors (`tau = 0`) | all kernels (the `Inf` guard is shared by the oracle) | extension: Algorithm 1 presupposes full-rank progress and never divides by zero; past that point the oracle errors (`oracle_bsqr:RankDeficient`) and kernel behavior is an extension covered by contract tests, not by oracle parity | `testOracleRejectsExactRankDeficiency` (documents the oracle boundary); Julia "Rank-stop policy" (continuation past deficiency with `rank_stop = false`) |
 
 ## Validation assets
 
@@ -120,9 +145,10 @@ equivalence claim is wrong.
 | Oracle/backend parity + invariants + Osinsky canaries (`matlab/tests/test_oracle_parity.m`) | done (mfile + MEX) |
 | V0 paper → writeup audit | done (see above) |
 | V3 cross-language fixtures (`parity/`, generated by `matlab/tests/generate_parity_fixtures.m`; consumed by `matlab/tests/test_parity_fixtures.m` and `julia/test/test_parity_fixtures.jl`) | done |
-| V4 per-step trace instrumentation: `trace` option (crit + nrecomp per step) in mfile and MEX, `recomp_history`/`frob_inv_trace` hooks in the Julia kernel; oracle crit traces in `parity/` compared by all three implementations; mfile↔MEX `nrecomp` equality pinned | done |
+| V4 per-step trace instrumentation: `trace` option (crit + nrecomp per step) in mfile and MEX, `recomp_history`/`frob_inv_trace` hooks in the Julia kernel; oracle crit traces in `parity/` compared by all three implementations; mfile↔MEX `nrecomp` equality pinned (in unblocked mode, `BS_PANEL_NB=0` — deviation #11) | done |
 | V5 Householder unification: Julia `_householder!` is a direct `dlarfg` ccall, sharing LAPACK's construction (and rescaling safeguards) with the MEX | done |
 | V2 follow-up: `wnorm2`/W cancellation stress test (V0 open item) | done — no guard needed; see resolution above |
+| P3 panel kernel parity: fixture suite run in default and forced-panel dispatch modes in both languages (deviations #10–#11) | done |
 
 Notes on test design choices:
 

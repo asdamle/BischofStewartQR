@@ -41,10 +41,13 @@ fixtures, cancellation stress, bound checks). This phase re-validates it and
 extends coverage where the harness is thin.
 
 **Re-validate the existing harness:**
-- [ ] Refresh the `docs/VALIDATION.md` deviation audit: re-diff both kernels
+- [x] Refresh the `docs/VALIDATION.md` deviation audit: re-diff both kernels
       (unblocked + panel/MEX in-block) against `matlab/tests/oracle_bsqr.m`
       and the writeup (`notes/bischof_stewart_pivoting.tex`); confirm every
-      documented deviation is still the complete list.
+      documented deviation is still the complete list. (2026-07-05: no
+      undocumented kernel/oracle mismatch; added deviations #10–#12 — panel
+      deferred/regrouped updates, batched norm refresh, zero-tail-norm
+      extension — and fixed stale scope/pins in #5–#8.)
 - [x] Regenerate parity fixtures and confirm byte-exact pivot sequences
       across all three implementations on the full zoo. (2026-07-05:
       regenerated fixtures are byte-identical to the committed ones.)
