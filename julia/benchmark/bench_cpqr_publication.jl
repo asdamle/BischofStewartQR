@@ -12,7 +12,7 @@ include("bench_common.jl")
 using .BenchCommon
 
 const DEFAULT_PUB_OUTDIR = joinpath(@__DIR__, "results", "publication")
-const PUBLICATION_SCHEMA_VERSION = "2026-03-16.v3"
+const PUBLICATION_SCHEMA_VERSION = "2026-07-05.v4"
 const REPO_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 const PLAIN_METHODS = Set([BSQR_METHOD_LABEL, DGEQP3_METHOD_LABEL])
 const RINV_METHODS = Set([BSQR_RINV_METHOD_LABEL, DGEQP3_TRSM_METHOD_LABEL])
@@ -206,7 +206,9 @@ function _write_metadata(
         println(io, "git_sha = ", git_sha)
         println(io, "git_branch = ", git_branch)
         println(io, "git_dirty = ", git_dirty)
-        println(io, "repo_root = ", REPO_ROOT)
+        # Record outdir relative to the repo root: committed metadata must not
+        # leak machine-specific absolute paths (usernames, home layout).
+        println(io, "outdir = ", relpath(dirname(metadata_path), REPO_ROOT))
         println(io, "cpu_model = ", cpu_model)
         println(io, "cpu_threads = ", Sys.CPU_THREADS)
         println(io, "blas_threads_at_end = ", BLAS.get_num_threads())

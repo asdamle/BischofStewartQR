@@ -357,11 +357,20 @@ if fid < 0
 end
 clean = onCleanup(@() fclose(fid));
 
-fprintf(fid, 'schema_version = 2026-03-16.matlab.v3\n');
+fprintf(fid, 'schema_version = 2026-07-05.matlab.v4\n');
 fprintf(fid, 'run_id = %s\n', run_id);
 fprintf(fid, 'timestamp = %s\n', string(datetime('now')));
 fprintf(fid, 'matlab_version = %s\n', version);
-fprintf(fid, 'outdir = %s\n', cfg.outdir);
+% Record outdir relative to the repo root when it lies inside it: committed
+% metadata must not leak machine-specific absolute paths (usernames, home
+% layout). Out-of-repo custom outdirs are recorded as given.
+repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+outdir_rec = cfg.outdir;
+prefix = [repo_root, filesep];
+if strncmp(outdir_rec, prefix, numel(prefix))
+    outdir_rec = outdir_rec(numel(prefix) + 1:end);
+end
+fprintf(fid, 'outdir = %s\n', outdir_rec);
 fprintf(fid, 'observed_rows = %d\n', height(rows));
 fprintf(fid, 'warmup = %d\n', cfg.warmup);
 fprintf(fid, 'samples = %d\n', cfg.samples);
