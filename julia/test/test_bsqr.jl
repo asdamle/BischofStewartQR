@@ -112,6 +112,78 @@ end
     @test size(Q(F0)) == (m, 0)
 end
 
+@testset "Edge shapes" begin
+    rng = MersenneTwister(20260705)
+    for (m, n) in ((5, 0), (0, 5), (0, 0), (1, 8), (8, 1), (50, 5), (5, 50))
+        A = randn(rng, m, n)
+        F = bsqr(A)
+        k = F.ksteps
+        @test k == min(m, n)
+        @test size(R(F)) == (k, n)
+        @test size(Q(F)) == (m, k)
+        @test sort(perm(F)) == collect(1:n)
+        if k > 0
+            @test norm(A[:, perm(F)[1:k]] - Q(F) * R(F)[:, 1:k]) <=
+                  2.5e2 * eps(Float64) * max(m, n) * max(norm(A), 1.0)
+        end
+    end
+end
+
+@testset "Exact criterion ties: first minimum wins" begin
+    # Bitwise-identical duplicate columns produce bitwise-equal criteria
+    # within one implementation, so the strict `<` tie-break must select the
+    # earlier candidate. (Cross-implementation tie agreement is deliberately
+    # NOT tested — the parity zoo screens out near-ties because tie outcomes
+    # are not BLAS-portable; this guards the rule per implementation.)
+    rng = MersenneTwister(20260706)
+    c = randn(rng, 10); c .*= 5 / norm(c)
+    A1 = hcat(c, c, randn(rng, 10, 6))          # cols 1,2 tied at the best criterion
+    @test perm(bsqr(A1; k = 3))[1] == 1
+
+    b = randn(rng, 10); b .*= 9 / norm(b)
+    A2 = hcat(b, c, c, randn(rng, 10, 5))       # tie at step 2, cols 2,3
+    p = perm(bsqr(A2; k = 2))
+    @test p[1] == 1
+    @test p[2] == 2
+end
+
+@testset "Accessors on a rank-stopped factorization" begin
+    rng = MersenneTwister(20260707)
+    B = [ones(30) ones(30) randn(rng, 30, 10)]
+    n = size(B, 2)
+    F = bsqr(B; rank_stop = true, return_rinv_r12 = true)
+    ks = F.ksteps
+    @test ks < min(size(B)...)
+    @test size(R(F)) == (ks, n)
+    @test size(Q(F)) == (30, ks)
+    @test norm(I - Q(F)' * Q(F)) <= 2.5e2 * eps(Float64) * 30
+    @test norm(B[:, perm(F)[1:ks]] - Q(F) * R(F)[:, 1:ks]) <= 1e-10 * norm(B)
+    rr = rinv_r12(F)
+    @test size(rr) == (ks, n - ks)
+    @test norm(R(F)[1:ks, 1:ks] * rr - R(F)[:, (ks + 1):n]) <= 1e-8 * norm(B)
+    @test norm(reconstruct(F, B) - B) <= 1e-10 * norm(B)
+end
+
+@testset "Strided input contract" begin
+    rng = MersenneTwister(20260708)
+    big = randn(rng, 20, 30)
+
+    # Offset views with unit first stride are supported and match the dense run.
+    Av = view(big, 3:14, 5:20)
+    Fd = bsqr!(Matrix(Av))
+    Fv = bsqr!(copy(big) |> B -> view(B, 3:14, 5:20))
+    @test perm(Fv) == perm(Fd)
+    @test norm(R(Fv) - R(Fd)) <= 1e-13
+
+    # Row-strided views type-check as StridedMatrix but violate the kernel's
+    # LAPACK-layout assumption (this silently produced a wrong factorization
+    # before the guard) — they must be rejected.
+    strided = view(copy(big), 1:2:20, :)
+    @test_throws ArgumentError bsqr!(strided)
+    # Out-of-place bsqr copies first, so strided *input* is fine there.
+    @test bsqr(strided).ksteps == min(10, 30)
+end
+
 @testset "Rank-stop policy" begin
     rng = MersenneTwister(2028)
     B = [ones(30) ones(30) randn(rng, 30, 10)]

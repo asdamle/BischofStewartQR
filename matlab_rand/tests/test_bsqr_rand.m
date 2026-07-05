@@ -209,6 +209,24 @@ for fam = ["gaussian", "needle"]
 end
 end
 
+function testInputTypeContract(testCase)
+% Both backends must accept the same inputs: sparse rejected outright (the
+% MEX would otherwise read mxGetPr's nonzero storage as dense -- a buffer
+% overread), non-double numerics normalized to double by the dispatcher.
+W = orthonormal_rows(8, 40, 6);
+backends = {'mfile'};
+if bsqr_rand_mex_available(); backends{end+1} = 'mex'; end
+for bi = 1:numel(backends)
+    b = backends{bi};
+    verifyError(testCase, @() bsqr_rand(sparse(W), 'backend', b), 'bsqr_rand:InvalidInput');
+    [p, Q, R11] = bsqr_rand(single(W), 'backend', b, 'seed', 1);
+    check_factorization(testCase, double(single(W)), p, Q, R11, 8);
+end
+if bsqr_rand_mex_available()
+    verifyError(testCase, @() bsqr_rand_mex(sparse(W)), 'bsqr_rand:InvalidInput');
+end
+end
+
 function testRankDeficientErrors(testCase)
 % k beyond the (exact) rank: only k-1 nonzero columns, the rest literally zero,
 % so at step k every remaining residual is exactly zero and the rank guard must

@@ -821,8 +821,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
 
     const mxArray *Ain = prhs[0];
-    if (!(mxIsDouble(Ain) && !mxIsComplex(Ain) && mxGetNumberOfDimensions(Ain) == 2)) {
-        fail("bsqr:InvalidInput", "A must be a real double matrix.");
+    // mxIsSparse must be rejected explicitly: a sparse mxArray passes the
+    // double/real/2-D checks, but mxGetPr then yields the nonzero storage
+    // (nzmax entries), not dense column-major data -- reading m*n values
+    // from it is a buffer overread.
+    if (!(mxIsDouble(Ain) && !mxIsComplex(Ain) && !mxIsSparse(Ain) &&
+          mxGetNumberOfDimensions(Ain) == 2)) {
+        fail("bsqr:InvalidInput", "A must be a real dense double matrix.");
     }
 
     const mwSize m = mxGetM(Ain);

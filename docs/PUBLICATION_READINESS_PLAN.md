@@ -45,25 +45,38 @@ extends coverage where the harness is thin.
       (unblocked + panel/MEX in-block) against `matlab/tests/oracle_bsqr.m`
       and the writeup (`notes/bischof_stewart_pivoting.tex`); confirm every
       documented deviation is still the complete list.
-- [ ] Regenerate parity fixtures and confirm byte-exact pivot sequences
-      across all three implementations on the full zoo.
-- [ ] Confirm the zoo exercises exact criterion ties (strict `<` first-min
-      tie-breaking) — add a tie case if it does not.
+- [x] Regenerate parity fixtures and confirm byte-exact pivot sequences
+      across all three implementations on the full zoo. (2026-07-05:
+      regenerated fixtures are byte-identical to the committed ones.)
+- [x] Tie coverage. Revised: the zoo *deliberately screens out* near-ties
+      (tie outcomes are not BLAS-portable, so cross-implementation tie parity
+      would be an unfair contract). Added per-implementation tie tests
+      instead — bitwise-duplicate columns at step 1 and mid-factorization,
+      first minimum must win — in the Julia suite and both MATLAB backends.
 
 **Extend coverage (new committed tests):**
-- [ ] Shape/edge grid, both languages: empty (0×n, m×0), single row/column,
-      tall (m ≫ n — the publication suite never runs tall, but the API allows
-      it), k = 0, k = 1, k = min(m,n)−1.
-- [ ] Early-stop + `rank_stop` interactions: every accessor (`R`, `Q`,
-      `perm`, `rinv_r12`, `reconstruct`) on a rank-stopped factorization
-      where `ksteps < k` — the accessors index by `ksteps`, but nothing
-      currently tests them post-rank-stop.
-- [ ] Julia: non-`Matrix` `StridedMatrix` inputs (views with row offsets /
-      non-unit leading stride) through `bsqr!` — the BLAS/LAPACK calls take
-      strides from the array, but no test exercises it.
-- [ ] MATLAB: input-type edges — sparse (must be rejected or converted,
-      currently unspecified), integer/logical/single inputs, complex
-      rejection, on both backends including direct `bsqr_mex` calls.
+- [x] Shape/edge grid, both languages: empty (0×n, m×0, 0×0), single
+      row/column, tall, k = 0 / 1 / min−1. All passed as-is (Julia "Edge
+      shapes" testset; MATLAB `testEdgeShapes`).
+- [x] Early-stop + `rank_stop` accessor interactions (Julia "Accessors on a
+      rank-stopped factorization" testset): all five accessors verified on
+      `ksteps < k`, including `rinv_r12` and exact `reconstruct`.
+- [x] Julia strided inputs — **found a real bug**: a row-strided view
+      (`stride(A,1) > 1`) type-checks as `StridedMatrix` but silently
+      produced a garbage factorization (residual ~1e2, orthogonality ~1e6);
+      the kernel's BLAS calls assume LAPACK layout. Fixed by rejecting
+      non-unit first stride in `_validate_bsqr_common_args` with a clear
+      error; offset views (unit stride) verified to match dense runs
+      ("Strided input contract" testset).
+- [x] MATLAB input-type edges — **found a real bug + an API inconsistency**:
+      (1) sparse inputs pass both MEXes' double/real/2-D validation, but
+      `mxGetPr` on sparse yields nonzero storage only — reading it as dense
+      is a buffer overread (masked in casual testing because fully-dense
+      sparse matrices have `nzmax = m*n`). Both MEXes now reject sparse
+      explicitly, as do both dispatchers. (2) single/integer inputs worked on
+      the m-file backends but errored on the MEXes, making behavior depend on
+      which backend was built; dispatchers now normalize to double before
+      dispatch. Tests: `testInputTypeContract` in both suites.
 - [ ] `bsqr_mex` persistent-workspace sequence test: alternating
       grow/shrink/shape calls in one process (the workspace reuse path is
       only ever hit implicitly today).
@@ -71,15 +84,19 @@ extends coverage where the harness is thin.
       `sqrt(realmin)` — squared-norm state (`s`, `g`, `f2`) can over/underflow
       while the input is still finite. Either handle or document the domain
       (`check_finite` does not catch this). Decide and test the decision.
-- [ ] Randomized variant, statistical pass: sweep ≥100 seeds × {batched,
-      single-select} × {uniform, normweighted} × {running_mean,
-      worstcase_allowance} on 3–4 families, assert `f2 ≤ Fhat` at every step
-      and the final Osinsky bound; record realized-quality distributions
-      (input to the paper's claims).
-- [ ] Doc-claims tests: port this session's scratch `check_doc_claims.m` into
-      the committed suites (MATLAB + Julia) so every identity stated in the
-      docs (including the early-stop caveat) is executable — this pattern
-      already caught one wrong doc claim.
+- [x] Randomized variant, statistical pass:
+      `matlab_rand/tests/stress_bsqr_rand_bounds.m` (opt-in, not
+      auto-discovered). 2026-07-05 run: 100 seeds × {batched, single-select}
+      × {uniform, normweighted} × {running_mean, worstcase_allowance} ×
+      {gaussian, spiked_leverage, needle} = 2400 runs — per-step
+      `f2 ≤ Fhat` held in every run; quality ratio median 0.263, max 0.994;
+      median 16 samples tested per selection.
+- [x] Doc-claims tests: the documented identities are now asserted in
+      committed tests — Julia "Q accessor"/"Edge shapes"/rank-stop testsets;
+      MATLAB `testOutputContracts` + `testEdgeShapes` + a strengthened
+      `testEarlyStoppingByK` (its old identity check used tolerance 1.0
+      because `A(:,p) ≈ Q*R` is the wrong identity under early stop; it now
+      asserts the tight selected-block and R12-projection identities).
 
 ## Phase 2 — Bug hunt beyond the tests (1–2 sessions)
 

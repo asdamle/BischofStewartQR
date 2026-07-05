@@ -71,6 +71,11 @@ function _validate_bsqr_common_args(
     check::Bool,
     norm_recomp_tol::Float64,
 )
+    # The kernel's BLAS/LAPACK calls assume LAPACK layout: columns contiguous
+    # in memory (unit first stride). A row-strided view type-checks as
+    # StridedMatrix but silently factorizes incorrectly, so reject it here.
+    stride(A, 1) == 1 || throw(ArgumentError(
+        "bsqr requires unit column stride (stride(A, 1) == 1); pass a contiguous copy"))
     m, n = size(A)
     kmax = min(m, n)
     (0 <= k <= kmax) || throw(ArgumentError("k must satisfy 0 <= k <= min(m, n)"))
@@ -240,9 +245,11 @@ end
 
 In-place variant of [`bsqr`](@ref) on `A::StridedMatrix{Float64}`: `A` is
 overwritten with the packed factorization and becomes the `factors` field of
-the returned [`BSQRPivoted`](@ref). Accepts the same keyword arguments as
-`bsqr`, plus `workspace::Union{Nothing,BSWorkspace} = nothing` to reuse
-preallocated scratch across calls (allocated internally when `nothing`).
+the returned [`BSQRPivoted`](@ref). `A` must have unit first stride (columns
+contiguous in memory, the LAPACK layout) — offset views are fine, row-strided
+views are rejected. Accepts the same keyword arguments as `bsqr`, plus
+`workspace::Union{Nothing,BSWorkspace} = nothing` to reuse preallocated
+scratch across calls (allocated internally when `nothing`).
 """
 function bsqr!(
     A::StridedMatrix{Float64};

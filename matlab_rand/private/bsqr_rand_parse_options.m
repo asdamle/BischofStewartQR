@@ -8,6 +8,9 @@ function opts = bsqr_rand_parse_options(A, varargin)
 if ~(isnumeric(A) && ismatrix(A) && isreal(A))
     error('bsqr_rand:InvalidInput', 'A must be a real numeric matrix.');
 end
+if issparse(A)
+    error('bsqr_rand:InvalidInput', 'A must be dense (sparse inputs are not supported).');
+end
 
 [m, n] = size(A);
 kmax = min(m, n);

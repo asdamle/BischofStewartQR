@@ -52,6 +52,13 @@ if nargout > 4 && ~opts.trace
         'A fifth output requires the option trace=true.');
 end
 
+% Normalize to double here so both backends accept the same inputs (the MEX
+% requires double; the m-file kernel converts internally -- without this,
+% single/integer inputs would work or fail depending on which backend runs).
+if ~isa(A, 'double')
+    A = double(A);
+end
+
 if should_use_mex(opts.backend)
     ensure_bsqr_mex_ready();
     [varargout{1:nargout}] = bsqr_mex(A, varargin{:});

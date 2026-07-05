@@ -91,6 +91,13 @@ if nargout >= 5 && ~opts.return_r12
         'The fifth output (R12) requires the option return_r12=true.');
 end
 
+% Normalize to double here so both backends accept the same inputs (the MEX
+% requires double; the m-file kernel converts internally -- without this,
+% single/integer inputs would work or fail depending on which backend runs).
+if ~isa(A, 'double')
+    A = double(A);
+end
+
 nout = max(nargout, 1);
 out = cell(1, nout);
 if should_use_mex(opts.backend)

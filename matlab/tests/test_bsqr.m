@@ -61,7 +61,15 @@ k = 4;
 verifySize(testCase, Qk, [15, k]);
 verifySize(testCase, Rk, [k, 11]);
 verifyEqual(testCase, sort(pk), 1:11);
-verifyLessThan(testCase, rel_resid(A(:, pk), Qk * Rk), 1.0);
+% Early stop: A(:,p) = Q*R holds only for the selected block; the trailing
+% block of R is the unselected columns' projection onto span(Q). These are
+% the tight identities (documented in bsqr.m) -- not rel_resid(A(:,p), Q*R),
+% which is O(1) for k < min(m,n).
+verifyLessThan(testCase, rel_resid(A(:, pk(1:k)), Qk * Rk(:, 1:k)), scaled_tol(size(A)));
+verifyLessThan(testCase, ...
+    norm(Qk' * A(:, pk(k+1:end)) - Rk(:, k+1:end), 'fro') / max(norm(A, 'fro'), eps), ...
+    scaled_tol(size(A)));
+verifyLessThan(testCase, orth_err(Qk), scaled_tol(size(A)));
 end
 
 function testOptionalRinvR12(testCase)
@@ -91,6 +99,75 @@ function testPivotTieStability(testCase)
 C = ones(6, 6);
 [~, ~, p] = bsqr(C, 'pivot_format', 'vector');
 verifyEqual(testCase, p, 1:6);
+end
+
+function testTieBreakFirstMinimum(testCase)
+% Bitwise-identical duplicate columns give bitwise-equal criteria within one
+% backend, so the strict `<` tie-break must pick the earlier candidate --
+% including mid-factorization. Checked per backend; cross-backend tie
+% agreement is deliberately not a contract (the parity zoo screens ties out
+% because tie outcomes are not BLAS-portable).
+rng(20260709, 'twister');
+c = randn(10, 1); c = c * 5 / norm(c);
+b = randn(10, 1); b = b * 9 / norm(b);
+A1 = [c, c, randn(10, 6)];          % tie at step 1 between cols 1,2
+A2 = [b, c, c, randn(10, 5)];       % tie at step 2 between cols 2,3
+backends = {'mfile'};
+if bsqr_mex_available(); backends{end+1} = 'mex'; end
+for bi = 1:numel(backends)
+    [~, ~, p1] = bsqr(A1, 'k', 3, 'backend', backends{bi}, 'pivot_format', 'vector');
+    verifyEqual(testCase, p1(1), 1);
+    [~, ~, p2] = bsqr(A2, 'k', 2, 'backend', backends{bi}, 'pivot_format', 'vector');
+    verifyEqual(testCase, p2(1), 1);
+    verifyEqual(testCase, p2(2), 2);
+end
+end
+
+function testInputTypeContract(testCase)
+% Both backends must accept the same inputs. Sparse is rejected outright (a
+% sparse mxArray passes the MEX's double/real/2-D checks but mxGetPr yields
+% only the nonzero storage -- reading it as dense is a buffer overread);
+% non-double numerics are normalized to double by the dispatcher so behavior
+% cannot depend on which backend happens to be available.
+rng(20260710, 'twister');
+A = randn(8, 12);
+[~, ~, pref_single] = bsqr(double(single(A)), 'backend', 'mfile', 'pivot_format', 'vector');
+Ai = int32(round(A * 10));
+[~, ~, pref_int] = bsqr(double(Ai), 'backend', 'mfile', 'pivot_format', 'vector');
+backends = {'mfile'};
+if bsqr_mex_available(); backends{end+1} = 'mex'; end
+for bi = 1:numel(backends)
+    b = backends{bi};
+    verifyError(testCase, @() bsqr(sparse(A), 'backend', b), 'bsqr:InvalidInput');
+    [~, ~, ps] = bsqr(single(A), 'backend', b, 'pivot_format', 'vector');
+    verifyEqual(testCase, ps, pref_single);
+    [~, ~, pi_] = bsqr(Ai, 'backend', b, 'pivot_format', 'vector');
+    verifyEqual(testCase, pi_, pref_int);
+end
+if bsqr_mex_available()
+    verifyError(testCase, @() bsqr_mex(sparse(A)), 'bsqr:InvalidInput');
+end
+end
+
+function testEdgeShapes(testCase)
+% Degenerate and tall shapes through the public API on both backends.
+rng(20260711, 'twister');
+shapes = [0 5; 5 0; 1 8; 8 1; 50 5];
+backends = {'mfile'};
+if bsqr_mex_available(); backends{end+1} = 'mex'; end
+for idx = 1:size(shapes, 1)
+    m = shapes(idx, 1); n = shapes(idx, 2); k = min(m, n);
+    A = randn(m, n);
+    for bi = 1:numel(backends)
+        [Q, R, p] = bsqr(A, 'backend', backends{bi}, 'pivot_format', 'vector');
+        verifySize(testCase, Q, [m, k]);
+        verifySize(testCase, R, [k, n]);
+        verifyEqual(testCase, sort(p), 1:n);
+        if k > 0
+            verifyLessThan(testCase, rel_resid(A(:, p), Q * R), scaled_tol([m, n]));
+        end
+    end
+end
 end
 
 function testBackendOptions(testCase)
