@@ -76,7 +76,10 @@ function varargout = bsqr_rand(A, varargin)
 %
 %   The per-step bound and its guarantees assume A has orthonormal rows
 %   (the GKS setting, m = k). The algorithm still runs for general A, but
-%   only the orthonormal-row case is covered by the theory.
+%   only the orthonormal-row case is covered by the theory. The kernel
+%   tracks SQUARED column norms (g, rho^2) and the squared inverse Frobenius
+%   norm f2, so column norms should stay roughly within [1e-150, 1e150];
+%   outside that range the acceptance rule degrades silently.
 %
 %   See also docs/RANDOMIZED_BSQR_PLAN.md, docs/RANDOMIZED_BSQR_ALGORITHM.md.
 

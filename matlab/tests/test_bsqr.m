@@ -154,6 +154,51 @@ if bsqr_mex_available()
 end
 end
 
+function testExtremeColumnScaling(testCase)
+% The pivot criterion tracks SQUARED column norms, which over/underflow for
+% finite inputs with ||a_j|| beyond ~1e154 / ~1e-154. Outside that domain the
+% selection guarantee is void (documented in bsqr.m), but the factorization
+% itself must remain exact -- Householder generation is scale-safe. Codifies
+% that behavior on both backends.
+rng(20260712, 'twister');
+A = randn(8, 12);
+A(:, 3) = A(:, 3) * 1e160;    % squared norm overflows to Inf
+A(:, 7) = A(:, 7) * 1e-170;   % squared norm underflows to 0
+backends = {'mfile'};
+if bsqr_mex_available(); backends{end+1} = 'mex'; end
+for bi = 1:numel(backends)
+    [Q, R, p] = bsqr(A, 'backend', backends{bi}, 'pivot_format', 'vector');
+    verifyEqual(testCase, sort(p), 1:12);
+    verifyLessThan(testCase, rel_resid(A(:, p), Q * R), scaled_tol(size(A)));
+    verifyLessThan(testCase, orth_err(Q), scaled_tol(size(A)));
+end
+end
+
+function testMexWorkspaceReuseSequence(testCase)
+% bsqr_mex keeps a persistent workspace across calls; results must be
+% independent of call history. Interleave grow/shrink/reshape/early-stop
+% calls in one process and check every result against a fresh m-file
+% reference (exact pivot parity is the repo contract on tie-free input).
+if ~bsqr_mex_available()
+    return;
+end
+rng(20260713, 'twister');
+cases = {randn(30, 20), randn(6, 6), randn(40, 10), randn(10, 40), randn(25, 25)};
+ks = [20, 6, 10, 10, 12];
+pref = cell(1, numel(cases));
+for i = 1:numel(cases)
+    [~, ~, pref{i}] = bsqr(cases{i}, 'k', ks(i), 'backend', 'mfile', 'pivot_format', 'vector');
+end
+order = [1 2 3 4 5 5 4 3 2 1 3 1 5];
+for idx = order
+    [Q, R, p] = bsqr(cases{idx}, 'k', ks(idx), 'backend', 'mex', 'pivot_format', 'vector');
+    verifyEqual(testCase, p, pref{idx});
+    k = ks(idx);
+    verifyLessThan(testCase, rel_resid(cases{idx}(:, p(1:k)), Q * R(:, 1:k)), ...
+        scaled_tol(size(cases{idx})));
+end
+end
+
 function testEdgeShapes(testCase)
 % Degenerate and tall shapes through the public API on both backends.
 rng(20260711, 'twister');

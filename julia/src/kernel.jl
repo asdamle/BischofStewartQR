@@ -147,6 +147,11 @@ results with [`R`](@ref), [`Q`](@ref), [`perm`](@ref), [`rinv_r12`](@ref), and
   past this fraction of its last exact value is recomputed from scratch.
 - `blas_threads::Union{Nothing,Integer} = nothing`: temporarily pin the BLAS
   thread count for the duration of the call (restored afterwards).
+
+Numerical domain: the pivot criterion tracks *squared* column norms, so the
+selection guarantee assumes column norms roughly within `[1e-150, 1e150]`
+(squared norms representable in `Float64`). Outside that range the
+factorization remains exact but pivot quality degrades silently.
 """
 function bsqr(
     A::AbstractMatrix{<:Real};

@@ -77,13 +77,24 @@ extends coverage where the harness is thin.
       the m-file backends but errored on the MEXes, making behavior depend on
       which backend was built; dispatchers now normalize to double before
       dispatch. Tests: `testInputTypeContract` in both suites.
-- [ ] `bsqr_mex` persistent-workspace sequence test: alternating
-      grow/shrink/shape calls in one process (the workspace reuse path is
-      only ever hit implicitly today).
-- [ ] Extreme scaling: columns with norms near `sqrt(realmax)` /
-      `sqrt(realmin)` — squared-norm state (`s`, `g`, `f2`) can over/underflow
-      while the input is still finite. Either handle or document the domain
-      (`check_finite` does not catch this). Decide and test the decision.
+- [x] `bsqr_mex` persistent-workspace sequence test
+      (`testMexWorkspaceReuseSequence`): 13 interleaved grow/shrink/reshape/
+      early-stop calls in one process, each checked for exact pivot parity
+      against a fresh m-file reference plus the tight residual identity.
+- [x] Extreme scaling — probed all three implementations with finite inputs
+      whose squared norms overflow (`‖a‖ ~ 1e160`) / underflow (`~1e-170`):
+      the factorization stays exact everywhere (residual ~2e-16; Householder
+      generation is scale-safe); only the pivot criterion, and hence the
+      selection guarantee, degrades. Decision: document the guarantee's
+      domain (column norms roughly in `[1e-150, 1e150]`) in all three help
+      texts, and codify factorization-stays-exact as tests
+      (`testExtremeColumnScaling`, Julia "Extreme column scaling" testset).
+- [x] Tolerance audit (2026-07-05, user-requested): swept every
+      tolerance-bearing assertion in all three suites for vacuous bounds.
+      One further offender fixed (`testOptionalRinvR12` used the vacuous
+      `rel_resid(A(:,p), Q*R) < 1.0` on an early-stopped factorization —
+      replaced with the tight identities). Everything else is eps-scaled or
+      a deliberate, documented conditioning allowance.
 - [x] Randomized variant, statistical pass:
       `matlab_rand/tests/stress_bsqr_rand_bounds.m` (opt-in, not
       auto-discovered). 2026-07-05 run: 100 seeds × {batched, single-select}

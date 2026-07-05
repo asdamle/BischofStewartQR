@@ -40,6 +40,11 @@ function varargout = bsqr(A, varargin)
 %                        'crit' (1-by-k, criterion value of the selected
 %                        pivot) and 'nrecomp' (1-by-k, norm-recompute events
 %                        per step); see docs/VALIDATION.md (V4)
+%
+%   Numerical domain: the pivot criterion tracks SQUARED column norms, so the
+%   selection guarantee assumes column norms roughly within [1e-150, 1e150]
+%   (squared norms representable in double). Outside that range the
+%   factorization remains exact but pivot quality degrades silently.
 
 if nargout > 5
     error('bsqr:TooManyOutputs', 'bsqr supports at most 5 outputs.');

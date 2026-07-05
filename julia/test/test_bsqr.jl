@@ -164,6 +164,21 @@ end
     @test norm(reconstruct(F, B) - B) <= 1e-10 * norm(B)
 end
 
+@testset "Extreme column scaling stays exact" begin
+    # Squared column norms over/underflow for finite inputs with norms beyond
+    # ~1e154 / ~1e-154; the selection guarantee is void there (documented),
+    # but the factorization itself must remain exact.
+    rng = MersenneTwister(20260712)
+    A = randn(rng, 8, 12)
+    A[:, 3] .*= 1e160
+    A[:, 7] .*= 1e-170
+    F = bsqr(A)
+    p = perm(F)
+    @test sort(p) == collect(1:12)
+    @test norm(A[:, p] - Q(F) * R(F)) <= 8e2 * eps(Float64) * 12 * norm(A)
+    @test norm(I - Q(F)' * Q(F)) <= 8e2 * eps(Float64) * 8
+end
+
 @testset "Strided input contract" begin
     rng = MersenneTwister(20260708)
     big = randn(rng, 20, 30)
