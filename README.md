@@ -53,7 +53,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## How to cite
 
-If you use this software, please cite it. Citation metadata lives in
-[CITATION.cff](CITATION.cff); GitHub renders a "Cite this repository" widget
-from it. A DOI and the accompanying paper reference are forthcoming and will be
-added there once available.
+If you use this software, please cite the accompanying paper — its reference
+will be added here (and as the `preferred-citation` in
+[CITATION.cff](CITATION.cff), which drives GitHub's "Cite this repository"
+widget) once it is available.
