@@ -125,29 +125,55 @@ Techniques, in order of expected yield:
       *Partially covered 2026-07-05 by merging the stale `audit/*` branches:*
       `matlab/tests/test_mfile_mex_fuzz.m` (seeded mfile-vs-MEX differential
       fuzz, now a standing test), a randomized unblocked-vs-panel Julia
-      parity testset, and six new parity-zoo stress corners (near-tied
-      norms, exact rank deficiency, clustered/graded spectra). Remaining:
-      the cross-language (Julia↔MATLAB) fuzz half and the large overnight
-      batch.
-- [ ] **Sanitizer builds of both MEX kernels.** Build with
-      `-fsanitize=address,undefined` (mex CXXFLAGS variant) and run the full
-      MATLAB suites + the fuzz driver under them. This is the only realistic
-      memory-safety check for the ~2200 lines of C++ (macOS: ASan works,
-      valgrind does not).
+      parity testset, and six new parity-zoo stress corners.
+      **Cross-language half done 2026-07-05**: opt-in driver
+      `matlab/tests/fuzz_cross_language_gen.m` (randomized zoo-format
+      fixtures with the near-tie screen; five families incl. graded and
+      near-tied norms) + `julia/test/fuzz_cross_language_check.jl` (both
+      kernel paths per case). Batch of 2000 seeds (1866 kept, 134 near-tie
+      skips) × 2 kernel paths: **0 failures**. Along the way found and fixed
+      a latent writer bug in `generate_parity_fixtures.m` (MATLAB `fprintf`
+      with an empty data array still emits the format's literal characters,
+      so 1-column matrices gained a stray trailing comma — unreachable with
+      the current zoo, fatal for any future k = 1 member). One calibration:
+      criterion-trace parity is condition-amplified, so for randomly-graded
+      fuzz cases the checked contract is exact pivots + tight R (the
+      13 initial "failures" were final-step criterion drift ~3e-3 on
+      numerical-rank tails with pivots exact and R at ~5e-16).
+- [x] **Sanitizer builds of both MEX kernels.** ASan is unusable inside
+      MATLAB on macOS — dyld's platform policy refuses to load the sanitizer
+      runtime into a hardened-runtime process ("Sanitizer load violates
+      platform policy"), and static ASan for dylibs does not exist. Used the
+      strongest embeddable instrumentation instead: trap-mode UBSan
+      (`-fsanitize=undefined -fsanitize-trap=undefined`, no runtime needed)
+      plus libc++ hardened mode (`_LIBCPP_HARDENING_MODE_DEBUG`, real vector
+      bounds checks). Build recipe:
+      `build_bsqr_mex('CXXFLAGS=$CXXFLAGS -fsanitize=undefined
+      -fsanitize-trap=undefined -fno-omit-frame-pointer
+      -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG')` (same for
+      `build_bsqr_rand_mex`). **Found and fixed one real UB**: the
+      deterministic MEX's column-norm init loop formed a reference into an
+      empty vector for m = 0 inputs (benign in production only because
+      `dnrm2` with len 0 never dereferences). After the fix, both full
+      suites plus a 720-run randomized stress sweep run clean under
+      instrumentation.
 - [ ] **Coverage-guided gap analysis.** Julia `Pkg.test(coverage=true)` and
       MATLAB profiler coverage over the suites; list uncovered branches in
       kernel files (candidates: recompute safeguards, rank-stop inside the
       panel kernel, Fenwick degenerate paths `total <= 0`, the batched
       feasibility net, swap-pop pool maintenance). Write a test per uncovered
       branch or justify why it is unreachable.
-- [ ] **Targeted adversarial cases** (from reading the kernels this session):
-      panel-boundary interactions (`k % BS_PANEL_NB ≠ 0`, `BS_PANEL_MIN_KN`
-      crossover exactly at `k·n`), `block_size > n` and `block_size = 1` in
-      the randomized MEX, all-zero-weight columns under norm-weighted
-      sampling (Fenwick `total ≤ 0` fallback), the batched fallback firing on
-      the *first* block (`since_last ≥ rem` at `nsel = 0` requires `b ≥ n`),
-      `worstcase_allowance` at the final step (`k−i = 1` division), and
-      `slack` large enough that the bound is intentionally void.
+- [x] **Targeted adversarial cases** — probed on both backends (some under
+      the instrumented MEXes) and codified as `testAdversarialCorners` in the
+      randomized suite: `block_size = 1` (both kernel paths) and `10·n`,
+      uniform sampling on `needle` with block 1 (forces the fallback path),
+      `worstcase_allowance` at `k = 2` (final-step `k−i = 1` division),
+      `slack = 1e3` (bound void, exactness preserved), and fully-underflowed
+      sampling weights (squared norms leave the documented domain → the rank
+      guard fires with the documented error, on both backends). All behaved
+      correctly. Panel-boundary interactions are covered by the merged
+      randomized unblocked-vs-panel testset plus the fuzz checker's forced-
+      panel pass.
 - [ ] **Optional deep review.** A multi-agent adversarial review of the two
       MEX kernels and the two pivot-criterion state machines is the highest-
       value target for `/code-review ultra` (user-triggered) or an explicit

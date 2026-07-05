@@ -75,7 +75,12 @@ fid = fopen(path, 'w');
 cleanup = onCleanup(@() fclose(fid));
 for i = 1:size(X, 1)
     fprintf(fid, '%.17g', X(i, 1));
-    fprintf(fid, ',%.17g', X(i, 2:end));
+    % Guard the single-column case: fprintf with an EMPTY data array still
+    % emits the format string's literal characters, so an unguarded
+    % fprintf(',%.17g', X(i, 2:end)) writes a stray trailing comma.
+    if size(X, 2) > 1
+        fprintf(fid, ',%.17g', X(i, 2:end));
+    end
     fprintf(fid, '\n');
 end
 end

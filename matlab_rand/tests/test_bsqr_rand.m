@@ -227,6 +227,42 @@ if bsqr_rand_mex_available()
 end
 end
 
+function testAdversarialCorners(testCase)
+% Kernel corners picked by reading the implementations (publication plan
+% Phase 2): degenerate block sizes, the forced-fallback path, the final-step
+% worstcase_allowance division (k-i = 1), a bound-voiding slack, and
+% fully-underflowed sampling weights. Each must either factor exactly with
+% the per-step bound intact, or fail with the documented error.
+k = 12; n = 150;
+rng(5); W = orth(randn(n, k))';
+repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+addpath(fullfile(repo_root, 'matlab_rand', 'benchmark'));
+needle = rand_test_matrix('needle', k, n, 11);
+backends = {'mfile'};
+if bsqr_rand_mex_available(); backends{end+1} = 'mex'; end
+for bi = 1:numel(backends)
+    b = backends{bi};
+    corner_check(testCase, W, k, 'backend', b, 'seed', 1, 'block_size', 1, 'batched', true);
+    corner_check(testCase, W, k, 'backend', b, 'seed', 1, 'block_size', 1, 'batched', false);
+    corner_check(testCase, W, k, 'backend', b, 'seed', 2, 'block_size', 10 * n);
+    corner_check(testCase, needle, k, 'backend', b, 'seed', 3, 'block_size', 1, 'sampling', 'uniform');
+    corner_check(testCase, W, 2, 'backend', b, 'seed', 4, 'threshold_mode', 'worstcase_allowance');
+    % slack >= 1 voids the bound but must not break exactness
+    [p, Q, R11] = bsqr_rand(W, 'k', k, 'backend', b, 'seed', 5, 'slack', 1e3);
+    check_factorization(testCase, W, p, Q, R11, k);
+    % all sampling weights underflow to zero: squared norms leave the
+    % documented domain, and the rank guard fires (rho^2 underflows too)
+    verifyError(testCase, @() bsqr_rand(W * 1e-170, 'k', k, 'backend', b, ...
+        'seed', 6, 'sampling', 'normweighted'), 'bsqr_rand:RankDeficient');
+end
+end
+
+function corner_check(testCase, M, k, varargin)
+[p, Q, R11, st] = bsqr_rand(M, 'k', k, varargin{:});
+check_factorization(testCase, M, p, Q, R11, k);
+verifyLessThanOrEqual(testCase, st.f2(:), st.Fhat(:) * (1 + 1e-8) + 1e-8);
+end
+
 function testRankDeficientErrors(testCase)
 % k beyond the (exact) rank: only k-1 nonzero columns, the rest literally zero,
 % so at step k every remaining residual is exactly zero and the rank guard must

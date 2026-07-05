@@ -873,9 +873,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     ptrdiff_t inc1 = 1;
     for (mwSize j = 0; j < n; ++j) {
         p[j] = j;
-        const ptrdiff_t len = static_cast<ptrdiff_t>(m);
-        const double nj = dnrm2(&len, &Aat(A, m, 0, j), &inc1);
-        const double sj = nj * nj;
+        double sj = 0.0;
+        if (m > 0) {   // m == 0: A is empty; &Aat(A, m, 0, j) would reference into it (UB)
+            const ptrdiff_t len = static_cast<ptrdiff_t>(m);
+            const double nj = dnrm2(&len, &Aat(A, m, 0, j), &inc1);
+            sj = nj * nj;
+        }
         s[j] = sj;
         s_ref[j] = sj;
     }
