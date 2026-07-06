@@ -282,34 +282,52 @@ re-triggers Phase 1's parity work. For each finding: measure, write down the
 expected gain, and either apply (with perf-gate + parity evidence) or record
 as consciously deferred.
 
-- [ ] **Profile before guessing.** Julia: `@profile` + allocation tracking on
-      publication-shaped cases (square and short-wide at the benchmark
-      sizes); confirm the kernel loop is allocation-free. MEX: sample with
-      Instruments on the same cases.
-- [ ] **Known knobs to sanity-check rather than re-derive**: `BS_PANEL_NB`
-      (default 8) and `BS_PANEL_MIN_KN` crossover on the current toolchain;
-      BLAS thread pinning behavior at benchmark sizes; Accelerate vs default
-      BLAS deltas already handled by `setup_accelerate.jl`.
-- [ ] **Candidates spotted while reading the kernels this cycle** (each needs
-      a measurement before touching):
-      - deterministic MEX: whether the one-output form skipping Q is
-        exploited everywhere it could be internally;
-      - randomized MEX: `dger`-based in-block downdates are BLAS-2 by design —
-        check whether a two-column blocking of the reflector apply pays at
-        `b = k` sizes; Fenwick vs plain partial sums at small `n`;
-      - `check_finite` is an `O(mn)` pre-scan both sides pay by default —
-        confirm benchmark paths disable it (they do) and that the default is
-        documented as safety-first;
-      - Julia `R(F)` returns `triu(view(...))` (allocates) and `perm`/
-        `rinv_r12` copy — fine for the API, but confirm no benchmark-timed
-        path calls them inside loops.
-- [ ] **Regime map vs `dgeqp3`**: one table of BSQR/baseline ratio over the
-      full (m, n, k) publication grid from the rerun — identifies any regime
-      where a claim in the paper would be weak, which is the real
-      "performance improvement" that matters for publication.
-- [ ] Apply/defer decisions recorded here; perf gate
-      (`check_publication_perf_gate.*`) run against the Phase 0 baseline for
-      anything applied.
+Done 2026-07-06. Findings and decisions:
+
+- [x] **timeit everywhere (user-directed).** All MATLAB benchmark timings now
+      go through `timeit`, so recorded variability is across random problem
+      instances (the seed/trial columns), not timer noise. Applied:
+      `run_publication_benchmarks.m` (`bench_function` was warmup +
+      tic/toc-samples; now one `timeit` per instance — the dead `tmin_s`
+      column dropped from the CSV, the now-meaningless `warmup`/`samples`
+      knobs and `BS_MATLAB_PUB_{WARMUP,SAMPLES}` env vars removed, schema
+      bumped to 2026-07-06.matlab.v5) and `run_approx_comparison.m` (single-
+      shot tic/toc per trial → `timeit` with the selector re-seeded inside
+      the thunk so every repetition times the identical instance). The four
+      other drivers already used `timeit`. Verified: smoke run green, perf
+      gate vs the Phase 0 baseline passes (0 violations — methodology change
+      is within noise), full suite green.
+- [x] **Profile/allocation check.** The preallocated `bsqr!` path is
+      allocation-free after warm-up on the unblocked kernel; the panel
+      kernel allocates ~`3·n·nb` doubles of panel-local scratch per call
+      (~124KB at 64×512). Timing impact is negligible (µs vs ms per
+      factorization) → fix deferred; the `bsqr!` docstring now states the
+      caveat and the `BS_PANEL_NB=0` escape hatch. Caching the panel
+      buffers inside `BSWorkspace` is the future fix if strict allocation-
+      freedom ever matters.
+- [x] **Knob sanity.** `BS_PANEL_NB` swept {0,4,8,16} on Accelerate over
+      128×256 / 192×192 / 256×1024 / 64×640: nb=8 fastest on every shape
+      (e.g. 256×1024: 16.7ms unblocked → 9.5ms at nb=8); default confirmed,
+      crossover default consistent with the file's recorded boundary.
+- [x] **Candidates evaluated.** `check_finite`/`check` confirmed disabled on
+      every timed path in both languages; the accessor copies (`R(F)`,
+      `perm`, `rinv_r12`) confirmed absent from timed loops; deterministic
+      MEX one-output Q-skip confirmed in place. Randomized-MEX two-column
+      blocking and Fenwick-vs-partial-sums at small n: consciously deferred
+      — research-grade kernel changes with parity costs, out of scope
+      pre-submission.
+- [x] **Regime map vs `dgeqp3`** (preliminary, from the committed
+      publication CSVs; regenerate at Phase 6): the deterministic BSQR with
+      the full `[Q,R,p]` product trails `dgeqp3` everywhere — geomean ratio
+      1.2–1.5× on square and moderate aspects, worst ~2–2.2× at the widest
+      short-wide shapes (512×4096/5120), consistent in both languages. For
+      the paper: never claim raw-speed wins for the deterministic kernel;
+      its value is criterion quality + the free `R11⁻¹R12` (and the `rinv`
+      product's comparison vs `qr`+`trsm` is the fair speed story); raw
+      speedups belong to the randomized variant. This also re-confirms the
+      MEX promotion rule's status quo.
+- [x] Apply/defer decisions recorded above; perf gate run against the
+      Phase 0 baseline for the applied timing change (0 violations).
 
 ## Phase 6 — Final regeneration and freeze (already planned)
 

@@ -301,8 +301,6 @@ cfg.families = {'gaussian'};
 cfg.square_ms = 32;
 cfg.short_ms = 16;
 cfg.short_aspects = 2;
-cfg.warmup = 1;
-cfg.samples = 3;
 cfg.norm_recomp_tol = sqrt(eps('double'));
 
 run_publication_smoke_benchmark(cfg);
@@ -329,8 +327,6 @@ cfg.families = {'gaussian'};
 cfg.square_ms = 8;
 cfg.short_ms = 4;
 cfg.short_aspects = 2;
-cfg.warmup = 0;
-cfg.samples = 1;
 cfg.norm_recomp_tol = sqrt(eps('double'));
 cfg.bsqr_backend = 'mex';
 
@@ -349,8 +345,6 @@ cfg.families = {'gaussian'};
 cfg.square_ms = 8;
 cfg.short_ms = 4;
 cfg.short_aspects = 2;
-cfg.warmup = 0;
-cfg.samples = 1;
 cfg.norm_recomp_tol = sqrt(eps('double'));
 
 verifyError(testCase, @() run_publication_benchmarks(cfg), 'run_publication_benchmarks:SharedOutdirBlocked');

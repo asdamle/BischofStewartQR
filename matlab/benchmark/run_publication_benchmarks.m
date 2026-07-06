@@ -33,8 +33,8 @@ for seed = cfg.seeds
             A = make_matrix(family, kase.m, kase.n);
             k = min(kase.m, kase.n);
 
-            plain = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, false);
-            rinv = bench_pair(A, k, cfg.norm_recomp_tol, cfg.warmup, cfg.samples, true);
+            plain = bench_pair(A, k, cfg.norm_recomp_tol, false);
+            rinv = bench_pair(A, k, cfg.norm_recomp_tol, true);
 
             rows = [rows; pack_rows(plain, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
             rows = [rows; pack_rows(rinv, run_id, timestamp, family, kase, seed)]; %#ok<AGROW>
@@ -84,8 +84,6 @@ cfg.families = getfield_default(cfg, 'families', parse_str_list(bsqr_bench_geten
 cfg.square_ms = getfield_default(cfg, 'square_ms', parse_int_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_SQUARE_MS', '64,128,256,384,512')));
 cfg.short_ms = getfield_default(cfg, 'short_ms', parse_int_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_SHORT_MS', '32,64,128,256,512')));
 cfg.short_aspects = getfield_default(cfg, 'short_aspects', parse_float_list(bsqr_bench_getenv_default('BS_MATLAB_PUB_SHORT_ASPECTS', '2,4,8,10')));
-cfg.warmup = getfield_default(cfg, 'warmup', str2double(bsqr_bench_getenv_default('BS_MATLAB_PUB_WARMUP', '1')));
-cfg.samples = getfield_default(cfg, 'samples', str2double(bsqr_bench_getenv_default('BS_MATLAB_PUB_SAMPLES', '12')));
 cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', str2double(bsqr_bench_getenv_default('BS_MATLAB_NORM_RECOMP_TOL', num2str(sqrt(eps('double'))))));
 
 if isempty(cfg.seeds)
@@ -114,17 +112,17 @@ for i = 1:numel(method_rows)
     newrow = table( ...
         string(run_id), string(timestamp), string(family), string(kase.regime), ...
         kase.m, kase.n, kase.aspect, seed, string(r.method), ...
-        r.tmin, r.tmed, r.residual, r.orthogonality, ...
-        'VariableNames', {'run_id','timestamp','family','regime','m','n','aspect','seed','method','tmin_s','tmed_s','residual','orthogonality'});
+        r.tmed, r.residual, r.orthogonality, ...
+        'VariableNames', {'run_id','timestamp','family','regime','m','n','aspect','seed','method','tmed_s','residual','orthogonality'});
     rows = [rows; newrow]; %#ok<AGROW>
 end
 end
 
-function rows = bench_pair(A, k, norm_recomp_tol, warmup, samples, include_rinv)
-rows = struct('method', {}, 'tmin', {}, 'tmed', {}, 'residual', {}, 'orthogonality', {});
+function rows = bench_pair(A, k, norm_recomp_tol, include_rinv)
+rows = struct('method', {}, 'tmed', {}, 'residual', {}, 'orthogonality', {});
 
 f_bs = @() run_bsqr_timed(A, k, norm_recomp_tol, include_rinv);
-[tmin, tmed] = bench_function(f_bs, warmup, samples);
+tmed = bench_function(f_bs);
 out = run_bsqr_quality(A, k, norm_recomp_tol, include_rinv);
 [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
 if include_rinv
@@ -132,36 +130,28 @@ if include_rinv
 else
     bs_label = "bsqr_full";
 end
-rows(end+1) = struct('method', bs_label, 'tmin', tmin, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
+rows(end+1) = struct('method', bs_label, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 
 f_qr = @() run_qr_builtin_timed(A);
-[tmin, tmed] = bench_function(f_qr, warmup, samples);
+tmed = bench_function(f_qr);
 out = run_qr_builtin_quality(A);
 [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
-rows(end+1) = struct('method', "qr_pivoted", 'tmin', tmin, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
+rows(end+1) = struct('method', "qr_pivoted", 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 
 if include_rinv
     f_qr_trsm = @() run_qr_trsm_timed(A);
-    [tmin, tmed] = bench_function(f_qr_trsm, warmup, samples);
+    tmed = bench_function(f_qr_trsm);
     out = run_qr_trsm_quality(A);
     [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
-    rows(end+1) = struct('method', "qr_pivoted_trsm", 'tmin', tmin, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
+    rows(end+1) = struct('method', "qr_pivoted_trsm", 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 end
 end
 
-function [tmin, tmed] = bench_function(f, warmup, samples)
-for i = 1:warmup
-    f();
-end
-
-times = zeros(samples, 1);
-for i = 1:samples
-    tic;
-    f();
-    times(i) = toc;
-end
-tmin = min(times);
-tmed = median(times);
+function t = bench_function(f)
+% timeit stabilizes the per-instance measurement (its own warmup plus a
+% robust median over repeated runs), so the variability the CSV records is
+% across random problem instances (the seed column), not timer noise.
+t = timeit(f);
 end
 
 function out = run_bsqr_quality(A, k, norm_recomp_tol, return_rinv)
@@ -357,7 +347,7 @@ if fid < 0
 end
 clean = onCleanup(@() fclose(fid));
 
-fprintf(fid, 'schema_version = 2026-07-05.matlab.v4\n');
+fprintf(fid, 'schema_version = 2026-07-06.matlab.v5\n');
 fprintf(fid, 'run_id = %s\n', run_id);
 fprintf(fid, 'timestamp = %s\n', string(datetime('now')));
 fprintf(fid, 'matlab_version = %s\n', version);
@@ -372,8 +362,6 @@ if strncmp(outdir_rec, prefix, numel(prefix))
 end
 fprintf(fid, 'outdir = %s\n', outdir_rec);
 fprintf(fid, 'observed_rows = %d\n', height(rows));
-fprintf(fid, 'warmup = %d\n', cfg.warmup);
-fprintf(fid, 'samples = %d\n', cfg.samples);
 fprintf(fid, 'norm_recomp_tol = %.17g\n', cfg.norm_recomp_tol);
 fprintf(fid, 'bsqr_backend = %s\n', cfg.bsqr_backend);
 end

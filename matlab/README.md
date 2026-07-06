@@ -87,6 +87,9 @@ Benchmark contract:
 - BSQR baseline uses the MEX backend directly (`bsqr_mex`) with vector permutation.
 - Publication runner is mex-only and does not accept `cfg.bsqr_backend`.
 - Timed publication path materializes `Q,R,p` for both BSQR and built-in QR.
+- Every timing is a `timeit` measurement (per-instance stabilized: its own
+  warmup plus a robust median over repeated runs), so the variability the CSVs
+  record is across random problem instances (the seed column), not timer noise.
 
 Regenerate plots/tables from CSV:
 
@@ -115,8 +118,6 @@ Environment knobs (optional):
 - `BS_MATLAB_PUB_SQUARE_MS`
 - `BS_MATLAB_PUB_SHORT_MS`
 - `BS_MATLAB_PUB_SHORT_ASPECTS`
-- `BS_MATLAB_PUB_WARMUP`
-- `BS_MATLAB_PUB_SAMPLES`
 - `BS_MATLAB_NORM_RECOMP_TOL`
 - `BS_MATLAB_PUB_FIG_FORMATS` (`png` default; supports `png,pdf,eps`)
 - `BS_PANEL_NB` (default `8`; panel/blocked MEX kernel width, `0`/`1` selects

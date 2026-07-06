@@ -180,7 +180,11 @@ end
 """
     bsqr!(A, tau, jpvt, workspace; kwargs...) -> ksteps
 
-Allocation-minimal in-place Bischof-Stewart kernel for repeated calls. No
+Allocation-minimal in-place Bischof-Stewart kernel for repeated calls. The
+unblocked kernel is allocation-free after warm-up; the default panel kernel
+additionally allocates its panel-local scratch (a few `n·nb`-sized buffers)
+per call — set `BS_PANEL_NB=0` to force the unblocked kernel when strict
+allocation-freedom matters more than the panel kernel's speed. No
 `BSQRPivoted` is built; the results live in the caller-provided buffers:
 `A` is overwritten with the packed factorization (upper trapezoid of the
 first `ksteps` rows = `R`, reflector tails below the diagonal), `tau`

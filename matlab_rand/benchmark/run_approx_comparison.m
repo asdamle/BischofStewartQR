@@ -145,20 +145,23 @@ for fi = 1:numel(opt.families)
         opt_spec = svals(k+1);
 
         for s = 1:opt.trials
+            % Timing discipline: timeit stabilizes each per-instance
+            % measurement (both selectors are seeded inside the thunk, so
+            % every timeit repetition times the identical instance); the
+            % recorded variability is then across trials/instances, not
+            % timer noise. The quality call reuses the same seed so the
+            % scored subset is the timed one.
             % randomized BSQR -- public defaults (batched, block=k, norm-weighted)
-            t0 = tic;
+            tb = timeit(@() bsqr_rand(W, 'k', k, 'seed', s));
             p = bsqr_rand(W, 'k', k, 'seed', s);
-            tb = toc(t0);
             [fb, sb] = approx_err(A, p(1:k));
             mtb = interp_coeff_max(W, p(1:k));     % max|R11^{-1}R12| (basis quality)
             rows(end+1, :) = {fam, m, n, k, s, 'bsqr_rand', fb, sb, ...
                 opt_frob, opt_spec, normA_fro, normA_2, tb, mtb}; %#ok<AGROW>
 
             % rejection_rpqr -- seeded for reproducibility
-            rng(s);
-            t0 = tic;
-            idx = rejection_rpqr(W, k);
-            tr = toc(t0);
+            tr = timeit(@() seeded_rpqr(W, k, s));
+            idx = seeded_rpqr(W, k, s);
             [fr, sr] = approx_err(A, idx(1:k));
             mtr = interp_coeff_max(W, idx(1:k));
             rows(end+1, :) = {fam, m, n, k, s, 'rejection_rpqr', fr, sr, ...
@@ -207,4 +210,11 @@ rest = setdiff(1:size(W, 2), sel);
 [Q1, R11] = qr(W(:, sel), 0);
 T = R11 \ (Q1' * W(:, rest));
 mt = max(abs(T), [], 'all');
+end
+
+function idx = seeded_rpqr(W, k, s)
+% Re-seed inside the timed thunk so every timeit repetition runs the
+% identical instance (rejection_rpqr draws from the global RNG).
+rng(s);
+idx = rejection_rpqr(W, k);
 end

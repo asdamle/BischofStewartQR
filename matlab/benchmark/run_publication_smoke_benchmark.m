@@ -19,8 +19,6 @@ cfg.families = getfield_default(cfg, 'families', {'gaussian'});
 cfg.square_ms = getfield_default(cfg, 'square_ms', 32);
 cfg.short_ms = getfield_default(cfg, 'short_ms', 16);
 cfg.short_aspects = getfield_default(cfg, 'short_aspects', 2);
-cfg.warmup = getfield_default(cfg, 'warmup', 1);
-cfg.samples = getfield_default(cfg, 'samples', 3);
 cfg.norm_recomp_tol = getfield_default(cfg, 'norm_recomp_tol', sqrt(eps('double')));
 
 run_publication_benchmarks(cfg);
