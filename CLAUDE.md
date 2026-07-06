@@ -26,7 +26,7 @@ julia --project=julia/benchmark -e 'using Pkg; Pkg.instantiate()'   # benchmark 
 julia --project=julia           -e 'using Pkg; Pkg.test()'          # tests
 ```
 
-All tests are `@testset` blocks in `julia/test/test_bsqr.jl`; there is no per-test runner — comment out or run the file via `include` in a REPL to iterate on one testset.
+Tests are `@testset` blocks in `julia/test/test_bsqr.jl` plus the fixture suite `julia/test/test_parity_fixtures.jl` (both included by `runtests.jl`; the opt-in cross-language fuzz checker `fuzz_cross_language_check.jl` is not); there is no per-test runner — comment out or run a file via `include` in a REPL to iterate on one testset.
 
 Benchmarks (publication pipeline; uses the `julia/benchmark` environment):
 
@@ -111,7 +111,7 @@ Kernel knobs that tests rely on: `k` (early stop), `rank_stop`, `norm_recomp_tol
 
 - `bsqr.m` — user-facing dispatcher. `backend='auto'` (default) uses `bsqr_mex` when built, else falls back to `private/bsqr_mfile.m`. The m-file kernel mirrors the Julia kernel; the MEX (`mex/src/bsqr_mex.cpp`, BLAS/LAPACK calls, persistent workspace) mirrors it too.
 - The pure `.m` backend exists for correctness testing and development; publication benchmarks are MEX-only and error without `bsqr_mex`.
-- MEX promotion rule (from `matlab/mex/README.md`): MEX stays opt-in as default until benchmarks show ≥20% median speedup on short-wide focus cases with no residual/orthogonality regression.
+- MEX status (see `matlab/mex/README.md`): `backend='auto'` already dispatches to the MEX whenever it is built (`startup` builds it), with the pure-`.m` kernel as fallback; keeping that preference is gated on benchmark evidence — ≥20% median speedup on short-wide focus cases with no residual/orthogonality regression — evaluated against the final publication rerun.
 
 ### Publication benchmark pipeline
 
