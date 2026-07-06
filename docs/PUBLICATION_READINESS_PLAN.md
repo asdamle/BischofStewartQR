@@ -198,32 +198,48 @@ Any bug found: fix with a regression test, then re-run Phase 0's baseline
 checks (parity is the canary for kernel-behavior changes — both languages
 must change together).
 
-## Phase 3 — Documentation validation (1 session)
+## Phase 3 — Documentation validation (1 session) — DONE 2026-07-05
 
 Inventory: `CLAUDE.md`, root `startup.m`/`startup.jl`, `matlab/README.md`,
 `matlab/mex/README.md`, `matlab_rand/README.md`, `julia/README.md`,
 `julia/docs/TESTS_AND_BENCHMARKS.md`, the seven `docs/*.md`, and inline help
 (`bsqr.m`, `bsqr_rand.m`, Julia docstrings — already refreshed this cycle).
 
-- [ ] **Execute every documented command.** Each shell/matlab/julia snippet
-      in every README and CLAUDE.md gets run (smoke-scale where the real run
-      is expensive). Fix or delete anything that errors or drifts.
-- [ ] **Check every factual claim against code**: defaults (block sizes,
-      `norm_recomp_tol`, panel width, env-var names `BS_PUB_*` /
-      `BS_MATLAB_PUB_*`), output shapes, complexity claims, and the MEX
-      promotion rule in `matlab/mex/README.md` (evaluate it against the final
-      benchmark numbers — either promote or keep the rule and note status).
-- [ ] **Flag stale measured numbers.** Tables in `docs/RANDOMIZED_BSQR_PLAN.md`
-      and READMEs carrying pre-rerun timings are already annotated; after the
-      final rerun, replace them with the regenerated numbers.
-- [ ] **Cross-document consistency**: CLAUDE.md vs READMEs vs `docs/` plans
-      (one description per fact, others link); mark completed plan docs
-      (`VALIDATION_AND_PERF_PLAN.md`, `PERF_P0_FINDINGS.md`, this file when
-      done) as historical records in a line at the top.
-- [ ] **Manuscript-facing docs**: `docs/RANDOMIZED_BSQR_ALGORITHM.md` §6 was
-      audited and compile-checked this cycle; re-verify against the final
-      kernel behavior after any Phase 1/2 fixes, and confirm theorem/equation
-      references into `notes/` still match the writeup.
+- [x] **Execute every documented command.** (2026-07-05: every snippet in
+      CLAUDE.md and all READMEs/startups ran green — suites, builds,
+      `startup`/`startup rebuild`/`startup.jl`, quick-starts (incl. the
+      5-output `trace` and `return_r12` forms), smoke benchmarks, plotters
+      (pointed at smoke CSVs so committed artifacts stayed untouched), perf
+      gates, the Python timing compare, fixture regen (byte-identical), and
+      all matlab_rand comparison suites at reduced-but-complete scale — every
+      documented CSV/figure name produced; `rejection_rpqr` run against a
+      local `ext_comparisons/` download (URL in the README verified live).
+      Full publication runs validated via their smoke variants. Fixes: output
+      names in the root-README/startup quick-starts (`[p, Q, R11]`,
+      `[Q, R, E]`) and `startup.jl`'s `reconstruct(F, A)` hint.)
+- [x] **Check every factual claim against code** (2026-07-05: defaults
+      (`BS_PANEL_NB=8`, `BS_PANEL_MIN_KN=24576`, `norm_recomp_tol=sqrt(eps)`,
+      block-size clamp `[16,64]`), both env-var lists complete and correct,
+      output shapes/identities, stats/trace fields, figure/CSV names, and
+      complexity statements all verified. Drifts fixed: CLAUDE.md's Julia
+      test-file list, and the MEX promotion rule restated to match reality —
+      `auto` already prefers the built MEX; the ≥20% short-wide criterion is
+      kept and will be evaluated at the Phase 6 rerun.)
+- [x] **Flag stale measured numbers.** (2026-07-05: the
+      `docs/RANDOMIZED_BSQR_PLAN.md` speedup table carries the pre-lazy-Q
+      annotation; `matlab_rand/README.md` has no measured tables. Replacement
+      with rerun numbers stays a Phase 6 item.)
+- [x] **Cross-document consistency** (2026-07-05: single-source sweep across
+      CLAUDE.md / READMEs / startups clean after the fixes above;
+      `VALIDATION_AND_PERF_PLAN.md` and `PERF_P0_FINDINGS.md` (all items
+      done) marked as historical records at the top.)
+- [x] **Manuscript-facing docs** (2026-07-05: `RANDOMIZED_BSQR_ALGORITHM.md`
+      formulas re-verified against both randomized kernels (no kernel-visible
+      change since the audit); stale writeup references fixed to the current
+      numbering with labels (Thm. 6.6 `thm:greedy`, Cor. 6.1
+      `cor:sv-hierarchy`, §6.3 `sec:greedy-bounds` in matlab_rand/README);
+      `docs/VALIDATION.md`'s deviation list, test pins, and tex/P3 section
+      references all verified current.)
 
 ## Phase 4 — Comment quality pass (1 session)
 

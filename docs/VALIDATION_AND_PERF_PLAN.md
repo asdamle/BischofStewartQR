@@ -1,5 +1,11 @@
 # BSQR Validation and Performance Plan
 
+> **Historical record.** Part I (validation, V0–V5) and P0 are done and the
+> P3 panel kernel landed 2026-06-11; the remaining P1/P2/P4 candidates are
+> carried forward by `docs/PUBLICATION_READINESS_PLAN.md` Phase 5, which
+> supersedes this file as the live plan. Measured numbers reflect the tree at
+> the time. The living deviation audit is `docs/VALIDATION.md`.
+
 Two workstreams:
 
 1. **Validation** — establish, with executable evidence, that the Julia kernel, the MATLAB

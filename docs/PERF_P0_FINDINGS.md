@@ -1,5 +1,9 @@
 # P0 Measurement Findings
 
+> **Historical record.** Findings of the completed P0 measurement campaign
+> (2026-06-11); numbers predate later kernel changes. The live pre-submission
+> plan is `docs/PUBLICATION_READINESS_PLAN.md`.
+
 Phase P0 of `docs/VALIDATION_AND_PERF_PLAN.md` (Part II). Reproduce with
 `julia --project=julia julia/benchmark/perf_p0_measure.jl` (gaussian family, BLAS pinned to
 1 thread, Apple Accelerate via LBT, median of 10). Measured 2026-06-11 on Apple Silicon
