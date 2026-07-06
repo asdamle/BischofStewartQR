@@ -81,8 +81,9 @@ consequences follow:
    `f_i ≤ F̂_i = i(n−i+1)/(k−i+1)` by induction (the per-step recursion
    `f_{i+1} ≤ ((k−i+1) f_i + n − 2i)/(k−i)` maps `F̂_i` to exactly `F̂_{i+1}`),
    hence `f_k ≤ F̂_k = k(n−k+1)` — Osinsky's bound, together with its
-   per-singular-value refinement (writeup Thm. 6.6, `thm:greedy` /
-   Cor. 6.1, `cor:sv-hierarchy`).
+   per-singular-value refinement (manuscript Cor. 3.2 `cor:osinsky` /
+   Thm. 3.1 `thm:BSpivot`; the randomized statement is Thm. 5.1
+   `thm:randBSpivot`).
 
 In practice a large fraction of the remaining columns clears a mean threshold, so
 it suffices to **sample** a small block of candidates, bring only those up to

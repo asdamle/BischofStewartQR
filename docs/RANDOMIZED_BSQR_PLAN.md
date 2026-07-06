@@ -40,8 +40,8 @@ Throughout, **`f_i = ||R11^{(i)}^{-1}||_F^2`** (squared). The recurrence below
 only closes on the squared quantity; the code names it `f2` to keep this
 explicit. Seed `f_0 = 0`.
 
-The per-step increment when column `j` is appended is exactly (writeup
-eq. frob-growth)
+The per-step increment when column `j` is appended is exactly (manuscript
+eq. (2.4))
 
 ```
 c_j = (1 + ||w_j||^2) / rho_j^2,   w_j = R11^{-1} R12(:,j),   rho_j = ||tilde m_j||.
@@ -69,7 +69,8 @@ Two threshold modes are implemented:
       never fail to find an acceptable pivot (termination/feasibility);
     - maintaining it preserves `f_i <= Fhat_i = i(n-i+1)/(k-i+1)`, hence
       Osinsky's `||R11^{-1}||_F^2 <= k(n-k+1)` **and** the per-singular-value
-      hierarchy (writeup Thm. 6.6, `thm:greedy` / Cor. 6.1, `cor:sv-hierarchy`).
+      hierarchy (manuscript Cor. 3.2 `cor:osinsky` / Thm. 3.1 `thm:BSpivot`;
+      the randomized statement is Thm. 5.1 `thm:randBSpivot`).
 
 - **`worstcase_allowance`** (more permissive, fewer samples):
   ```

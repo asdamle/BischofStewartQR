@@ -43,7 +43,8 @@ extends coverage where the harness is thin.
 **Re-validate the existing harness:**
 - [x] Refresh the `docs/VALIDATION.md` deviation audit: re-diff both kernels
       (unblocked + panel/MEX in-block) against `matlab/tests/oracle_bsqr.m`
-      and the writeup (`notes/bischof_stewart_pivoting.tex`); confirm every
+      and the writeup (then `notes/bischof_stewart_pivoting.tex`, now
+      Appendix A of `notes/GKSevolved_draft.tex`); confirm every
       documented deviation is still the complete list. (2026-07-05: no
       undocumented kernel/oracle mismatch; added deviations #10–#12 — panel
       deferred/regrouped updates, batched norm refresh, zero-tail-norm
@@ -235,11 +236,14 @@ Inventory: `CLAUDE.md`, root `startup.m`/`startup.jl`, `matlab/README.md`,
       done) marked as historical records at the top.)
 - [x] **Manuscript-facing docs** (2026-07-05: `RANDOMIZED_BSQR_ALGORITHM.md`
       formulas re-verified against both randomized kernels (no kernel-visible
-      change since the audit); stale writeup references fixed to the current
-      numbering with labels (Thm. 6.6 `thm:greedy`, Cor. 6.1
-      `cor:sv-hierarchy`, §6.3 `sec:greedy-bounds` in matlab_rand/README);
-      `docs/VALIDATION.md`'s deviation list, test pins, and tex/P3 section
-      references all verified current.)
+      change since the audit); `docs/VALIDATION.md`'s deviation list, test
+      pins, and P3 section references all verified current. Same-day
+      follow-up: `notes/` now holds the manuscript draft
+      (`GKSevolved_draft.tex` / `manuscript_draft.pdf`), superseding the
+      standalone note — every repo reference re-keyed to the manuscript's
+      rendered numbering (Alg. A.1 and its lines, Thm. 3.1, Cor. 3.2,
+      Thm. 5.1, eqs. (2.3)/(2.4)/(A.2), Remark 7), verified against the
+      compiled PDF.)
 
 ## Phase 4 — Comment quality pass (1 session)
 

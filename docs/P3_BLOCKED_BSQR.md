@@ -1,7 +1,9 @@
 # Panel/Blocked BSQR: Method, Analysis, and Experimental Results
 
-Working notes for the writeup appendix (P3 of `docs/VALIDATION_AND_PERF_PLAN.md`; landed and
-default as of 2026-06-11). Notation follows Algorithm 1 of the writeup, 1-indexed. A panel
+Working notes behind Appendix A of the manuscript (`notes/GKSevolved_draft.tex`; P3 of
+`docs/VALIDATION_AND_PERF_PLAN.md`; landed and default as of 2026-06-11). Notation follows
+Algorithm A.1 of the manuscript, 1-indexed, keeping this file's legacy symbols `s_j`, `β_j`
+for the manuscript's `ρ_j²`, `α_j` (see the symbol map in `docs/VALIDATION.md`). A panel
 starts at global step `s` and runs local steps `t = 1..nb` (global step `i = s+t-1`);
 "prefix" means rows `1..s-1`; `M = m-s+1`, `N = n-s+1` are trailing dimensions at panel start;
 `rem` denotes the trailing columns `i+1..n` at the current step.
@@ -83,13 +85,13 @@ W_true(s:i-1, j) = B(1:t-1, j)                                (panel rows, curre
 ### 3.1 The O(1) running-norm recurrence: provenance and its role here
 
 The Householder reduction itself costs `Θ(mnk)` flops regardless of pivoting policy
-(`Θ(nk²)` in the writeup's `k×n` GKS setting, where `m = k`). On top of that, the criterion
+(`Θ(nk²)` in the manuscript's `k×n` GKS setting, where `m = k`). On top of that, the criterion
 needs `||w_j||²` for every remaining column at every step, and the cost of *maintaining the
 selection quantities* has a ladder worth making explicit in the appendix:
 
 - **Naive**: recompute `w_j = R11^{-1}r_j` by triangular solve — `O(i²)` per column per
   step, `Θ(nk³)` for the maintenance over the whole factorization, which would dominate the
-  `Θ(mnk)` reduction (the writeup already rejects this).
+  `Θ(mnk)` reduction (the manuscript's Appendix A already rejects this).
 - **Stewart (1990), Fig. 2.2**: maintain `S = R11^{-1}R12` incrementally (`O(i)` per column
   per step, `Θ(nk²)` total — at most the reduction's own cost, and equal to it when
   `m = k`), then recompute `σ_j = ||s_j||` *directly from the updated column* each step —
@@ -99,7 +101,7 @@ selection quantities* has a ladder worth making explicit in the appendix:
   estimator carries an approximate singular vector updated by a 2×2 eigenproblem per step —
   `O(n)` per step, but it yields an *estimate* of `σ_min`, not the exact Frobenius quantity
   the selection rule here minimizes.
-- **The writeup's eq. (wnorm-update)**, which both kernels implement: expand
+- **The manuscript's eq. (A.2)**, which both kernels implement: expand
   `||s_j − β_j s_k||² + β_j²` once and update
   `wnorm2_j ← wnorm2_j − 2β_j d_j + β_j²(1 + ||w*||²)` with `d_j = w_jᵀw*` — `O(1)` per
   column given the dot products, so the norm tracking rides along with the same `Θ(nk²)`
@@ -165,7 +167,7 @@ in both kernels, so the `R11^{-1}R12`-dependent numerator is never stale. For th
   tail at the `√(n·eps)·||a_j||` scale), where pivot order is rounding-determined for *every*
   variant of the algorithm and below any rank-revealing resolution. Backward stability of the
   factorization is independent of pivot choice throughout; only selection quality among
-  numerically indistinguishable candidates is at stake, and the writeup's guarantees
+  numerically indistinguishable candidates is at stake, and the manuscript's guarantees
   presuppose full-rank progress through the `k` steps in any case.
 - The exposure window is ≤ `nb−1` steps, after which the exact refresh restores truth;
   `rank_stop` covers genuine rank-deficient continuation.

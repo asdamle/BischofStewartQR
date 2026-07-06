@@ -9,9 +9,9 @@ under the per-step bound. By default it runs **in-block** (`batched`): each
 sampled block is brought to the current frame once, then BSQR is run within it to
 take as many columns as the bound allows before resampling -- amortizing the
 per-block reflector apply over many selections (`O(k^3)` overall vs the
-single-select `O(k^4)`). See `docs/RANDOMIZED_BSQR_PLAN.md` for the math and
-`notes/bischof_stewart_pivoting.tex` §6.3 (`sec:greedy-bounds`) for the bound it
-relies on.
+single-select `O(k^4)`). See `docs/RANDOMIZED_BSQR_PLAN.md` for the math and §5
+of the manuscript (`notes/GKSevolved_draft.tex`, local-only until final;
+Thm. 5.1 `thm:randBSpivot`) for the guarantee it relies on.
 
 This is **separate from and does not modify** the deterministic implementations
 in `matlab/` and `julia/`.

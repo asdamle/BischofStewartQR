@@ -57,8 +57,8 @@ verify_backend_against_oracle(testCase, 'mex');
 end
 
 function testCriterionTraceMatchesInverseFrobNorm(testCase)
-% Writeup Remark "Tracking the full inverse norm": the running sum of the
-% selected criterion values equals ||R11^{-1}||_F^2 after every step.
+% Manuscript eq. (2.4): the running sum of the selected criterion values
+% equals ||R11^{-1}||_F^2 after every step.
 zoo = testCase.TestData.zoo;
 for idx = 1:numel(zoo)
     z = zoo{idx};

@@ -4,12 +4,12 @@ function out = oracle_bsqr(A, k)
 %   OUT = ORACLE_BSQR(A, K) runs K pivot steps.
 %
 %   This is the V1 validation oracle from docs/VALIDATION_AND_PERF_PLAN.md:
-%   a deliberately naive transcription of Algorithm 1 in
-%   notes/bischof_stewart_pivoting.tex. Each step recomputes from scratch
-%   the quantities the production kernels maintain incrementally:
+%   a deliberately naive transcription of Algorithm A.1 (Appendix A) of the
+%   manuscript, notes/GKSevolved_draft.tex. Each step recomputes from
+%   scratch the quantities the production kernels maintain incrementally:
 %
-%     w_j = R11^{-1} R12(:,j)   by triangular solve   (writeup eq. w-def)
-%     s_j = ||A(i:m, j)||^2     exact tail norms      (writeup lines 3, 19)
+%     w_j = R11^{-1} R12(:,j)   by triangular solve   (Alg. A.1 line 9 state)
+%     s_j = ||A(i:m, j)||^2     exact tail norms      (Alg. A.1 lines 1, 8)
 %
 %   so it shares no recurrence (and therefore no shared recurrence bug)
 %   with bsqr_mfile, bsqr_mex, or the Julia kernel. Householder steps use
@@ -25,30 +25,32 @@ function out = oracle_bsqr(A, k)
 %     p          1-by-n permutation vector; p(1:k) is the pivot sequence
 %     rinv_r12   k-by-(n-k) solve R11 \ R12 from the final factor
 %     crit_best  1-by-k criterion value c(j*) of the selected pivot per step
-%                (running sum reproduces ||R11^{-1}||_F^2, writeup Remark
-%                "Tracking the full inverse norm")
+%                (running sum reproduces ||R11^{-1}||_F^2, manuscript
+%                eq. (2.4))
 %     crit_gap   1-by-k relative gap (c_runnerup - c_best)/c_best per step;
 %                Inf when a step has a single candidate. Tests use this to
 %                screen near-ties before demanding exact pivot equality.
 %
-%   Documented deviations from the literal writeup (the same sanctioned
-%   deviations the production kernels make; see docs/VALIDATION.md):
+%   Documented deviations from the literal Algorithm A.1 (the same
+%   sanctioned deviations the production kernels make; see
+%   docs/VALIDATION.md):
 %
-%   * Householder sign: the writeup states rho_i = ||x|| >= 0. We use the
-%     numerically stable LAPACK convention rho_i = -sign(x_1)*||x||, and
+%   * Householder sign: Alg. A.1 leaves the reflector sign free
+%     (+-||x||e_1). We fix the numerically stable LAPACK convention
+%     rho_i = -sign(x_1)*||x||, and
 %     the identity reflector (rho_i = x_1) when x has nothing below its
 %     first entry. Mathematically equivalent: flipping the sign of row t
 %     flips it in both R11 and R12, and (D*R11)\(D*R12) = R11\R12 for any
 %     D = diag(+-1), so every w_j -- and hence the criterion -- is
 %     unchanged; Q absorbs D. Using the same convention as the kernels
 %     makes R/Q directly comparable, with no sign normalization in tests.
-%   * Ties: strict first-minimum (the writeup's argmin leaves ties
-%     unspecified; all implementations fix first-minimum order, and
+%   * Ties: strict first-minimum (Alg. A.1 allows any tie rule, e.g. the
+%     smaller index; all implementations fix first-minimum order, and
 %     MATLAB's min() returns the first minimizer).
 %
 %   The oracle errors if every remaining column has exactly zero tail norm
-%   before completing k steps: Algorithm 1 presupposes full-rank progress,
-%   and the production kernels' behavior past that point is an extension
+%   before completing k steps: Algorithm A.1 requires k <= rank(A), and
+%   the production kernels' behavior past that point is an extension
 %   covered by contract tests, not by this oracle.
 
 if nargin < 2
@@ -80,11 +82,11 @@ for i = 1:k                                 % Alg. 1, line 4
 
     c = inf(1, n);
     for j = i:n
-        s_j = norm(Awork(i:m, j))^2;        % exact tail norm: rho_j^2, eq. (rho)
+        s_j = norm(Awork(i:m, j))^2;        % exact tail norm rho_j^2, from scratch
         if s_j > 0
-            w_j = R11 \ Awork(1:i-1, j);    % eq. (w-def), from scratch
-            c(j) = (1 + norm(w_j)^2) / s_j; % eq. (criterion); at i = 1 the
-        end                                 % empty solve gives 1/s_j (line 6)
+            w_j = R11 \ Awork(1:i-1, j);    % Alg. A.1's w_j, from scratch
+            c(j) = (1 + norm(w_j)^2) / s_j; % Alg. A.1 line 4; at i = 1 the empty
+        end                                 % solve gives 1/s_j (||w_j|| = 0)
         % s_j == 0 leaves c(j) = Inf, matching the kernels' guard.
     end
 
