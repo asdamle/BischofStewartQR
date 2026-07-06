@@ -189,11 +189,11 @@ Techniques, in order of expected yield:
       correctly. Panel-boundary interactions are covered by the merged
       randomized unblocked-vs-panel testset plus the fuzz checker's forced-
       panel pass.
-- [ ] **Optional deep review.** A multi-agent adversarial review of the two
-      MEX kernels and the two pivot-criterion state machines is the highest-
-      value target for `/code-review ultra` (user-triggered) or an explicit
-      workflow run; the kernels are subtle enough that independent skeptical
-      readers are worth the tokens. Decide whether to spend it.
+- [x] **Optional deep review.** Decided 2026-07-05: skipped by the author.
+      The kernels have since been covered by the oracle deviation audit, the
+      sanitizer pass, 1866-case cross-language fuzz, and coverage-gap
+      closure, which together substitute for much of what an adversarial
+      review panel would probe.
 
 Any bug found: fix with a regression test, then re-run Phase 0's baseline
 checks (parity is the canary for kernel-behavior changes — both languages
