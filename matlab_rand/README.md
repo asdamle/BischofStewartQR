@@ -10,7 +10,8 @@ sampled block is brought to the current frame once, then BSQR is run within it t
 take as many columns as the bound allows before resampling -- amortizing the
 per-block reflector apply over many selections (`O(k^3)` overall vs the
 single-select `O(k^4)`). See `docs/RANDOMIZED_BSQR_PLAN.md` for the math and
-`notes/bischof_stewart_pivoting.tex` §3.4 for the bound it relies on.
+`notes/bischof_stewart_pivoting.tex` §6.3 (`sec:greedy-bounds`) for the bound it
+relies on.
 
 This is **separate from and does not modify** the deterministic implementations
 in `matlab/` and `julia/`.

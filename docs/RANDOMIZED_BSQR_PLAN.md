@@ -69,7 +69,7 @@ Two threshold modes are implemented:
       never fail to find an acceptable pivot (termination/feasibility);
     - maintaining it preserves `f_i <= Fhat_i = i(n-i+1)/(k-i+1)`, hence
       Osinsky's `||R11^{-1}||_F^2 <= k(n-k+1)` **and** the per-singular-value
-      hierarchy (writeup Thm. 3.4 / Cor. 3.2).
+      hierarchy (writeup Thm. 6.6, `thm:greedy` / Cor. 6.1, `cor:sv-hierarchy`).
 
 - **`worstcase_allowance`** (more permissive, fewer samples):
   ```
