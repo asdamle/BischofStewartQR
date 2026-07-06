@@ -6,7 +6,7 @@ function startup(varargin)
 %   MEX backends if needed, so the default calls just work:
 %
 %       R = bsqr(A)                            % deterministic BS pivoted QR
-%       [Q, R, p] = bsqr(A)
+%       [Q, R, E] = bsqr(A)                    % E: permutation matrix (see matlab/README.md)
 %       [p, Q, R11] = bsqr_rand(A)             % randomized variant
 %
 %   Both dispatch to the compiled MEX backend by default; pass
@@ -29,7 +29,7 @@ clear bsqr_mex_available bsqr_rand_mex_available   % drop cached availability so
 backend = 'MEX';
 if ~(ok_det && ok_rand); backend = 'pure-MATLAB fallback for the ones that failed'; end
 fprintf(['\nBSQR ready (%s).\n', ...
-    '  R = bsqr(A)              [Q,R,p] = bsqr(A)            deterministic BS pivoted QR\n', ...
+    '  R = bsqr(A)              [Q,R,E] = bsqr(A)            deterministic BS pivoted QR\n', ...
     '  [p,Q,R11] = bsqr_rand(A)                             randomized variant\n', ...
     'Pass ''backend'',''mfile'' for the pure-MATLAB reference; see the matlab/ and\n', ...
     'matlab_rand/ READMEs.\n'], backend);

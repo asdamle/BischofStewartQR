@@ -17,8 +17,8 @@ path and builds both MEX backends, then the default calls just work:
 ```matlab
 startup                                  % add paths + build MEX (run once)
 R = bsqr(A);                             % deterministic BS pivoted QR
-[Q, R, p] = bsqr(A);
-[p, reflectors, R11] = bsqr_rand(M);     % randomized variant (M has orthonormal rows)
+[Q, R, E] = bsqr(A);                     % E: permutation matrix ('pivot_format','vector' for indices)
+[p, Q, R11] = bsqr_rand(M);              % randomized variant (M has orthonormal rows)
 ```
 
 Both default to the compiled MEX backend; pass `'backend','mfile'` for the
