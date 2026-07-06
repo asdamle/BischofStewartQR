@@ -251,21 +251,29 @@ File-by-file over the ~4000 lines of kernel/private code plus benchmark
 drivers (`julia/src/*.jl`, `matlab/private/*.m`, `matlab/mex/src/bsqr_mex.cpp`,
 `matlab_rand/private/*.m`, `matlab_rand/mex/src/bsqr_rand_mex.cpp`).
 
-Criteria (delete or rewrite anything failing them):
-- [ ] A comment states an invariant, constraint, or non-obvious *why* — not
-      what the next line does, not development history ("landed
-      optimization", section numbers of superseded plans) unless it earns its
-      place as a pointer a maintainer needs.
-- [ ] Each nontrivial kernel block states its loop invariant once (`W` rows
-      maintained, `s`/`s_ref` meaning, compact-WY `T` recurrence, in-block
-      contiguity of active columns) — most already do; make it uniform.
-- [ ] Terminology is consistent across languages and with the writeup
-      (criterion, downdate, recompute safeguard, head/tail, compact-WY) —
-      the two implementations are meant to be read side by side.
-- [ ] No stale facts (the `[16,128]` clamp comment found this cycle is the
-      cautionary example): every constant named in a comment greps back to
-      code that matches.
-- [ ] `grep -rn "TODO\|FIXME\|XXX"` stays at zero (currently zero).
+Done 2026-07-05 via a four-way audit (parallel read-only reviews of the MEX
+kernels, Julia sources, MATLAB m-files, and benchmark drivers, each finding
+verified against code before editing):
+- [x] Invariants-not-narration: dev-history labels removed ("P3 prototype"
+      on the now-default panel kernel, "(P3)" dispatch tag); the three
+      m-file kernel helpers (`householder_column`, `apply_householder_left`,
+      `build_q_from_factors`) gained contract comments (packed-form
+      conventions, tau = 0 identity encoding, backward accumulation).
+- [x] Loop invariants: nontrivial blocks verified stated (panel deferred
+      updates, in-block contiguity, Fenwick ops, wnorm2/`s`/`s_ref` meaning).
+- [x] Terminology: "pivot score" → "pivot criterion" and "LAPACK-style
+      guard" → "Businger-Golub recompute safeguard" in `bsqr_mex.cpp`; the
+      rand MEX header now names the criterion increment and matches the
+      m-file's "for every column at every step" qualifier.
+- [x] No stale facts: every constant named in a comment verified against
+      code (panel nb = 8, crossover 24576, block clamp [16,64], sqrt(eps),
+      256 recompute threshold, P1.1 section reference); `oracle_bsqr.m`'s
+      eight "Alg. 1" labels re-keyed to the manuscript's "Alg. A.1".
+      Rejected findings recorded for the record: the timed-product comment
+      in `run_rand_benchmarks.m` is correct (the 4-output call nearby is
+      the untimed stats pass), and "norm downdates" (plural) matches
+      repo-wide usage.
+- [x] `grep -rn "TODO\|FIXME\|XXX"` is zero.
 
 ## Phase 5 — Performance-opportunity search (1–2 sessions; search, then decide)
 

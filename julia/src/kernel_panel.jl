@@ -1,4 +1,4 @@
-# Panel/blocked BSQR kernel (P3 prototype; see docs/P3_BLOCKED_BSQR.md).
+# Panel/blocked BSQR kernel (the default execution path; see docs/P3_BLOCKED_BSQR.md).
 #
 # dlaqps-style reorganization of the unblocked kernel: within a panel of nb
 # steps, the trailing block of A and the prefix rows of W receive no per-step

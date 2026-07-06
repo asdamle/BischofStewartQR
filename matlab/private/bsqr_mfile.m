@@ -167,6 +167,10 @@ end
 end
 
 function [tau, beta, col] = householder_column(col)
+% Reflector zeroing col below its first entry: H = I - tau*v*v' with
+% v = [1; col(2:end)] (unit-diagonal packed form). On return col(1) = beta
+% (the new diagonal) and col(2:end) is the scaled reflector tail; tau = 0
+% encodes the identity reflector (length-1 or zero-tail column, col unchanged).
 n = numel(col);
 alpha = col(1);
 if n == 1
@@ -195,6 +199,8 @@ col(1) = beta;
 end
 
 function B = apply_householder_left(B, v, tau)
+% Applies H = I - tau*v*v' from the left. v must be the unit-diagonal packed
+% form (v(1) = 1, tail below); tau = 0 encodes the identity reflector.
 if tau == 0 || isempty(B)
     return;
 end
@@ -202,6 +208,9 @@ B = B - (tau * v) * (v.' * B);
 end
 
 function Q = build_q_from_factors(Afact, tau, ksteps, m)
+% Economy Q = H_1*...*H_ksteps applied to eye(m, ksteps), accumulated
+% backward (i = ksteps:-1:1) so each reflector is applied once; tau(i) = 0
+% reflectors (identity) are skipped.
 Q = eye(m, ksteps);
 for i = ksteps:-1:1
     tau_i = tau(i);

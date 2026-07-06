@@ -335,7 +335,7 @@ mwSize select_pivot_column(
     double best_c = std::numeric_limits<double>::infinity();
     for (mwSize j = i; j < n; ++j) {
         const double sj = s[j];
-        // Bischof-Stewart pivot score: minimize (1 + ||w_j||^2) / ||a_j^(i)||^2.
+        // Bischof-Stewart pivot criterion: minimize (1 + ||w_j||^2) / ||a_j^(i)||^2.
         const double cj = (sj > 0.0) ? (1.0 + wnorm2[j]) / sj : std::numeric_limits<double>::infinity();
         if (cj < best_c) {
             best_c = cj;
@@ -443,7 +443,8 @@ mwSize update_trailing_state(
         const double sj = std::max(old_s - alpha * alpha, 0.0);
         s[j] = sj;
 
-        // LAPACK-style guard: refresh exact norm after sufficient decay.
+        // Businger-Golub recompute safeguard: refresh the exact norm after
+        // sufficient decay (same rule as the m-file and Julia kernels).
         if (sj <= s_ref[j] * norm_recomp_tol) {
             double exact = 0.0;
             if (i + 1 < m) {

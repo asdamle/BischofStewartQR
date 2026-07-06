@@ -234,7 +234,7 @@ function bsqr!(
     end
 end
 
-# Kernel dispatch (P3): the panel kernel is the default for problems above
+# Kernel dispatch: the panel kernel is the default for problems above
 # the empirical crossover; BS_PANEL_NB=0|1 forces the unblocked kernel and
 # BS_PANEL_MIN_KN overrides the crossover (see docs/P3_BLOCKED_BSQR.md).
 function _run_kernel!(A, tau, jpvt, ws, k; kwargs...)

@@ -1,11 +1,12 @@
 // Randomized Bischof-Stewart column selection -- MEX backend.
 //
 // Mirrors matlab_rand/private/bsqr_rand_mfile.m in behaviour (not RNG). The
-// kernel never maintains R11^{-1}R12 or column norms for every column; it tracks
-// only the running squared inverse Frobenius norm f2 = ||R11^{-1}||_F^2 and
-// samples candidate columns in blocks, brings them into the current reduced
-// frame with the accumulated reflectors, and keeps those whose increment holds
-// f2 under the per-step threshold.
+// kernel never maintains R11^{-1}R12 or column norms for every column at every
+// step; it tracks only the running squared inverse Frobenius norm
+// f2 = ||R11^{-1}||_F^2 and samples candidate columns in blocks, brings them
+// into the current reduced frame with the accumulated reflectors, and keeps
+// those whose criterion increment (1 + ||w||^2) / rho^2 holds f2 under the
+// per-step threshold.
 //
 // By default (opt.batched) the kernel runs IN-BLOCK: each sampled block is
 // brought to the current frame once, then BSQR is run within it, selecting
@@ -300,7 +301,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if (opt.block_size == 0) {   // auto block size (mirrors bsqr_rand_parse_options.m)
         if (opt.batched) {
             opt.block_size = std::max<mwSize>(k, 1);   // batched favours block = k
-        } else {                                       // single-select: ceil(k/2) in [16,64]
+        } else {                                       // single-select: ceil(k/2), clamped to [16,64]
             opt.block_size = std::min<mwSize>(64, std::max<mwSize>(16, (k + 1) / 2));
         }
     }
@@ -866,7 +867,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         for (mwSize r = nsel + 1; r < m; ++r) V[r + static_cast<size_t>(nsel) * m] = xcol[r];
         tau[nsel] = tau_i;
 
-        // Incremental compact-WY update: new column of T (dlarft, forward).
+        // Compact-WY: new column of T (dlarft forward recurrence) for the next apply.
         if (nsel > 0) {
             const ptrdiff_t ns = static_cast<ptrdiff_t>(nsel), mm = ldA;
             char tT = 'T';
