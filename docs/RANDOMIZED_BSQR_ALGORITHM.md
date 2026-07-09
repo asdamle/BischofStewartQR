@@ -76,13 +76,18 @@ no slack from earlier steps is carried forward or spent. (The name of the
 default option, `running_mean`, refers to the mean identity below — a mean over
 the *current* candidates, not over past steps.)
 
-Although `n − 2i` alone is negative for `i > n/2`, the threshold itself stays
-positive throughout for orthonormal-row input: the numerator equals
-`Σ_remaining (1 + ‖wⱼ‖²) ≥ n − i > 0`, with `f_i ≥ i` (every `σ(R₁₁) ≤ 1` for
-a submatrix of an orthonormal-row matrix) supplying exactly the compensation.
-For general input `θᵢ` can go negative; the feasibility net (§4) then degrades
-each such step to greedy global-minimum selection, flagged in the
-instrumentation.
+Although `n − 2i` alone is negative for `i > n/2`, a lower bound on `f_i`
+keeps the threshold well away from zero for orthonormal-row input: every
+`σ(R₁₁) ≤ 1` (submatrix of an orthonormal-row matrix), so `f_i ≥ i`, and
+
+```
+θᵢ ≥ (i + n − 2i)/(k − i) = (n − i)/(k − i) ≥ 1        (k ≤ n),
+```
+
+tight at `k = n` (equivalently, the numerator is `Σ_remaining (1 + ‖wⱼ‖²)`,
+a sum of positive terms). For general input the lower bound on `f_i` fails
+and `θᵢ` can go negative; the feasibility net (§4) then degrades each such
+step to greedy global-minimum selection, flagged in the instrumentation.
 
 For orthonormal-row input this is precisely the `ρ²`-weighted mean of the criterion
 over the remaining columns (using `Σ ρⱼ² = k − i` and `Σ ‖wⱼ‖² = f_i − i`). Two
