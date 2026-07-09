@@ -6,7 +6,7 @@ function theta = bsqr_rand_threshold(f2, nsel, k, n, mode)
 %   to the squared inverse Frobenius norm f2 = ||R11^{-1}||_F^2 satisfies
 %   c <= THETA. F2 is the *squared* quantity (see docs/RANDOMIZED_BSQR_PLAN.md).
 %
-%   mode = 'running_mean'  (default; the per-column bound)
+%   mode = 'running_mean'  (default; the per-step acceptance threshold)
 %       theta = (f2 + n - 2*nsel) / (k - nsel)
 %       This equals the rho^2-weighted mean of c over the remaining columns
 %       (for orthonormal-row input), so the minimizer always qualifies and

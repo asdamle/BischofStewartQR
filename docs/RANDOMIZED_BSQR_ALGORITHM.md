@@ -64,11 +64,17 @@ trailing columns — the `O(n k²)` total work that dominates the short-wide
 
 The guarantee does not need the exact `argmin` — only that each step's increment
 `cⱼ` keeps the running `f` under a per-step threshold. Define the
-**running-mean threshold**
+**per-step acceptance threshold**
 
 ```
 θᵢ = (f_i + n − 2i) / (k − i).
 ```
+
+The threshold uses the *actual* running `f_i`, so it is strict at every step:
+a better-than-worst-case start makes later thresholds *smaller*, never larger —
+no slack from earlier steps is carried forward or spent. (The name of the
+default option, `running_mean`, refers to the mean identity below — a mean over
+the *current* candidates, not over past steps.)
 
 For orthonormal-row input this is precisely the `ρ²`-weighted mean of the criterion
 over the remaining columns (using `Σ ρⱼ² = k − i` and `Σ ‖wⱼ‖² = f_i − i`). Two
@@ -135,7 +141,8 @@ is appended and the next step resamples. This costs one reflector apply per
 realized `‖R₁₁⁻¹‖_F` lands slightly closer to the deterministic value; the
 guarantee is identical.
 
-**Threshold variants.** `running_mean` (above) is the default. The more
+**Threshold variants.** `running_mean` (the per-step acceptance threshold
+above) is the default. The more
 permissive `worstcase_allowance` mode sets `θᵢ = F̂_{i+1} − f_i`, spending the
 slack between the *actual* running `f_i` and the deterministic worst case
 `F̂_i`; it accepts with fewer samples and still keeps `f_k ≤ k(n−k+1)`, at the

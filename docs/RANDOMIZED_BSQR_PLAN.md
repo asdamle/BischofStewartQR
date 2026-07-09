@@ -57,7 +57,9 @@ c_j <= theta_i,     then set  f <- f + c_j.
 
 Two threshold modes are implemented:
 
-- **`running_mean`** (default — gives per-singular-value control):
+- **`running_mean`** (default — the per-step acceptance threshold; strict at
+  every step against the actual running `f2`, no slack carried between steps;
+  gives per-singular-value control):
   ```
   theta_i = (f_i + n - 2i) / (k - i)
   ```

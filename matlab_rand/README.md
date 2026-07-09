@@ -265,7 +265,7 @@ For `A` `m×n` and `k` selected columns (default `k = min(m,n)`):
 | `k` | `min(m,n)` | columns to select |
 | `batched` | `true` | in-block BSQR: many selections per sampled block, amortizing the per-block reflector apply (`O(k^3)` vs the single-select `O(k^4)`). `false` = one selection per block (tighter realized conditioning, more applies). Same bound either way |
 | `block_size` | `k` (batched) / `ceil(k/2)` in `[16,64]` (single) | candidates evaluated per sampled block; larger improves realized quality at higher cost (`rand_default_block`) |
-| `threshold_mode` | `running_mean` | per-column bound (per-singular-value control) or `worstcase_allowance` (more permissive, fewer samples) |
+| `threshold_mode` | `running_mean` | the per-step acceptance threshold — strict at every step against the actual running `f2`, no slack carried between steps (per-singular-value control) — or `worstcase_allowance` (more permissive: spends accumulated slack, fewer samples, same final bound) |
 | `slack` | `1.0` | `>=1` multiplier loosening the threshold |
 | `norm_recomp_tol` | `sqrt(eps)` | running-norm recompute safeguard in `[0,1]`, matching the deterministic kernel. Used only by the MEX batched path (which downdates norms incrementally); the m-file recomputes exactly, so it is a no-op there |
 | `sampling` | `normweighted` | by starting squared column norms (robust across leverage profiles; adds `O(mn)`), or `uniform` |

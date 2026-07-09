@@ -34,7 +34,8 @@ function varargout = bsqr_rand(A, varargin)
 %                      Larger blocks improve realized selection quality (the
 %                      per-step minimum is taken over more candidates) at higher
 %                      cost; the guaranteed bound is unchanged.
-%   'threshold_mode' - 'running_mean' (default, per-singular-value control) or
+%   'threshold_mode' - 'running_mean' (default: the per-step acceptance
+%                      threshold, strict at every step; per-singular-value control) or
 %                      'worstcase_allowance' (more permissive, fewer samples,
 %                      only the final Frobenius bound -- not the per-step bound)
 %   'slack'          - multiplier (>=1) loosening the threshold (default 1.0;
