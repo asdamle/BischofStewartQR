@@ -76,6 +76,14 @@ no slack from earlier steps is carried forward or spent. (The name of the
 default option, `running_mean`, refers to the mean identity below — a mean over
 the *current* candidates, not over past steps.)
 
+Although `n − 2i` alone is negative for `i > n/2`, the threshold itself stays
+positive throughout for orthonormal-row input: the numerator equals
+`Σ_remaining (1 + ‖wⱼ‖²) ≥ n − i > 0`, with `f_i ≥ i` (every `σ(R₁₁) ≤ 1` for
+a submatrix of an orthonormal-row matrix) supplying exactly the compensation.
+For general input `θᵢ` can go negative; the feasibility net (§4) then degrades
+each such step to greedy global-minimum selection, flagged in the
+instrumentation.
+
 For orthonormal-row input this is precisely the `ρ²`-weighted mean of the criterion
 over the remaining columns (using `Σ ρⱼ² = k − i` and `Σ ‖wⱼ‖² = f_i − i`). Two
 consequences follow:
@@ -103,7 +111,11 @@ initial squared column norms** `gⱼ = ‖aⱼ‖²` (robust across leverage pro
 uniform sampling is available when leverage is known to be flat), using
 Efraimidis–Spirakis keys `−log(uⱼ)/gⱼ`, `uⱼ ∼ Unif(0,1)`, smallest keys first.
 Sampled-but-rejected columns stay in the pool and can be drawn again in later
-blocks.
+blocks — the exclusion is only within a single draw. This is necessary, not
+merely convenient: a column rejected at step `i` can qualify at a later step
+(`θ` grows as `k − i` shrinks, and `‖wⱼ‖²` is not monotone under the `w`
+update), and the feasibility argument — the minimum is at most the mean over
+*all* remaining columns — requires the full pool at every step.
 
 ## 4. The algorithm (batched in-block selection — the default)
 
