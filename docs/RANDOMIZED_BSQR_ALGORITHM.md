@@ -115,12 +115,16 @@ Within a block, candidates are drawn **without replacement, weighted by their
 initial squared column norms** `gⱼ = ‖aⱼ‖²` (robust across leverage profiles;
 uniform sampling is available when leverage is known to be flat), using
 Efraimidis–Spirakis keys `−log(uⱼ)/gⱼ`, `uⱼ ∼ Unif(0,1)`, smallest keys first.
-Sampled-but-rejected columns stay in the pool and can be drawn again in later
-blocks — the exclusion is only within a single draw. This is necessary, not
+Sampled-but-rejected columns stay in the pool: on the batched path they can
+be redrawn by the very next block, and on the single-select path by the next
+step (within one step a rejected column is not revisited — `θ` and every `cⱼ`
+are fixed until a selection happens, so a revisit would re-reject
+deterministically). Keeping rejected columns available is necessary, not
 merely convenient: a column rejected at step `i` can qualify at a later step
-(`θ` grows as `k − i` shrinks, and `‖wⱼ‖²` is not monotone under the `w`
-update), and the feasibility argument — the minimum is at most the mean over
-*all* remaining columns — requires the full pool at every step.
+(the threshold's floor `(n − i)/(k − i)` grows as selection proceeds, and
+`‖wⱼ‖²` is not monotone under the `w` update), and the feasibility argument —
+the minimum is at most the mean over *all* remaining columns — requires the
+full pool at every step.
 
 ## 4. The algorithm (batched in-block selection — the default)
 
