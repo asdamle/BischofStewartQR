@@ -59,7 +59,7 @@ for fi = 1:nf
     switch which
         case 'time'
             set(ax, 'XScale', 'log', 'YScale', 'log');
-            band_line(ax, T, base & T.method == "bsqr", 'time_s', C.bsqr, 'randomized BSQR');
+            band_line(ax, T, base & T.method == "bsqr", 'time_s', C.bsqr, 'randBSQR');
             band_line(ax, T, base & T.method == "rejection_rpqr", 'time_s', C.rpqr, 'rejection\_rpqr');
             ylabel(ax, 'time (s)');
         case 'speedup'
@@ -74,7 +74,7 @@ if ~strcmp(which, 'speedup')
     lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
 end
 switch which
-    case 'time';    title(tl, sprintf('Runtime vs n   (k=%d)', opt.k));
+    case 'time';    title(tl, sprintf('Runtime vs n   (m=%d)', opt.k));
     case 'speedup'; title(tl, sprintf('Speedup of randBSQR over rejection\\_rpqr (m=%d)', opt.k));
 end
 save_fig(fig, fullfile(opt.plotdir, ['fig_rpqr_' which opt.tag]), opt.formats);

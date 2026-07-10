@@ -3,9 +3,8 @@ function plot_rand_experiments(varargin)
 %
 %   Reads the k-tagged exp_*_k<K>.csv from the results dir and writes k-tagged
 %   figures fig_*_k<K>.png to matlab_rand/benchmark/plots/:
-%     fig_scaling_time_k<K>.png    - runtime vs n (per family): deterministic
-%                                    BSQR, built-in qr, randomized, randomized+R12.
-%     fig_scaling_speedup_k<K>.png - randomized speedup over each baseline vs n.
+%     fig_scaling_time_k<K>.png    - runtime vs n (per family): %                                    BSQR, built-in qr, randBSQR, randBSQR+R12.
+%     fig_scaling_speedup_k<K>.png - randBSQR speedup over each baseline vs n.
 %     fig_scaling_quality_k<K>.png - two rows vs n: ||R11^{-1}||_F / bound and
 %                                    sigma_min(R11) / bound.
 %     fig_blocksize_k<K>.png       - time, columns sampled, conditioning vs block
@@ -73,8 +72,8 @@ for fi = 1:nf
             set(ax, 'XScale', 'log', 'YScale', 'log');
             band_line(ax, T, base & T.method == "det", 'n', 'time_s', C.det, 'deterministic BSQR');
             band_line(ax, T, base & T.method == "builtin", 'n', 'time_s', C.builtin, 'built-in qr (dgeqp3)');
-            band_line(ax, T, base & T.method == "rand" & T.mode == "running_mean", 'n', 'time_s', C.rm, 'randomized BSQR');
-            band_line(ax, T, base & T.method == "rand_r12", 'n', 'time_s', C.r12, 'randomized + R_{12}');
+            band_line(ax, T, base & T.method == "rand" & T.mode == "running_mean", 'n', 'time_s', C.rm, 'randBSQR');
+            band_line(ax, T, base & T.method == "rand_r12", 'n', 'time_s', C.r12, 'randBSQR + R_{12}');
             ylabel(ax, 'time (s)');
         case 'speedup'
             set(ax, 'XScale', 'log', 'YScale', 'log');
@@ -89,7 +88,7 @@ end
 lg = legend(ax, 'Orientation', 'horizontal');   % shared: every panel has the same lines
 lg.Layout.Tile = 'south';
 switch which
-    case 'time';    title(tl, sprintf('Runtime vs n   (k=%d)', opt.k));
+    case 'time';    title(tl, sprintf('Runtime vs n   (m=%d)', opt.k));
     case 'speedup'; title(tl, sprintf('Speedup over baselines (m=%d)', opt.k));
 end
 save_fig(fig, fullfile(opt.plotdir, ['fig_scaling_' which opt.tag]), opt.formats);
