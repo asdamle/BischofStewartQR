@@ -32,8 +32,8 @@ T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
 
 % method key -> (legend label, color, marker)
-M = { 'bsqr_nw',        'randomized BSQR (norm-weighted)', [0.00 0.45 0.74], 'o'; ...
-      'bsqr_unif',      'randomized BSQR (uniform)',       [0.00 0.60 0.30], 's'; ...
+M = { 'bsqr_nw',        'randBSQR (norm-weighted)', [0.00 0.45 0.74], 'o'; ...
+      'bsqr_unif',      'randBSQR (uniform)',       [0.00 0.60 0.30], 's'; ...
       'rejection_rpqr', 'rejection\_rpqr',                 [0.85 0.33 0.10], 'd' };
 
 nf = numel(fams);
@@ -50,7 +50,7 @@ for fi = 1:nf
     title(ax, fam, 'Interpreter', 'none');
 end
 lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
-title(tl, sprintf('Runtime vs n at fixed k = %d', T.k(1)));
+title(tl, sprintf('Runtime vs n at fixed m = %d', T.k(1)));
 save_fig(fig, fullfile(opt.plotdir, 'fig_largen_scaling'), opt.formats);
 end
 

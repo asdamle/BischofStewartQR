@@ -42,7 +42,7 @@ if ~isfile(f); warning('missing %s', f); return; end
 T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
 C = struct('bsqr', [0.00 0.45 0.74], 'rpqr', [0.85 0.33 0.10]);
-methods = {'bsqr_rand', 'randomized BSQR', C.bsqr; ...
+methods = {'bsqr_rand', 'randBSQR', C.bsqr; ...
            'rejection_rpqr', 'rejection\_rpqr', C.rpqr};
 % Four rows: the cause (conditioning), the mechanism (coefficients), then the
 % rank-k ID error split into its noiseless part (oblique-coefficient penalty,
@@ -61,15 +61,15 @@ if is2
     stem = 'fig_approx_cond_quality_spec';
     rowspec = {'condratio',  '||R_{11}^{-1}||_2 / bound',           ''; ...
                'maxT',       'max |R_{11}^{-1}R_{12}|',             ''; ...
-               'id_spec',    'rank-k ID error (2-norm) / ||A||_2',  'svdopt_spec'; ...
-               'proj_spec',  'projection error (2-norm) / ||A||_2', 'svdopt_spec'};
+               'id_spec',    'rank-m ID error / ||A||_2',  'svdopt_spec'; ...
+               'proj_spec',  'projection error / ||A||_2', 'svdopt_spec'};
     normlabel = 'spectral';
 else
     T.condratio = T.frobinv ./ T.osinsky;
     stem = 'fig_approx_cond_quality';
     rowspec = {'condratio',  '||R_{11}^{-1}||_F / bound',           ''; ...
                'maxT',       'max |R_{11}^{-1}R_{12}|',             ''; ...
-               'id_err',     'rank-k ID error / ||A||_F',           'svdopt_frob'; ...
+               'id_err',     'rank-m ID error / ||A||_F',           'svdopt_frob'; ...
                'proj_frob',  'projection error / ||A||_F',          'svdopt_frob'};
     normlabel = 'Frobenius';
 end
@@ -97,15 +97,17 @@ for ri = 1:nr
         end
         grid(ax, 'on');
         if ri == 1; title(ax, fam, 'Interpreter', 'none'); end
-        if ri == nr; xlabel(ax, 'rank k'); end
+        if ri == nr; xlabel(ax, 'm'); end
         if fi == 1; ylabel(ax, rowspec{ri, 2}); end
     end
 end
 lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
-title(tl, {['Conditioning, coefficient magnitude, ID error, and projection error -- ', ...
-    normlabel, ' norm'], ...
-    ['Rows 3-4: rank-k ID error (oblique V_k-frame T) and orthogonal-projection error ', ...
-    '(median, min/max band); dotted = best rank-k error (SVD), the absolute lower bound']});
+if ~is2   % the spectral (manuscript) variant carries its caption in the paper
+    title(tl, {['Conditioning, coefficient magnitude, ID error, and projection error -- ', ...
+        normlabel, ' norm'], ...
+        ['Rows 3-4: rank-m ID error (oblique V_k-frame T) and orthogonal-projection error ', ...
+        '(median, min/max band); dotted = best rank-m error (SVD), the absolute lower bound']});
+end
 save_fig(fig, fullfile(opt.plotdir, stem), opt.formats);
 end
 
@@ -126,7 +128,7 @@ function svdopt_line(ax, sub, col)
 % black dotted.
 if isempty(sub); return; end
 [x, ym] = agg_by_k(sub, col);
-plot(ax, x, ym, 'k:', 'LineWidth', 1.0, 'DisplayName', 'best rank-k (SVD)');
+plot(ax, x, ym, 'k:', 'LineWidth', 1.0, 'DisplayName', 'best rank-m (SVD)');
 end
 
 function [x, ym, ylo, yhi] = agg_by_k(sub, col)

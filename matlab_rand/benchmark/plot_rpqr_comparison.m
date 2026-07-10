@@ -45,7 +45,12 @@ end
 % ===========================================================================
 function rpqr_figure(opt, C, T, fams, which)
 nf = numel(fams);
-fig = figure('Position', [100 100 max(440 * nf, 720) 440], 'Color', 'w');
+if strcmp(which, 'speedup')
+    height = 300;   % rectangular (shorter than wide) panels compress the figure
+else
+    height = 440;
+end
+fig = figure('Position', [100 100 max(440 * nf, 720) height], 'Color', 'w');
 tl = tiledlayout(fig, 1, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
 ax = [];
 for fi = 1:nf
@@ -61,16 +66,17 @@ for fi = 1:nf
             set(ax, 'XScale', 'log', 'YScale', 'log');
             speedup_line(ax, T, base, C.bsqr);
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');
-            ylabel(ax, 'speedup (t_{rejection\_rpqr} / t_{BSQR})');
+            ylabel(ax, 'speedup (t_{rpqr} / t_{randBSQR})');
     end
     grid(ax, 'on'); xlabel(ax, 'n'); title(ax, fam, 'Interpreter', 'none');
 end
 if ~strcmp(which, 'speedup')
     lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
 end
-heads = struct('time', 'Runtime vs n', ...
-    'speedup', 'Speedup of randomized BSQR over rejection\_rpqr (t_{rpqr}/t_{BSQR})');
-title(tl, sprintf('%s   (k=%d)', heads.(which), opt.k));
+switch which
+    case 'time';    title(tl, sprintf('Runtime vs n   (k=%d)', opt.k));
+    case 'speedup'; title(tl, sprintf('Speedup of randBSQR over rejection\\_rpqr (m=%d)', opt.k));
+end
 save_fig(fig, fullfile(opt.plotdir, ['fig_rpqr_' which opt.tag]), opt.formats);
 end
 
@@ -81,7 +87,7 @@ function quality_figure(opt, C, T, fams)
 nf = numel(fams);
 fig = figure('Position', [100 100 max(440 * nf, 720) 760], 'Color', 'w');
 tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
-methods = {'bsqr', 'randomized BSQR', C.bsqr; 'rejection_rpqr', 'rejection\_rpqr', C.rpqr};
+methods = {'bsqr', 'randBSQR', C.bsqr; 'rejection_rpqr', 'rejection\_rpqr', C.rpqr};
 ax = [];
 for row = {'frob', 'smin'}
     for fi = 1:nf
@@ -103,8 +109,7 @@ for row = {'frob', 'smin'}
     end
 end
 lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
-title(tl, sprintf(['Selection quality vs the bounds (k=%d, lower = better): ', ...
-    'Frobenius ||R_{11}^{-1}||_F (top), spectral ||R_{11}^{-1}||_2 (bottom)'], opt.k));
+title(tl, sprintf('Selection quality vs bounds (m=%d)', opt.k));
 save_fig(fig, fullfile(opt.plotdir, ['fig_rpqr_quality' opt.tag]), opt.formats);
 end
 

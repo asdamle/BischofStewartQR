@@ -78,19 +78,20 @@ for fi = 1:nf
             ylabel(ax, 'time (s)');
         case 'speedup'
             set(ax, 'XScale', 'log', 'YScale', 'log');
-            speedup_line(ax, T, base, 'det', 'na', 'rand', 'running_mean', C.rm, 'randomized vs deterministic BSQR');
-            speedup_line(ax, T, base, 'builtin', 'na', 'rand', 'running_mean', C.builtin, 'randomized vs built-in qr');
-            speedup_line(ax, T, base, 'builtin', 'na', 'rand_r12', 'running_mean', C.r12, 'randomized + R_{12} vs built-in qr');
+            speedup_line(ax, T, base, 'det', 'na', 'rand', 'running_mean', C.rm, 'randBSQR vs deterministic BSQR');
+            speedup_line(ax, T, base, 'builtin', 'na', 'rand', 'running_mean', C.builtin, 'randBSQR vs built-in qr');
+            speedup_line(ax, T, base, 'builtin', 'na', 'rand_r12', 'running_mean', C.r12, 'randBSQR + R_{12} vs built-in qr');
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');
-            ylabel(ax, 'speedup (t_{baseline} / t_{rand})');
+            ylabel(ax, 'speedup (t_{baseline} / t_{randBSQR})');
     end
     grid(ax, 'on'); xlabel(ax, 'n'); title(ax, fam, 'Interpreter', 'none');
 end
 lg = legend(ax, 'Orientation', 'horizontal');   % shared: every panel has the same lines
 lg.Layout.Tile = 'south';
-heads = struct('time', 'Runtime vs n', ...
-    'speedup', 'Speedup over baselines (t_{baseline} / t_{rand}; higher = randomized faster)');
-title(tl, sprintf('%s   (k=%d)', heads.(which), opt.k));
+switch which
+    case 'time';    title(tl, sprintf('Runtime vs n   (k=%d)', opt.k));
+    case 'speedup'; title(tl, sprintf('Speedup over baselines (m=%d)', opt.k));
+end
 save_fig(fig, fullfile(opt.plotdir, ['fig_scaling_' which opt.tag]), opt.formats);
 end
 
@@ -98,11 +99,11 @@ function scaling_quality_figure(opt, C, T, fams)
 % Two rows of selection quality: Frobenius ||R11^{-1}||_F / bound (<=1, lower
 % better) and spectral sigma_min(R11) / bound (>=1, higher better).
 nf = numel(fams);
-fig = figure('Position', [100 100 max(440 * nf, 720) 760], 'Color', 'w');
+fig = figure('Position', [100 100 max(440 * nf, 720) 480], 'Color', 'w');
 tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
 methods = {"builtin", 'na', 'built-in qr', C.builtin; ...
            "det", 'na', 'deterministic BSQR', C.det; ...
-           "rand", 'running_mean', 'randomized BSQR', C.rm};
+           "rand", 'running_mean', 'randBSQR', C.rm};
 ax = [];
 for row = {'frob', 'smin'}
     for fi = 1:nf
@@ -113,20 +114,19 @@ for row = {'frob', 'smin'}
                 (methods{mi, 2} == "na" | T.mode == methods{mi, 2});
             quality_ratio_line(ax, T, mask, row{1}, methods{mi, 4}, methods{mi, 3});
         end
-        yline(ax, 1, 'k--', 'HandleVisibility', 'off');   % the bound
+        ylim(ax, [0 0.6]);   % compressed axis; both ratios sit well under the bound here
         grid(ax, 'on');
         if strcmp(row{1}, 'frob')
             title(ax, fam, 'Interpreter', 'none');
-            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_F / bound   (\leq 1)'); end
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_F / bound'); end
         else
             xlabel(ax, 'n');
-            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_2 / bound   (\leq 1)'); end
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_2 / bound'); end
         end
     end
 end
 lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
-title(tl, sprintf(['Selection quality vs the bounds (k=%d, lower = better): ', ...
-    'Frobenius ||R_{11}^{-1}||_F (top), spectral ||R_{11}^{-1}||_2 (bottom)'], opt.k));
+title(tl, sprintf('Selection quality vs bounds (m=%d)', opt.k));
 save_fig(fig, fullfile(opt.plotdir, ['fig_scaling_quality' opt.tag]), opt.formats);
 end
 
@@ -166,26 +166,22 @@ for fi = 1:numel(fams)
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log', 'YScale', 'log');
     band_line(ax, T, base & T.sampling == "normweighted", 'block_size', 'time_s', C.normweighted, 'normweighted');
-    bt = mean(T.time_s(base & T.method == "builtin"));   % vendor-qr reference (block-independent)
-    if ~isnan(bt)
-        yline(ax, bt, '--', 'Color', C.builtin, 'LineWidth', 1.2, 'DisplayName', 'built-in qr');
-    end
-    grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, 'time (s)');
+    grid(ax, 'on'); xlabel(ax, 'k_b'); ylabel(ax, 'time (s)');
     title(ax, sprintf('%s: runtime', fam), 'Interpreter', 'none');
     if fi == 1; legend(ax, 'Location', 'best'); end
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log', 'YScale', 'log');
     band_line(ax, T, base & T.sampling == "normweighted", 'block_size', 'tested_per_k', C.normweighted, 'normweighted');
-    grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, 'columns tested / k');
+    grid(ax, 'on'); xlabel(ax, 'k_b'); ylabel(ax, 'columns tested / m');
     title(ax, sprintf('%s: sampling cost', fam), 'Interpreter', 'none');
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log');
     cond_ratio_line2(ax, T, base & T.sampling == "normweighted", 'block_size', C.normweighted, 'normweighted');
     yline(ax, 1, 'k--', 'HandleVisibility', 'off');
-    grid(ax, 'on'); xlabel(ax, 'block size'); ylabel(ax, '||R_{11}^{-1}||_F / bound');
+    grid(ax, 'on'); xlabel(ax, 'k_b'); ylabel(ax, '||R_{11}^{-1}||_F / bound');
     title(ax, sprintf('%s: conditioning', fam), 'Interpreter', 'none');
 end
-title(tl, sprintf('Effect of block size (running\\_mean threshold, k=%d, n=%d)', T.k(1), T.n(1)));
+title(tl, sprintf('Effect of block size (m=%d, n=%d)', T.k(1), T.n(1)));
 save_fig(fig, fullfile(opt.plotdir, ['fig_blocksize' opt.tag]), opt.formats);
 end
 
@@ -195,7 +191,7 @@ f = fullfile(opt.resultsdir, ['exp_sampling' opt.tag '.csv']);
 if ~isfile(f); warning('missing %s', f); return; end
 T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
-metrics = {'tested_per_k', 'columns tested / k'; 'frobinv', '||R_{11}^{-1}||_F'; 'time_s', 'time (s)'};
+metrics = {'tested_per_k', 'columns tested / m'; 'frobinv', '||R_{11}^{-1}||_F'; 'time_s', 'time (s)'};
 fig = figure('Position', [100 100 1300 380], 'Color', 'w');
 tl = tiledlayout(fig, 1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 for mi = 1:size(metrics, 1)
@@ -238,7 +234,7 @@ for mi = 1:size(metrics, 1)
         ylim(ax, [lo, hi]);
     end
 end
-title(tl, sprintf('Uniform vs norm-weighted sampling across families (k=%d, n=%d, block=%d)', ...
+title(tl, sprintf('Uniform vs norm-weighted sampling (m=%d, n=%d, k_b=%d)', ...
     T.k(1), T.n(1), max(T.block_size)));
 save_fig(fig, fullfile(opt.plotdir, ['fig_sampling' opt.tag]), opt.formats);
 end
