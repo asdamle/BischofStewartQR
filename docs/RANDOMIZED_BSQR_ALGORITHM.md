@@ -4,8 +4,8 @@ The randomized column-selection algorithm implemented in `matlab_rand/`
 (`bsqr_rand`). It selects `k` well-conditioned columns with the *same*
 worst-case guarantee on `‖R₁₁⁻¹‖` as deterministic Bischof–Stewart pivoted QR,
 but without the `O(n k²)` all-column scan that dominates the deterministic cost
-when `k ≪ n`. Sections 1–5 are prose; §6 is a LaTeX draft of the algorithm
-statement (`algorithm` / `algpseudocode`).
+when `k ≪ n`. (The manuscript carries its own algorithm statement; this
+document is the prose companion tied to the implementation.)
 
 ---
 
@@ -203,108 +203,3 @@ columns it samples:
 For `k ≪ n` everything that grows with `n` is a single linear pass, so the
 speedup over the deterministic `O(n k²)` grows with `n` while `‖R₁₁⁻¹‖` stays
 under the same guarantee.
-
----
-
-## 6. LaTeX draft
-
-Compile with `\usepackage{algorithm}`, `\usepackage{algpseudocode}`, and
-`\usepackage{amsmath,amssymb}` (the latter for `\mathbb`). The growth identity
-referenced in the main routine is (for a candidate column brought into the
-current frame, `x = Qᵢᵀ aⱼ`, after `i` selections):
-
-```latex
-Appending column $j$ grows the squared inverse Frobenius norm by exactly
-\begin{equation}\label{eq:growth}
-  \bigl\|R_{11}^{-1}\bigr\|_F^2
-  \;\longleftarrow\;
-  \bigl\|R_{11}^{-1}\bigr\|_F^2 + c_j,
-  \qquad
-  c_j = \frac{1 + \|w_j\|^2}{\rho_j^2},
-\end{equation}
-where $w_j = R_{11}^{-1} x_{1:i}$ and $\rho_j = \|x_{i+1:m}\|$.
-```
-
-```latex
-\begin{algorithm}[t]
-\caption{Randomized Bischof--Stewart column selection (batched; default path)}
-\label{alg:randbsqr}
-\begin{algorithmic}[1]
-\Require $A\in\mathbb{R}^{m\times n}$; subset size $k\le\min(m,n)$; block size $b$ (default $b=k$);
-         weights $g_j$ (default $g_j=\|a_j\|^2$, or $g_j\equiv1$ for uniform sampling)
-\Ensure index set $J$, $|J|=k$, and upper-triangular $R\in\mathbb{R}^{k\times k}$ with
-        $\|R^{-1}\|_F\le\sqrt{k(n-k+1)}$ for orthonormal-row $A$
-\State $J\gets(\,)$;\quad $\mathcal{R}\gets\{1,\dots,n\}$;\quad $R\gets 0$;\quad $f\gets 0$
-       \Comment{$f=\|R_{1:i,1:i}^{-1}\|_F^2$, the squared inverse Frobenius norm}
-\While{$|J|<k$}
-  \State $B\gets\Call{SampleBlock}{\mathcal{R},\,b,\,g}$
-         \Comment{$\le b$ distinct columns, without replacement}
-  \State $X\gets\Call{Reduce}{A_{:,B},\,|J|}$
-         \Comment{one application of the $|J|$ accumulated reflectors}
-  \State mark every column of $X$ \emph{active}
-  \While{$|J|<k$ \textbf{and} some column of $X$ is active}
-    \State $i\gets|J|$;\qquad $\theta\gets(f+n-2i)/(k-i)$
-           \Comment{$=\rho^2$-weighted mean of $c$ over $\mathcal{R}$ for orthonormal-row $A$}
-    \ForAll{active columns $x$ of $X$}
-      \State $\rho^2\gets\|x_{i+1:m}\|^2$;\quad
-             $w\gets R_{1:i,\,1:i}^{-1}\,x_{1:i}$;\quad
-             $c\gets(1+\|w\|^2)/\rho^2$
-    \EndFor
-    \State $(c^\star,x^\star)\gets$ active column of least $c$
-    \If{$c^\star>\theta$}
-      \State \textbf{break} \Comment{no in-block column meets the bound; resample}
-    \EndIf
-    \State $R_{1:i,\,i+1}\gets x^\star_{1:i}$;\quad
-           $(\beta,v,\tau)\gets\Call{Householder}{x^\star_{i+1:m}}$;\quad
-           $R_{i+1,\,i+1}\gets\beta$
-    \State store reflector $(v,\tau)$;\quad append $x^\star$'s column index to $J$;\quad
-           remove it from $\mathcal{R}$;\quad deactivate $x^\star$
-    \State $f\gets f+c^\star$ \Comment{exact, by Eq.~\eqref{eq:growth}}
-    \State downdate the remaining active columns of $X$ by $(v,\tau)$
-           \Comment{in-block reflector apply}
-  \EndWhile
-\EndWhile
-\State \Return $J$, $R$, and the stored reflectors (an implicit $Q$)
-\end{algorithmic}
-\end{algorithm}
-```
-
-```latex
-\begin{algorithm}[t]
-\caption{Subroutines}
-\begin{algorithmic}[1]
-\Procedure{SampleBlock}{$\mathcal{R},\,b,\,g$}
-  \Comment{weighted sampling without replacement (Efraimidis--Spirakis)}
-  \State for each $j\in\mathcal{R}$ draw $u_j\sim\mathrm{Unif}(0,1)$ and set
-         $\mathrm{key}_j\gets-\log(u_j)/\max(g_j,\varepsilon)$
-         \Comment{$\varepsilon>0$ guards zero weights}
-  \State \Return the indices of the $\min(b,|\mathcal{R}|)$ smallest keys
-         \Comment{uniform sampling is $g_j\equiv1$}
-\EndProcedure
-\Procedure{Reduce}{$M,\,i$}
-  \Comment{bring columns into the current frame}
-  \State \Return $Q_i^\top M$, where $Q_i=H_1H_2\cdots H_i$ is the product of the
-         $i$ stored reflectors \Comment{one compact-WY block apply}
-\EndProcedure
-\Procedure{Householder}{$y$}
-  \Comment{reflector zeroing $y$ below its first entry}
-  \State choose $(v,\tau)$ with $(I-\tau vv^\top)\,y=\beta e_1$;\quad \Return $(\beta,v,\tau)$
-\EndProcedure
-\end{algorithmic}
-\end{algorithm}
-```
-
-> **Remark (single-select variant).** Replacing the inner `\While` by a scan that
-> stops at the first sampled column with `$c\le\theta$` and then resamples gives
-> the `batched=false` path: each `\Call{Reduce}{}` yields at most one selection,
-> instead of the several per block above. The outer structure, threshold, and
-> guarantee are unchanged.
-
-> **Remark (safeguards).** Two safeguards are omitted from the listing for
-> clarity. Once as many candidates have been sampled since the last selection as
-> `$|\mathcal{R}|$`, the next block is a forced pass over all of `$\mathcal{R}$`;
-> for orthonormal-row `$A$` its minimizer satisfies `$c\le\theta$` in exact
-> arithmetic (the minimum is at most the $\rho^2$-weighted mean, which equals
-> $\theta$), so it is accepted even on a rounding tie. If that pass finds
-> `$\rho^2\approx 0$` for every remaining column, `$A$` is numerically
-> rank-deficient for this `$k$` and the algorithm stops with an error.
