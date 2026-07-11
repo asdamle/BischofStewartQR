@@ -8,7 +8,8 @@ function results = run_rand_benchmarks(varargin)
 %       overhead for both and is not part of either algorithm.
 %     * timeit() handles warm-up and returns a robust median; only the kernel
 %       call is inside the timed thunk (matrix generation is outside).
-%     * Deterministic baseline: bsqr_mex(M,'k',k) with THREE outputs [Q,R,p],
+%     * Deterministic baseline: bsqr_mex(M,'k',k) with THREE outputs [Q,R,p]
+%       (vector permutation),
 %       matching the publication convention (Q, R, p materialized on every
 %       side). Forming Q is one O(k^3) dorgqr here (m = k in the GKS setting),
 %       invisible next to the kernel's O(n*k^2) scan; R12 arrives as an
@@ -62,8 +63,9 @@ for ci = 1:numel(opt.sizes)
     M = rand_test_matrix(opt.family, k, n, opt.seed + ci);
     if isempty(opt.block_size); bs = k; else; bs = opt.block_size; end   % batched default block
 
-    t_det = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 3);
-    [~, Rdet, ~] = bsqr_mex(M, 'k', k, 'check_finite', false);
+    t_det = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false, ...
+        'pivot_format', 'vector'), 3);
+    [~, Rdet, ~] = bsqr_mex(M, 'k', k, 'check_finite', false, 'pivot_format', 'vector');
     frobinv_det = norm(1 ./ svd(triu(Rdet(1:k, 1:k))));   % ||R11^{-1}||_F via singular values
 
     % Built-in column-pivoted QR (LAPACK dgeqp3): vendor-tuned classical baseline.

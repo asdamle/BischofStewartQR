@@ -165,8 +165,12 @@ out.tested_per_k = st.total_tested / k;
 end
 
 function out = measure_det(M, k)
-out.time = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false), 1);
-R = bsqr_mex(M, 'k', k, 'check_finite', false);
+% Timed product matches the publication convention: materialize [Q, R, p]
+% with the vector permutation (the matrix format would build a dense n-by-n
+% permutation and dominate the timing at these n).
+out.time = timeit(@() bsqr_mex(M, 'k', k, 'check_finite', false, ...
+    'pivot_format', 'vector'), 3);
+[~, R, ~] = bsqr_mex(M, 'k', k, 'check_finite', false, 'pivot_format', 'vector');
 [out.frobinv, out.sigma_min] = svd_quality(triu(R(1:k, 1:k)));
 out.osinsky = sqrt(k * (size(M, 2) - k + 1));
 end
