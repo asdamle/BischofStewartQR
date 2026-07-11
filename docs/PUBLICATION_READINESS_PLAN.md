@@ -339,20 +339,20 @@ drifts. All findings were independently verified before this plan was
 written. Author guidance: documentation inconsistencies resolve toward the
 current code (the figures show what they should show).
 
-**R1 — Deduplicate the MATLAB publication baseline (code fix).** Verified:
+**R1 — Deduplicate the MATLAB publication baseline (code fix). DONE 2026-07-10.** Verified:
 `bench_pair` is called twice per case (plain + rinv) and both calls time
 `qr_pivoted`, so the committed CSV has 300 baseline rows vs 150 per BSQR
 variant, and the `pair_relative_times` join (keys `family…seed`) pairs each
 BSQR row with both duplicates — double-weighted plain relative-time artifacts
 (up to 22.3% group sensitivity per the review). Julia is clean (one `dgeqp3`
 row per case via include-flags).
-- [ ] Restructure `run_publication_benchmarks.m` to mirror Julia: the plain
+- [x] Restructure `run_publication_benchmarks.m` to mirror Julia: the plain
       pass times `bsqr_full` + `qr_pivoted`; the rinv pass times `bsqr_rinv`
       + `qr_pivoted_trsm` only. Downstream joins and seed-grouped plots then
       pair 1:1 with no aggregation change needed.
-- [ ] Add a cheap invariant to the runner: exactly one row per
+- [x] Add a cheap invariant to the runner: exactly one row per
       (case, method) before the CSV is written — prevents recurrence.
-- [ ] Verify by smoke run (multiplicities 1:1:1:1) and a perf-gate pass
+- [x] Verify by smoke run (multiplicities 1:1:1:1) and a perf-gate pass
       (note: the Phase 0 baseline CSV carries the duplicate rows; the gate
       joins per method on `tmed_s`, so the comparison still works — expect
       duplicated join rows against the old baseline, harmless).

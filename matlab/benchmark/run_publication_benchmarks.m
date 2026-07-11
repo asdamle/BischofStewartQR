@@ -42,6 +42,14 @@ for seed = cfg.seeds
     end
 end
 
+% Invariant: exactly one row per (case, method). A duplicated baseline (or any
+% double-timed method) would silently double-weight every downstream per-seed
+% pairing, so fail loudly here instead.
+key = rows(:, {'family', 'regime', 'm', 'n', 'aspect', 'seed', 'method'});
+assert(height(unique(key)) == height(rows), ...
+    'run_publication_benchmarks:DuplicateRows', ...
+    'duplicate (case, method) rows detected -- a method was timed twice for the same case');
+
 csv_path = fullfile(cfg.outdir, 'publication_timings.csv');
 summary_path = fullfile(cfg.outdir, 'publication_summary.md');
 metadata_path = fullfile(cfg.outdir, 'metadata.txt');
@@ -119,6 +127,10 @@ end
 end
 
 function rows = bench_pair(A, k, norm_recomp_tol, include_rinv)
+% Each pass times its own baseline exactly once (mirroring the Julia runner):
+% the plain pass produces bsqr_full + qr_pivoted, the rinv pass bsqr_rinv +
+% qr_pivoted_trsm. Timing qr_pivoted in both passes double-weighted the
+% baseline in every downstream per-seed pairing.
 rows = struct('method', {}, 'tmed', {}, 'residual', {}, 'orthogonality', {});
 
 f_bs = @() run_bsqr_timed(A, k, norm_recomp_tol, include_rinv);
@@ -132,18 +144,18 @@ else
 end
 rows(end+1) = struct('method', bs_label, 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 
-f_qr = @() run_qr_builtin_timed(A);
-tmed = bench_function(f_qr);
-out = run_qr_builtin_quality(A);
-[resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
-rows(end+1) = struct('method', "qr_pivoted", 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
-
 if include_rinv
     f_qr_trsm = @() run_qr_trsm_timed(A);
     tmed = bench_function(f_qr_trsm);
     out = run_qr_trsm_quality(A);
     [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
     rows(end+1) = struct('method', "qr_pivoted_trsm", 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
+else
+    f_qr = @() run_qr_builtin_timed(A);
+    tmed = bench_function(f_qr);
+    out = run_qr_builtin_quality(A);
+    [resid, orth] = quality_from_factor(A, out.Q, out.R, out.p);
+    rows(end+1) = struct('method', "qr_pivoted", 'tmed', tmed, 'residual', resid, 'orthogonality', orth); %#ok<AGROW>
 end
 end
 
