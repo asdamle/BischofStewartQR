@@ -389,6 +389,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         mwSize nsel = 0;
         mwSize rcount = n;       // uniform pool size (valid front of `remaining`)
         mwSize since_last = 0;   // columns sampled since the last selection (fallback trigger)
+        mwSize rounds_since_last = 0;  // blocks (reflector applies) since the last selection
 
         while (nsel < k) {
             const mwSize rem = n - nsel;
@@ -485,9 +486,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 st_Fhat[nsel] = (static_cast<double>(nsel) + 1.0) *
                     (static_cast<double>(n) - nsel) / (static_cast<double>(k) - nsel);
                 st_fallback[nsel] = (gmin_c > theta) ? 1.0 : 0.0;
-                st_samples[nsel] = static_cast<double>(scanned);
-                st_rounds[nsel] = static_cast<double>(chunks);
+                // Attribute ALL work since the previous selection: the failed
+                // random blocks (since_last / rounds_since_last) plus this
+                // exhaustive scan (scanned / chunks).
+                st_samples[nsel] = static_cast<double>(since_last + scanned);
+                st_rounds[nsel] = static_cast<double>(rounds_since_last + chunks);
                 since_last = 0;
+                rounds_since_last = 0;
                 ++nsel;
                 continue;
             }
@@ -524,6 +529,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 }
             }
             since_last += bcount;
+            ++rounds_since_last;
 
             // --- bring the block to the current frame: X <- Q_nsel' X (compact-WY) ---
             if (nsel > 0) {
@@ -668,7 +674,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 f2 += cbest;
                 selected[nsel] = idblk[nr];
                 taken[idblk[nr]] = 1;
-                since_last = 0;
 
                 st_f2[nsel] = f2;
                 st_crit[nsel] = cbest;
@@ -676,10 +681,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 st_Fhat[nsel] = (static_cast<double>(nsel) + 1.0) *
                     (static_cast<double>(n) - nsel) / (static_cast<double>(k) - nsel);
                 st_fallback[nsel] = 0.0;
-                if (nsel == block_start) {        // attribute the block's apply to its first pick
-                    st_samples[nsel] = static_cast<double>(bcount);
-                    st_rounds[nsel] = 1.0;
+                if (nsel == block_start) {
+                    // ALL sampling work since the previous selection --
+                    // including blocks that yielded no selection -- is
+                    // attributed to a block's first pick (0 for its later
+                    // in-block picks), so total_tested / blocks_sampled are
+                    // true totals.
+                    st_samples[nsel] = static_cast<double>(since_last);
+                    st_rounds[nsel] = static_cast<double>(rounds_since_last);
                 }
+                since_last = 0;
+                rounds_since_last = 0;
 
                 nact = nr;   // pivot removed
                 ++nsel;

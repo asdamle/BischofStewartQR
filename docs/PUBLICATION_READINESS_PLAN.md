@@ -361,31 +361,31 @@ row per case via include-flags).
       artifacts as double-weighted (quality metrics unaffected).
 
 **R2 — Count all randomized sampling work (code fix, both backends in
-lockstep).** Verified: on the batched path a sampled block that yields no
+lockstep). DONE 2026-07-10.** Verified: on the batched path a sampled block that yields no
 selection is evaluated but never recorded (`samples_tested`/`rounds` are
 written only by selection-yielding blocks), so `total_tested`,
 `blocks_sampled`, and the plotted `tested_per_k` undercount — demonstrated
 at ~8× on uniform/needle (batched reports 104 vs single-select's 824 for the
 same problem). The `fallback` flag records only forced above-threshold
 acceptance, narrower than the help text implies.
-- [ ] m-file batched path: carry pending counters for failed blocks'
+- [x] m-file batched path: carry pending counters for failed blocks'
       candidate counts and reflector applies; attribute
       `pending + current block` to the next selection (the exhaustive-scan
       path also adds its pending). `total_tested` and `blocks_sampled`
       become true totals of candidate evaluations and block applies.
-- [ ] MEX batched path: identical change (`since_last` already tracks the
+- [x] MEX batched path: identical change (`since_last` already tracks the
       candidate count; add the rounds counter), keeping the two backends'
       instrumentation semantics identical.
-- [ ] Documentation: `bsqr_rand.m` stats help and the README stats section
+- [x] Documentation: `bsqr_rand.m` stats help and the README stats section
       updated to the now-true semantics; `fallback` documented precisely as
       "forced acceptance above the threshold on an exhaustive pass"
       (exhaustive scans are visible through `rounds`).
-- [ ] Tests: regression case where no block ever fails (block ≥ n —
+- [x] Tests: regression case where no block ever fails (block ≥ n —
       counts must equal today's) and an undercount case (uniform/needle,
       small block) asserting batched `total_tested` is now commensurate with
       the single-select count rather than ~8× below it; full rand suite +
       a bounds-stress spot check.
-- [ ] Affected figures (`tested/m` panels of blocksize + sampling) and any
+- [x] Affected figures (`tested/m` panels of blocksize + sampling) and any
       `tested_per_k` numbers regenerate at Phase 6; selection, timing,
       conditioning, and accuracy outputs are untouched by construction.
 

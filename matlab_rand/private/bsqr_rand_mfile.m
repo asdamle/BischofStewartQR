@@ -56,6 +56,7 @@ if opts.batched
     % multiple selections (amortizing the dominant cost, like rejection_rpqr).
     nsel = 0;
     since_last_select = 0;          % columns sampled since the last selection
+    rounds_since_last = 0;          % blocks (reflector applies) since the last selection
     while nsel < k
         rem_count = n - nsel;
         force_all = since_last_select >= rem_count;   % progress safety net
@@ -67,6 +68,7 @@ if opts.batched
         end
         Xred = bsqr_rand_apply_reflectors(Awork(:, ids), V, tau, nsel, m);
         since_last_select = since_last_select + bcount;
+        rounds_since_last = rounds_since_last + 1;
         cand = true(1, bcount);
         nsel_at_block_start = nsel;
         first = true;
@@ -118,7 +120,6 @@ if opts.batched
             selected(step) = ids(jblk);
             remaining(remaining == ids(jblk)) = [];
             cand(jblk) = false;
-            since_last_select = 0;
 
             rest = find(cand);          % apply the new reflector to the rest of the block
             if ~isempty(rest) && tau_i ~= 0
@@ -132,9 +133,15 @@ if opts.batched
             stats.Fhat(step) = (nsel + 1) * (n - nsel) / (k - nsel);
             stats.fallback(step) = forced;
             if nsel == nsel_at_block_start
-                stats.samples_tested(step) = bcount;   % attribute the apply to the 1st pick
-                stats.rounds(step) = 1;
+                % ALL sampling work since the previous selection -- including
+                % blocks that yielded no selection -- is attributed to a
+                % block's first pick (0 for its later in-block picks), so
+                % total_tested / blocks_sampled are true totals.
+                stats.samples_tested(step) = since_last_select;
+                stats.rounds(step) = rounds_since_last;
             end
+            since_last_select = 0;
+            rounds_since_last = 0;
             nsel = nsel + 1;
         end
     end

@@ -285,6 +285,42 @@ if bsqr_rand_mex_available()
 end
 end
 
+function testInstrumentationCountsAllWork(testCase)
+% samples_tested / rounds must count ALL sampling work, including blocks that
+% yield no selection (they used to vanish from the totals -- external review
+% finding). Two regimes, both backends:
+%   (a) no-failure: block >= n means the first block contains every remaining
+%       column, so all k selections come from one apply -- exact counts,
+%       independent of the RNG.
+%   (b) heavy-failure: uniform sampling on needle with a tiny block fails
+%       often; the totals must reflect that work (the pre-fix behavior
+%       reported ~k*block here).
+backends = {'mfile'};
+if bsqr_rand_mex_available(); backends{end+1} = 'mex'; end
+W = orthonormal_rows(12, 150, 7);
+repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+addpath(fullfile(repo_root, 'matlab_rand', 'benchmark'));
+Mneedle = rand_test_matrix('needle', 16, 400, 23);
+for bi = 1:numel(backends)
+    b = backends{bi};
+    [~, ~, ~, st] = bsqr_rand(W, 'k', 12, 'backend', b, 'seed', 1, 'block_size', 200);
+    verifyEqual(testCase, st.total_tested, 150, ...
+        sprintf('%s: one all-column block must count each column once', b));
+    verifyEqual(testCase, st.blocks_sampled, 1, ...
+        sprintf('%s: one all-column block is one reflector apply', b));
+    [~, ~, ~, sn] = bsqr_rand(Mneedle, 'k', 16, 'backend', b, 'seed', 5, ...
+        'sampling', 'uniform', 'block_size', 8, 'batched', true);
+    % True work here is hundreds of candidates (single-select counts ~800 on
+    % the same problem); the pre-fix undercount reported ~100.
+    verifyGreaterThan(testCase, sn.total_tested, 300, ...
+        sprintf('%s: failed blocks must count toward total_tested', b));
+    % Pre-fix, rounds could never exceed the number of selections (k = 16);
+    % counting failed blocks pushes it well past that on this workload.
+    verifyGreaterThan(testCase, sn.blocks_sampled, 20, ...
+        sprintf('%s: rounds must count failed blocks too', b));
+end
+end
+
 function testAdversarialCorners(testCase)
 % Kernel corners picked by reading the implementations (publication plan
 % Phase 2): degenerate block sizes, the forced-fallback path, the final-step

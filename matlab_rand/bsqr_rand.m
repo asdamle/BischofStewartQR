@@ -65,15 +65,19 @@ function varargout = bsqr_rand(A, varargin)
 %   Fhat           - deterministic worst-case bound Fhat_i = i(n-i+1)/(k-i+1)
 %   crit           - c-increment of the accepted pivot
 %   threshold      - acceptance threshold used at each step
-%   samples_tested - candidate columns evaluated at each step (batched: the
-%                    block's size is attributed to its first selection, 0 after)
-%   rounds         - sampling rounds (blocks) at each step (batched: 1 at a
-%                    block's first selection, 0 after)
-%   fallback       - true where the exhaustive global-min fallback fired
+%   samples_tested - candidate columns evaluated per selection, INCLUDING
+%                    blocks that yielded no selection (batched: all work since
+%                    the previous selection is attributed to a block's first
+%                    selection, 0 for its later in-block selections)
+%   rounds         - sampled blocks / reflector applies per selection (same
+%                    attribution as samples_tested)
+%   fallback       - true where the exhaustive pass force-accepted the global
+%                    minimizer above the threshold (rounding-tie safety net)
 %   frob_inv       - final ||R11^{-1}||_F = sqrt(f2(end))
 %   osinsky_bound  - sqrt(k(n-k+1)), the Frobenius guarantee target
-%   total_tested   - sum of samples_tested
-%   blocks_sampled - total sampled blocks / reflector applies (sum of rounds)
+%   total_tested   - sum of samples_tested: every candidate evaluation the run
+%                    performed, including failed blocks
+%   blocks_sampled - sum of rounds: every sampled block / reflector apply
 %
 %   The per-step bound and its guarantees assume A has orthonormal rows
 %   (the GKS setting, m = k). The algorithm still runs for general A, but

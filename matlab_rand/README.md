@@ -280,6 +280,7 @@ For `A` `m×n` and `k` selected columns (default `k = min(m,n)`):
 Per-step `1×k` arrays: `f2` (running `||R11^{-1}||_F^2`), `Fhat` (per-step
 worst-case bound), `crit`, `threshold`, `samples_tested`, `rounds`, `fallback`.
 Scalars: `frob_inv`, `osinsky_bound`, `total_tested`, `blocks_sampled`. In
-batched mode a block's `samples_tested`/`rounds` are attributed to its first
-selection (`0` for the rest), so `total_tested` and `blocks_sampled` are the
-meaningful aggregates.
+batched mode all sampling work since the previous selection — including blocks
+that yielded no selection — is attributed to a block's first selection (`0`
+for the rest), so `total_tested` and `blocks_sampled` are true totals of
+candidate evaluations and reflector applies.
