@@ -38,7 +38,7 @@ M = { 'bsqr_nw',        'randBSQR (norm-weighted)', [0.00 0.45 0.74], 'o'; ...
 
 nf = numel(fams);
 fig = figure('Position', [100 100 max(460 * nf, 760) 460], 'Color', 'w');
-tl = tiledlayout(fig, 1, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
+tl = tiledlayout(fig, 1, nf, 'TileSpacing', 'loose', 'Padding', 'compact');
 ax = [];
 for fi = 1:nf
     fam = fams(fi); base = T.family == fam;

@@ -71,17 +71,17 @@ for fi = 1:nf
         case 'time'
             set(ax, 'XScale', 'log', 'YScale', 'log');
             band_line(ax, T, base & T.method == "det", 'n', 'time_s', C.det, 'deterministic BSQR');
-            band_line(ax, T, base & T.method == "builtin", 'n', 'time_s', C.builtin, 'built-in qr (dgeqp3)');
+            band_line(ax, T, base & T.method == "builtin", 'n', 'time_s', C.builtin, 'built-in QR (dgeqp3)');
             band_line(ax, T, base & T.method == "rand" & T.mode == "running_mean", 'n', 'time_s', C.rm, 'randBSQR');
             band_line(ax, T, base & T.method == "rand_r12", 'n', 'time_s', C.r12, 'randBSQR + R_{12}');
-            ylabel(ax, 'time (s)');
+            if fi == 1; ylabel(ax, 'time (s)'); end
         case 'speedup'
             set(ax, 'XScale', 'log', 'YScale', 'log');
             speedup_line(ax, T, base, 'det', 'na', 'rand', 'running_mean', C.rm, 'randBSQR vs deterministic BSQR');
-            speedup_line(ax, T, base, 'builtin', 'na', 'rand', 'running_mean', C.builtin, 'randBSQR vs built-in qr');
-            speedup_line(ax, T, base, 'builtin', 'na', 'rand_r12', 'running_mean', C.r12, 'randBSQR + R_{12} vs built-in qr');
+            speedup_line(ax, T, base, 'builtin', 'na', 'rand', 'running_mean', C.builtin, 'randBSQR vs built-in QR');
+            speedup_line(ax, T, base, 'builtin', 'na', 'rand_r12', 'running_mean', C.r12, 'randBSQR + R_{12} vs built-in QR');
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');
-            ylabel(ax, 'speedup (t_{baseline} / t_{randBSQR})');
+            if fi == 1; ylabel(ax, 'speedup (t_{baseline} / t_{randBSQR})'); end
     end
     grid(ax, 'on'); xlabel(ax, 'n'); title(ax, fam, 'Interpreter', 'none');
 end
@@ -100,7 +100,7 @@ function scaling_quality_figure(opt, C, T, fams)
 nf = numel(fams);
 fig = figure('Position', [100 100 max(440 * nf, 720) 480], 'Color', 'w');
 tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
-methods = {"builtin", 'na', 'built-in qr', C.builtin; ...
+methods = {"builtin", 'na', 'built-in QR', C.builtin; ...
            "det", 'na', 'deterministic BSQR', C.det; ...
            "rand", 'running_mean', 'randBSQR', C.rm};
 ax = [];
@@ -158,13 +158,14 @@ f = fullfile(opt.resultsdir, ['exp_blocksize' opt.tag '.csv']);
 if ~isfile(f); warning('missing %s', f); return; end
 T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
-fig = figure('Position', [100 100 1200 360 * numel(fams)], 'Color', 'w');
+fig = figure('Position', [100 100 1200 230 * numel(fams)], 'Color', 'w');
 tl = tiledlayout(fig, numel(fams), 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 for fi = 1:numel(fams)
     fam = fams(fi); base = T.family == fam;
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log', 'YScale', 'log');
     band_line(ax, T, base & T.sampling == "normweighted", 'block_size', 'time_s', C.normweighted, 'normweighted');
+    yl = ylim(ax); ylim(ax, [yl(1), yl(2) * 2.5]);   % decompress: seed variation is small
     grid(ax, 'on'); xlabel(ax, 'k_b'); ylabel(ax, 'time (s)');
     title(ax, sprintf('%s: runtime', fam), 'Interpreter', 'none');
     if fi == 1; legend(ax, 'Location', 'best'); end
@@ -214,16 +215,12 @@ for mi = 1:size(metrics, 1)
         xc = b(si).XEndPoints;
         errorbar(ax, xc, mu(:, si), elo(:, si), ehi(:, si), 'k', 'linestyle', 'none', 'HandleVisibility', 'off');
     end
-    show_legend = (mi == 1);
-    if strcmp(metrics{mi, 1}, 'time_s')   % overlay vendor-qr time per family
+    if strcmp(metrics{mi, 1}, 'time_s')   % overlay vendor-QR time per family
         bt = arrayfun(@(f) mean(T.time_s(T.family == f & T.method == "builtin")), fams);
         plot(ax, cats, bt, 'd', 'MarkerSize', 7, 'MarkerFaceColor', C.builtin, ...
-            'MarkerEdgeColor', 'k', 'LineStyle', 'none', 'DisplayName', 'built-in qr');
-        show_legend = true;
+            'MarkerEdgeColor', 'k', 'LineStyle', 'none', 'DisplayName', 'built-in QR');
     end
     ylabel(ax, metrics{mi, 2}); grid(ax, 'on');
-    title(ax, metrics{mi, 2});
-    if show_legend; legend(ax, 'Location', 'best'); end
     if strcmp(metrics{mi, 1}, 'tested_per_k')
         % Log y-axis: keep the (small, ~block) norm-weighted bars visible by
         % putting the bar baseline and the lower y-limit below the data minimum.
@@ -233,6 +230,8 @@ for mi = 1:size(metrics, 1)
         ylim(ax, [lo, hi]);
     end
 end
+lg = legend(ax, 'Orientation', 'horizontal');   % last panel holds all three entries
+lg.Layout.Tile = 'south';
 title(tl, sprintf('Uniform vs norm-weighted sampling (m=%d, n=%d, k_b=%d)', ...
     T.k(1), T.n(1), max(T.block_size)));
 save_fig(fig, fullfile(opt.plotdir, ['fig_sampling' opt.tag]), opt.formats);

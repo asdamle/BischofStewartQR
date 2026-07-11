@@ -61,12 +61,12 @@ for fi = 1:nf
             set(ax, 'XScale', 'log', 'YScale', 'log');
             band_line(ax, T, base & T.method == "bsqr", 'time_s', C.bsqr, 'randBSQR');
             band_line(ax, T, base & T.method == "rejection_rpqr", 'time_s', C.rpqr, 'rejection\_rpqr');
-            ylabel(ax, 'time (s)');
+            if fi == 1; ylabel(ax, 'time (s)'); end
         case 'speedup'
             set(ax, 'XScale', 'log', 'YScale', 'log');
             speedup_line(ax, T, base, C.bsqr);
             yline(ax, 1, 'k--', 'HandleVisibility', 'off');
-            ylabel(ax, 'speedup (t_{rpqr} / t_{randBSQR})');
+            if fi == 1; ylabel(ax, 'speedup (t_{rpqr} / t_{randBSQR})'); end
     end
     grid(ax, 'on'); xlabel(ax, 'n'); title(ax, fam, 'Interpreter', 'none');
 end
@@ -85,7 +85,7 @@ function quality_figure(opt, C, T, fams)
 % Two rows: Frobenius ratio ||R11^{-1}||_F / bound (<=1, lower better), and
 % spectral ratio sigma_min(R11) / bound (>=1, higher better).
 nf = numel(fams);
-fig = figure('Position', [100 100 max(440 * nf, 720) 760], 'Color', 'w');
+fig = figure('Position', [100 100 max(440 * nf, 720) 480], 'Color', 'w');
 tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
 methods = {'bsqr', 'randBSQR', C.bsqr; 'rejection_rpqr', 'rejection\_rpqr', C.rpqr};
 ax = [];
@@ -101,10 +101,10 @@ for row = {'frob', 'smin'}
         grid(ax, 'on');
         if strcmp(row{1}, 'frob')
             title(ax, fam, 'Interpreter', 'none');
-            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_F / bound   (\leq 1)'); end
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_F / bound'); end
         else
             xlabel(ax, 'n');
-            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_2 / bound   (\leq 1)'); end
+            if fi == 1; ylabel(ax, '||R_{11}^{-1}||_2 / bound'); end
         end
     end
 end
