@@ -168,7 +168,6 @@ for fi = 1:numel(fams)
     yl = ylim(ax); ylim(ax, [yl(1), yl(2) * 2.5]);   % decompress: seed variation is small
     grid(ax, 'on'); xlabel(ax, 'k_b'); ylabel(ax, 'time (s)');
     title(ax, sprintf('%s: runtime', fam), 'Interpreter', 'none');
-    if fi == 1; legend(ax, 'Location', 'best'); end
 
     ax = nexttile(tl); hold(ax, 'on'); set(ax, 'XScale', 'log', 'YScale', 'log');
     band_line(ax, T, base & T.sampling == "normweighted", 'block_size', 'tested_per_k', C.normweighted, 'normweighted');
@@ -181,7 +180,7 @@ for fi = 1:numel(fams)
     grid(ax, 'on'); xlabel(ax, 'k_b'); ylabel(ax, '||R_{11}^{-1}||_F / bound');
     title(ax, sprintf('%s: conditioning', fam), 'Interpreter', 'none');
 end
-title(tl, sprintf('Effect of block size (m=%d, n=%d)', T.k(1), T.n(1)));
+title(tl, sprintf('Effect of block size on norm-weighted sampling (m=%d)', T.k(1)));
 save_fig(fig, fullfile(opt.plotdir, ['fig_blocksize' opt.tag]), opt.formats);
 end
 
