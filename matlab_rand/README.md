@@ -68,8 +68,8 @@ deterministic factor path and reports speedup, the conditioning ratio
 `||R11^{-1}||_F / sqrt(k(n-k+1))`, and candidate columns tested per pivot. Writes
 `benchmark/results/rand_timings.csv`.
 
-The full publication study (scaling, block size, sampling — with confidence
-bands) is generated per `k` and written to `k`-tagged files:
+The full publication study (scaling, block size, sampling — with seed
+min/max bands) is generated per `k` and written to `k`-tagged files:
 
 ```matlab
 % one k value
@@ -218,17 +218,17 @@ CSV records every conditioning/error metric in both the Frobenius and spectral
 (`||R11^{-1}||_2` and the 2-norm approximation errors; `max|R11^{-1}R12|` stays
 max-norm) as `plots/fig_approx_cond_quality_spec.{png,pdf}`.
 
-The ID rows show **two coefficient choices** on the same panel: the cheap
-leading-k-frame `T = R11^{-1}R12` (solid) and the standard least-squares/projection
-coefficients `T_proj = A(:,S)^+ A(:,rest)` (thin dashed, columns `maxTproj`,
-`noisy_id_*_proj`). The takeaway: BSQR's `||R11^{-1}||` is guaranteed `<=` the Osinsky
-bound while `rejection_rpqr`'s is 2–3× larger and can exceed it, which directly
-inflates the **V_k-frame** coefficients and their noisy ID error (the solid curves
-separate). But `max|T_proj|` is actually *smaller* than `max|T|` and nearly equal
-across methods, so with the standard projection coefficients the reconstruction gap
-largely closes (the dashed curves collapse toward the projection optimum) — the
-conditioning guarantee is real, but it only shows up downstream when you use the
-cheap oblique coefficients rather than a least-squares solve.
+The figure plots the cheap leading-k-frame coefficients `T = R11^{-1}R12`; the
+standard least-squares/projection coefficients `T_proj = A(:,S)^+ A(:,rest)`
+are **recorded in the CSV** (columns `maxTproj`, `noisy_id_*_proj`) but not
+plotted. The takeaway from the recorded data: BSQR's `||R11^{-1}||` is
+guaranteed `<=` the Osinsky bound while `rejection_rpqr`'s is 2–3× larger and
+can exceed it, which directly inflates the **V_k-frame** coefficients and
+their ID error. But `max|T_proj|` is actually *smaller* than `max|T|` and
+nearly equal across methods, so with projection coefficients the
+reconstruction gap largely closes — the conditioning guarantee is real, but it
+shows up downstream when you use the cheap oblique coefficients rather than a
+least-squares solve.
 
 **Real data** is never committed. To include a real matrix, drop a `.mat` holding
 a 2-D double variable `A` into `ext_comparisons/data/` (git-ignored) and pass its

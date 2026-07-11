@@ -6,7 +6,7 @@ function plot_rpqr_comparison(varargin)
 %     fig_rpqr_time_k<K>.png    - runtime vs n (both methods, per family)
 %     fig_rpqr_speedup_k<K>.png - speedup t_rpqr / t_bsqr vs n
 %     fig_rpqr_quality_k<K>.png - two rows: ||R11^{-1}||_F / bound (<=1) and
-%                                 sigma_min(R11) / bound (>=1), vs n
+%                                 ||R11^{-1}||_2 / bound (<=1), vs n
 %   Line = seed mean; shaded band = seed min/max.
 %
 % Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats' (default
@@ -82,8 +82,8 @@ end
 
 % ===========================================================================
 function quality_figure(opt, C, T, fams)
-% Two rows: Frobenius ratio ||R11^{-1}||_F / bound (<=1, lower better), and
-% spectral ratio sigma_min(R11) / bound (>=1, higher better).
+% Two rows, both (inverse-norm / bound) <= 1 with lower better: the Frobenius
+% ratio ||R11^{-1}||_F / bound and the spectral ratio ||R11^{-1}||_2 / bound.
 nf = numel(fams);
 fig = figure('Position', [100 100 max(440 * nf, 720) 480], 'Color', 'w');
 tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');

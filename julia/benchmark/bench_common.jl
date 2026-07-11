@@ -124,6 +124,9 @@ function bench_trial_basic(f; warmup::Int = 2, samples::Int = 8)
     return tmin, tmed, alloc
 end
 
+# tci_low/tci_high are the empirical 2.5%/97.5% quantiles of the per-sample
+# timing distribution -- a spread band, NOT a statistical confidence interval
+# for the median. The CSV columns keep the historical tci_* names.
 function bench_trial_ci(f; warmup::Int = 2, samples::Int = 24)
     for _ in 1:warmup
         f()

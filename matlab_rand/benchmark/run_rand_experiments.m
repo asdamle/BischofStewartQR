@@ -12,7 +12,7 @@ function run_rand_experiments(varargin)
 %   All randomized timing uses the MEX kernel called directly with
 %   check_finite=false (see run_rand_benchmarks for the fairness rationale).
 %   Each configuration is repeated over several seeds so the plotter can draw
-%   confidence bands. Plot with plot_rand_experiments('k', K).
+%   seed min/max bands. Plot with plot_rand_experiments('k', K).
 %
 % Options: 'k' (rows to select, default 64), 'trials' (seeds, default 20 --
 %   the publication count; timeit already stabilizes the timing, so 20 suffices),

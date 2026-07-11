@@ -389,23 +389,23 @@ acceptance, narrower than the help text implies.
       `tested_per_k` numbers regenerate at Phase 6; selection, timing,
       conditioning, and accuracy outputs are untouched by construction.
 
-**R3 — Documentation drift, resolved toward the code (all verified):**
-- [ ] `plot_approx_cond_comparison.m` header: row 4 is the
+**R3 — Documentation drift, resolved toward the code (all verified). DONE 2026-07-10:**
+- [x] `plot_approx_cond_comparison.m` header: row 4 is the
       orthogonal-projection error (the axis label is already correct);
       remove the "noisy ID" row-4 description.
-- [ ] `matlab_rand/README.md` + `docs/RANDOMIZED_BSQR_PLAN.md`: the
+- [x] `matlab_rand/README.md` + `docs/RANDOMIZED_BSQR_PLAN.md`: the
       projection-coefficient / noisy-ID curves are recorded in the CSV but
       not plotted — fix the "thin dashed `T_proj` overlaid" claims.
-- [ ] `plot_rand_experiments.m` + `plot_rpqr_comparison.m` comments (4
+- [x] `plot_rand_experiments.m` + `plot_rpqr_comparison.m` comments (4
       sites): the spectral row plots `‖R₁₁⁻¹‖₂ / bound ≤ 1` (lower =
       better), not `σ_min/bound ≥ 1`.
-- [ ] `bench_common.jl` + `julia/docs/TESTS_AND_BENCHMARKS.md`: describe
+- [x] `bench_common.jl` + `julia/docs/TESTS_AND_BENCHMARKS.md`: describe
       `tci_low/high` as empirical 2.5%/97.5% timing quantiles, not
       confidence intervals (CSV column names unchanged).
-- [ ] `docs/PUBLICATION_FIGURES_PLAN.md`: replace the removed
+- [x] `docs/PUBLICATION_FIGURES_PLAN.md`: replace the removed
       `table_quality.csv`/p95 spec with the implemented
       `quality_summary.md` (median/max).
-- [ ] `slack > 1` wording in `docs/RANDOMIZED_BSQR_ALGORITHM.md` and
+- [x] `slack > 1` wording in `docs/RANDOMIZED_BSQR_ALGORITHM.md` and
       `docs/RANDOMIZED_BSQR_PLAN.md`: it does **not** weaken the bound
       "proportionally" (the recursion does not telescope that way); align
       with the API help — the Osinsky guarantee no longer applies.

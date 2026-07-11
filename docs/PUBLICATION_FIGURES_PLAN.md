@@ -84,8 +84,9 @@ Square cases use `m = n ∈ {64, 128, 256, 384, 512}`; short-wide cases sweep
   relative_time_seed_min, relative_time_seed_max, bsqr_tmed_geomean_s,
   baseline_tmed_geomean_s`.
 - `table_shortwide_relative_time.csv`: same plus `aspect`.
-- `table_quality.csv`: `family[, blas_threads], regime, method, residual_median,
-  residual_p95, orthogonality_median, orthogonality_p95`.
+- `quality_summary.md`: per (family[, blas_threads], regime, method) medians and
+  maxima of the residual and orthogonality metrics (the earlier `table_quality.csv`
+  with p95 statistics was dropped in favor of this summary).
 
 ## Decisions adopted
 

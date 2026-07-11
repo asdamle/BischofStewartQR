@@ -6,13 +6,14 @@ function plot_approx_cond_comparison(varargin)
 %     fig_approx_cond_quality.{png,pdf}
 %       row 1: ||R11^{-1}||_F / bound   (BSQR guaranteed <= 1; rejection uncontrolled)
 %       row 2: max |R11^{-1} R12|       (interpolation-coefficient magnitude)
-%       row 3: rank-k ID error / ||A||_F (noiseless -- oblique-coefficient penalty,
-%              amplified by ||R11^{-1}|| above the dashed projection optimum)
-%       row 4: noisy ID error / ||A||_F (row 3 + measurement noise propagated
-%              through T ~ ||R11^{-1}||), same dashed projection lower bound
-%   The dashed line (orthogonal-projection error) is the method-independent lower
-%   bound for any reconstruction from the selected columns. Lines = seed mean;
-%   bands = seed min/max. All y-axes log.
+%       row 3: rank-k ID error / ||A||_F (oblique-coefficient penalty, amplified
+%              by ||R11^{-1}||)
+%       row 4: orthogonal-projection error / ||A||_F (conditioning-blind best fit
+%              in span(A(:,S)); near-identical per method)
+%   The dotted black line on rows 3-4 is the best rank-k error (SVD truncation),
+%   the absolute lower bound below any column selection. Lines = seed median;
+%   bands = seed min/max. All y-axes log. (A noisy-ID variant and the projection
+%   coefficients T_proj are recorded in the CSV but not plotted.)
 %
 % Options: 'norm' ('fro' default, or '2'/'spec' for the spectral version -- rows
 %   1/3/4 become ||R11^{-1}||_2 and the 2-norm approximation errors; row 2 stays
@@ -44,12 +45,12 @@ fams = unique(T.family, 'stable');
 C = struct('bsqr', [0.00 0.45 0.74], 'rpqr', [0.85 0.33 0.10]);
 methods = {'bsqr_rand', 'randBSQR', C.bsqr; ...
            'rejection_rpqr', 'rejection\_rpqr', C.rpqr};
-% Four rows: the cause (conditioning), the mechanism (coefficients), then the
-% rank-k ID error split into its noiseless part (oblique-coefficient penalty,
-% conditioning-amplified) and its noisy part (measurement noise propagated through
-% T). The orthogonal-projection error is the dashed, method-independent lower bound
-% on both ID rows. The 'norm' option swaps rows 1/3/4 (and the reference) between
-% Frobenius and spectral; row 2 (max|R11^{-1}R12|) is max-norm in both.
+% Four rows: the cause (conditioning), the mechanism (coefficients), the rank-k
+% ID error (oblique V_k-frame coefficients, conditioning-amplified), and the
+% orthogonal-projection error (the conditioning-blind reference). The dotted
+% black SVD line on rows 3-4 is the absolute lower bound. The 'norm' option
+% swaps rows 1/3/4 (and the reference) between Frobenius and spectral; row 2
+% (max|R11^{-1}R12|) is max-norm in both.
 is2 = any(strcmpi(opt.norm, {'2', 'spec', 'spectral'}));
 if is2
     need = {'specinv', 'osinsky2', 'proj_spec', 'id_spec', 'svdopt_spec'};

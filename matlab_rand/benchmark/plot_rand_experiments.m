@@ -6,7 +6,7 @@ function plot_rand_experiments(varargin)
 %     fig_scaling_time_k<K>.png    - runtime vs n (per family): %                                    BSQR, built-in qr, randBSQR, randBSQR+R12.
 %     fig_scaling_speedup_k<K>.png - randBSQR speedup over each baseline vs n.
 %     fig_scaling_quality_k<K>.png - two rows vs n: ||R11^{-1}||_F / bound and
-%                                    sigma_min(R11) / bound.
+%                                    ||R11^{-1}||_2 / bound.
 %     fig_blocksize_k<K>.png       - time, columns sampled, conditioning vs block
 %                                    size (per family), batched + norm-weighted.
 %     fig_sampling_k<K>.png        - uniform vs norm-weighted across families.
@@ -95,8 +95,8 @@ save_fig(fig, fullfile(opt.plotdir, ['fig_scaling_' which opt.tag]), opt.formats
 end
 
 function scaling_quality_figure(opt, C, T, fams)
-% Two rows of selection quality: Frobenius ||R11^{-1}||_F / bound (<=1, lower
-% better) and spectral sigma_min(R11) / bound (>=1, higher better).
+% Two rows of selection quality, both (inverse-norm / bound) <= 1 with lower
+% better: Frobenius ||R11^{-1}||_F / bound and spectral ||R11^{-1}||_2 / bound.
 nf = numel(fams);
 fig = figure('Position', [100 100 max(440 * nf, 720) 480], 'Color', 'w');
 tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');

@@ -85,7 +85,7 @@ Two threshold modes are implemented:
   bound still holds), at the cost of a looser final `||R11^{-1}||_F`.
 
 A `slack` multiplier (`>= 1`) loosens either threshold further (experimental;
-breaks the exact bound proportionally).
+with `slack > 1` the Osinsky guarantee no longer applies).
 
 ## 4. Why it is faster
 
@@ -492,8 +492,8 @@ Computed with no `inv()` (conditioning via `svd`, coefficients via backslash).
 
 The reconstruction rows compare two coefficient choices: the cheap leading-k-frame
 `T = R11^{-1}R12` and the standard projection coefficients
-`T_proj = A(:,S)^+ A(:,rest)` (columns `maxTproj`, `noisy_id_*_proj`; thin-dashed
-overlay). `max|T_proj|` turns out *smaller* than `max|T|` and nearly method-agnostic,
+`T_proj = A(:,S)^+ A(:,rest)` (columns `maxTproj`, `noisy_id_*_proj`; recorded
+in the CSV, not plotted). `max|T_proj|` turns out *smaller* than `max|T|` and nearly method-agnostic,
 so the conditioning gap inflates the V_k-frame ID but **largely closes under
 projection coefficients** — the guarantee matters downstream with the cheap oblique
 coefficients, not with a least-squares solve. Every metric is recorded in both

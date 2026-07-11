@@ -168,7 +168,8 @@ permissive `worstcase_allowance` mode sets `θᵢ = F̂_{i+1} − f_i`, spending
 slack between the *actual* running `f_i` and the deterministic worst case
 `F̂_i`; it accepts with fewer samples and still keeps `f_k ≤ k(n−k+1)`, at the
 cost of a looser realized `‖R₁₁⁻¹‖_F`. A `slack ≥ 1` multiplier loosens either
-threshold (and the bound) proportionally.
+threshold; with `slack > 1` the Osinsky guarantee no longer applies
+(experimental knob).
 
 **Safeguards.**
 - *Feasibility net.* Once as many candidates have been sampled since the last
