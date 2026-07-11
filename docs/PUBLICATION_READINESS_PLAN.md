@@ -329,6 +329,93 @@ Done 2026-07-06. Findings and decisions:
 - [x] Apply/defer decisions recorded above; perf gate run against the
       Phase 0 baseline for the applied timing change (0 violations).
 
+## Phase R — External review response (2026-07-10; gates Phase 6)
+
+An external review of the repository found the core algorithms clean (no
+undocumented mathematical deviations; all validation metrics measure what
+their labels say; zero bound violations across 9,600 conditioning rows) and
+two substantive experiment-aggregation problems plus six documentation
+drifts. All findings were independently verified before this plan was
+written. Author guidance: documentation inconsistencies resolve toward the
+current code (the figures show what they should show).
+
+**R1 — Deduplicate the MATLAB publication baseline (code fix).** Verified:
+`bench_pair` is called twice per case (plain + rinv) and both calls time
+`qr_pivoted`, so the committed CSV has 300 baseline rows vs 150 per BSQR
+variant, and the `pair_relative_times` join (keys `family…seed`) pairs each
+BSQR row with both duplicates — double-weighted plain relative-time artifacts
+(up to 22.3% group sensitivity per the review). Julia is clean (one `dgeqp3`
+row per case via include-flags).
+- [ ] Restructure `run_publication_benchmarks.m` to mirror Julia: the plain
+      pass times `bsqr_full` + `qr_pivoted`; the rinv pass times `bsqr_rinv`
+      + `qr_pivoted_trsm` only. Downstream joins and seed-grouped plots then
+      pair 1:1 with no aggregation change needed.
+- [ ] Add a cheap invariant to the runner: exactly one row per
+      (case, method) before the CSV is written — prevents recurrence.
+- [ ] Verify by smoke run (multiplicities 1:1:1:1) and a perf-gate pass
+      (note: the Phase 0 baseline CSV carries the duplicate rows; the gate
+      joins per method on `tmed_s`, so the comparison still works — expect
+      duplicated join rows against the old baseline, harmless).
+- [ ] The committed CSV/plots/tables stay as-is until the Phase 6 rerun
+      regenerates them; until then, treat MATLAB *plain* relative-time
+      artifacts as double-weighted (quality metrics unaffected).
+
+**R2 — Count all randomized sampling work (code fix, both backends in
+lockstep).** Verified: on the batched path a sampled block that yields no
+selection is evaluated but never recorded (`samples_tested`/`rounds` are
+written only by selection-yielding blocks), so `total_tested`,
+`blocks_sampled`, and the plotted `tested_per_k` undercount — demonstrated
+at ~8× on uniform/needle (batched reports 104 vs single-select's 824 for the
+same problem). The `fallback` flag records only forced above-threshold
+acceptance, narrower than the help text implies.
+- [ ] m-file batched path: carry pending counters for failed blocks'
+      candidate counts and reflector applies; attribute
+      `pending + current block` to the next selection (the exhaustive-scan
+      path also adds its pending). `total_tested` and `blocks_sampled`
+      become true totals of candidate evaluations and block applies.
+- [ ] MEX batched path: identical change (`since_last` already tracks the
+      candidate count; add the rounds counter), keeping the two backends'
+      instrumentation semantics identical.
+- [ ] Documentation: `bsqr_rand.m` stats help and the README stats section
+      updated to the now-true semantics; `fallback` documented precisely as
+      "forced acceptance above the threshold on an exhaustive pass"
+      (exhaustive scans are visible through `rounds`).
+- [ ] Tests: regression case where no block ever fails (block ≥ n —
+      counts must equal today's) and an undercount case (uniform/needle,
+      small block) asserting batched `total_tested` is now commensurate with
+      the single-select count rather than ~8× below it; full rand suite +
+      a bounds-stress spot check.
+- [ ] Affected figures (`tested/m` panels of blocksize + sampling) and any
+      `tested_per_k` numbers regenerate at Phase 6; selection, timing,
+      conditioning, and accuracy outputs are untouched by construction.
+
+**R3 — Documentation drift, resolved toward the code (all verified):**
+- [ ] `plot_approx_cond_comparison.m` header: row 4 is the
+      orthogonal-projection error (the axis label is already correct);
+      remove the "noisy ID" row-4 description.
+- [ ] `matlab_rand/README.md` + `docs/RANDOMIZED_BSQR_PLAN.md`: the
+      projection-coefficient / noisy-ID curves are recorded in the CSV but
+      not plotted — fix the "thin dashed `T_proj` overlaid" claims.
+- [ ] `plot_rand_experiments.m` + `plot_rpqr_comparison.m` comments (4
+      sites): the spectral row plots `‖R₁₁⁻¹‖₂ / bound ≤ 1` (lower =
+      better), not `σ_min/bound ≥ 1`.
+- [ ] `bench_common.jl` + `julia/docs/TESTS_AND_BENCHMARKS.md`: describe
+      `tci_low/high` as empirical 2.5%/97.5% timing quantiles, not
+      confidence intervals (CSV column names unchanged).
+- [ ] `docs/PUBLICATION_FIGURES_PLAN.md`: replace the removed
+      `table_quality.csv`/p95 spec with the implemented
+      `quality_summary.md` (median/max).
+- [ ] `slack > 1` wording in `docs/RANDOMIZED_BSQR_ALGORITHM.md` and
+      `docs/RANDOMIZED_BSQR_PLAN.md`: it does **not** weaken the bound
+      "proportionally" (the recursion does not telescope that way); align
+      with the API help — the Osinsky guarantee no longer applies.
+
+Order: R3 first (pure documentation, no verification burden), then R1
+(runner restructure + smoke + invariant), then R2 (kernel instrumentation +
+tests, both backends together). Full suites in both languages green at the
+end of each code step; Phase 6's rerun then regenerates every affected
+artifact on the corrected pipeline.
+
 ## Phase 6 — Final regeneration and freeze (already planned)
 
 - [ ] Rerun both languages' publication benchmarks on the final tree
