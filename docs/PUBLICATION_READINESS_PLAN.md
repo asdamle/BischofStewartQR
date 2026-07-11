@@ -332,7 +332,14 @@ Done 2026-07-06. Findings and decisions:
 ## Phase 6 — Final regeneration and freeze (already planned)
 
 - [ ] Rerun both languages' publication benchmarks on the final tree
-      (the user's planned pre-submission rerun); commit artifacts.
+      (the user's planned pre-submission rerun); commit artifacts. Also rerun
+      `run_largen_scaling` (author-approved; deferred 2026-07-10). Note on the
+      needle tail: the "odd" last point (n = 1024k) is *reproducible*, not
+      noise — a fresh tail rerun showed every method stepping superlinearly at
+      the 512k→1024k doubling (`bsqr_nw` 3.2×, `bsqr_unif` 3.0×, `rpqr` 2.3×),
+      consistent with the ~½GB working set crossing a memory-bandwidth regime
+      on this machine; it reads oddest on `bsqr_nw` only because that curve is
+      lowest. Worth one caption sentence rather than a fix.
 - [ ] Perf gates pass against the recorded baseline.
 - [ ] Replace the stale-flagged measured tables (Phase 3) with rerun numbers.
 - [ ] Final end-to-end: fresh clone → `startup` (MATLAB) / `startup.jl`
