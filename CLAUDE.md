@@ -119,7 +119,7 @@ Both languages follow the same shape: runner → `results/publication/{publicati
 
 Conventions:
 - Derived plots/tables report **relative time** (`BSQR / baseline`), where `1.0` is parity.
-- Baselines: built-in economy pivoted QR (`qr(...,'econ','vector')` in MATLAB, `qr(A, ColumnNorm())` in Julia); the timed path materializes `Q, R, p` for both sides.
+- Baselines: built-in economy pivoted QR (`qr(...,'econ','vector')` in MATLAB, `qr(A, ColumnNorm())` in Julia); the timed path materializes `Q, R, p` for both sides, always with the permutation as an **index vector** (`'pivot_format','vector'` for `bsqr_mex`) — never the matrix format, which builds a dense `n×n` permutation inside the timed thunk and is not the natural product in practice.
 - Configuration is via env vars: `BS_PUB_*` for Julia (see `julia/docs/TESTS_AND_BENCHMARKS.md` for the full list), `BS_MATLAB_PUB_*` for MATLAB (see `matlab/README.md`). Figures default to PNG; set `BS_PUB_FIG_FORMATS=png,pdf,eps` (or the `BS_MATLAB_` equivalent) for vector output.
 - `BS_MATLAB_ALLOW_SHARED_OUTDIR=0` (default) prevents MATLAB benchmark artifacts from writing into Julia result roots — keep it that way.
 - On macOS, Julia benchmarks use Apple Accelerate as the BLAS/LAPACK backend (`julia/benchmark/setup_accelerate.jl` verifies it loaded).
