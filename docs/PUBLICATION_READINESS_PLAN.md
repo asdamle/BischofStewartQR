@@ -420,7 +420,9 @@ artifact on the corrected pipeline.
 
 - [ ] Rerun both languages' publication benchmarks on the final tree
       (the user's planned pre-submission rerun); commit artifacts. Also rerun
-      `run_largen_scaling` (author-approved; deferred 2026-07-10). Note on the
+      `run_largen_scaling` (author-approved; deferred 2026-07-10; the default
+      sweep now extends one doubling past the regime crossing, to
+      n = 2,048,000, so the figure ends on re-linearized curves). Note on the
       needle tail: the "odd" last point (n = 1024k) is *reproducible*, not
       noise — a fresh tail rerun showed every method stepping superlinearly at
       the 512k→1024k doubling (`bsqr_nw` 3.2×, `bsqr_unif` 3.0×, `rpqr` 2.3×),

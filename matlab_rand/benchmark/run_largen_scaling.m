@@ -23,15 +23,21 @@ function run_largen_scaling(varargin)
 % Options:
 %   'k'        (default 64) columns to select.
 %   'trials'   (default 20) seeds per (family, n); the plot's band is their range.
-%   'ns'       (default 1000*2.^(0:10) = 1000 .. 1024000) the n sweep. The needle
-%              family at the top sizes allocates a k-by-n matrix (~0.5 GB at 1e6).
+%   'ns'       (default 1000*2.^(0:11) = 1000 .. 2048000) the n sweep. The top
+%              size allocates a k-by-n matrix (~1 GB at n = 2e6; generation
+%              peaks near ~3 GB during orth) -- sized so the sweep ends one
+%              doubling PAST the ~0.5 GB memory-bandwidth regime crossing
+%              rather than exactly on it, letting the curves re-linearize in
+%              the new regime. Do not extend further on 16 GB machines: the
+%              next doubling's generation peak (~6 GB) risks swap-polluted
+%              timings.
 %   'families' (default {'gaussian','needle'}) any rand_test_matrix families.
 %   'outdir'   (default matlab_rand/benchmark/results).
 
 ip = inputParser;
 addParameter(ip, 'k', 64);
 addParameter(ip, 'trials', 20);
-addParameter(ip, 'ns', round(1000 * 2 .^ (0:10)));
+addParameter(ip, 'ns', round(1000 * 2 .^ (0:11)));
 addParameter(ip, 'families', {'gaussian', 'needle'});
 addParameter(ip, 'outdir', '');
 parse(ip, varargin{:});

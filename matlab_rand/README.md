@@ -126,10 +126,12 @@ matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_lar
 
 Writes `exp_largen.csv` and `fig_largen_scaling.{png,pdf}` (one log-log time-vs-`n`
 panel per family; line = seed median, band = seed min/max; 20 seeds, `timeit`,
-swept to `n = 1e6`). Same fair-timing discipline as `run_rpqr_comparison` (direct
+swept to `n ≈ 2×10⁶` — one doubling *past* the ~½ GB memory-bandwidth regime
+crossing on the benchmark machine, so the curves re-linearize after the step
+instead of ending on it). Same fair-timing discipline as `run_rpqr_comparison` (direct
 `bsqr_rand_mex`, `check_finite=false`). The takeaway: norm-weighted BSQR and
 `rejection_rpqr` both carry the common `O(mn)` norm work and scale alike (BSQR
-~constant-factor faster, **no crossover** even at `n = 1e6`); uniform BSQR is
+~constant-factor faster, **no crossover** at any tested `n`); uniform BSQR is
 fastest on `gaussian` (it skips the norm precompute) but a constant factor (~20×)
 slower on `needle` — it resamples to hit the rare high-leverage columns, so it
 stays linear in `n` but well above the two norm-weighted methods.
