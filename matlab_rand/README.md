@@ -126,9 +126,10 @@ matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_lar
 
 Writes `exp_largen.csv` and `fig_largen_scaling.{png,pdf}` (one log-log time-vs-`n`
 panel per family; line = seed median, band = seed min/max; 20 seeds, `timeit`,
-swept to `n ≈ 2×10⁶` — one doubling *past* the ~½ GB memory-bandwidth regime
-crossing on the benchmark machine, so the curves re-linearize after the step
-instead of ending on it). Same fair-timing discipline as `run_rpqr_comparison` (direct
+swept to `n ≈ 2×10⁶`). Run it on an otherwise idle machine: timings scale
+cleanly (~2× per doubling) throughout, and an earlier apparent step near
+`n = 10⁶` was traced to contention from concurrent use, not the algorithms.
+Same fair-timing discipline as `run_rpqr_comparison` (direct
 `bsqr_rand_mex`, `check_finite=false`). The takeaway: norm-weighted BSQR and
 `rejection_rpqr` both carry the common `O(mn)` norm work and scale alike (BSQR
 ~constant-factor faster, **no crossover** at any tested `n`); uniform BSQR is

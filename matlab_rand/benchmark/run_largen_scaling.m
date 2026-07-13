@@ -25,12 +25,13 @@ function run_largen_scaling(varargin)
 %   'trials'   (default 20) seeds per (family, n); the plot's band is their range.
 %   'ns'       (default 1000*2.^(0:11) = 1000 .. 2048000) the n sweep. The top
 %              size allocates a k-by-n matrix (~1 GB at n = 2e6; generation
-%              peaks near ~3 GB during orth) -- sized so the sweep ends one
-%              doubling PAST the ~0.5 GB memory-bandwidth regime crossing
-%              rather than exactly on it, letting the curves re-linearize in
-%              the new regime. Do not extend further on 16 GB machines: the
-%              next doubling's generation peak (~6 GB) risks swap-polluted
-%              timings.
+%              peaks near ~3 GB during orth). On an IDLE machine the timings
+%              scale cleanly (~2x per doubling) through the whole sweep; an
+%              earlier apparent superlinear step near n = 1e6 turned out to be
+%              contention from an in-use machine, so run this with the machine
+%              otherwise idle (the phase6 driver does). Do not extend further
+%              on 16 GB machines: the next doubling's generation peak (~6 GB)
+%              risks swap-polluted timings.
 %   'families' (default {'gaussian','needle'}) any rand_test_matrix families.
 %   'outdir'   (default matlab_rand/benchmark/results).
 

@@ -427,8 +427,10 @@ survives the terminal/session: `nohup ./phase6_rerun.sh >/dev/null 2>&1 &`,
 then `./phase6_rerun.sh --status` / `tail -f .phase6/console.log`. Keep the
 machine on AC with the lid open, and idle (these are timing runs).
 
-- [ ] Rerun both languages' publication benchmarks on the final tree
-      (the user's planned pre-submission rerun); commit artifacts. Also rerun
+- [x] Rerun both languages' publication benchmarks on the final tree
+      (2026-07-13, via `./phase6_rerun.sh` on an idle machine: all 11 steps
+      green; MATLAB CSV at exact 1:1:1:1 method multiplicity under the R1
+      invariant); artifacts committed. Also rerun
       `run_largen_scaling` (author-approved; deferred 2026-07-10; the default
       sweep now extends one doubling past the regime crossing, to
       n = 2,048,000, so the figure ends on re-linearized curves). Note on the
@@ -438,8 +440,8 @@ machine on AC with the lid open, and idle (these are timing runs).
       consistent with the ~½GB working set crossing a memory-bandwidth regime
       on this machine; it reads oddest on `bsqr_nw` only because that curve is
       lowest. Worth one caption sentence rather than a fix.
-- [ ] Perf gates pass against the recorded baseline.
-- [ ] Replace the stale-flagged measured tables (Phase 3) with rerun numbers.
+- [x] Perf gates pass against the recorded Phase 0 baselines (both languages, 0 violations).
+- [x] Replace the stale-flagged measured tables (Phase 3) with rerun numbers (plan doc speedup table: 53×/110×/148× vs det, 19×/25×/52× vs dgeqp3 at k=64 gaussian; stress families 117×/134× at the top size).
 - [ ] Final end-to-end: fresh clone → `startup` (MATLAB) / `startup.jl`
       (Julia) → tests green → smoke benchmarks run, following only the
       READMEs. Anything that requires knowledge not in the docs is a Phase 3

@@ -1,10 +1,8 @@
-schema_version = 2026-03-16.matlab.v3
-run_id = 20260611_210948
-timestamp = 11-Jun-2026 21:13:19
+schema_version = 2026-07-06.matlab.v5
+run_id = 20260712_215106
+timestamp = 12-Jul-2026 21:54:13
 matlab_version = 25.2.0.3150157 (R2025b) Update 4
 outdir = matlab/benchmark/results/publication
-observed_rows = 750
-warmup = 1
-samples = 12
+observed_rows = 600
 norm_recomp_tol = 1.4901000000000001e-08
 bsqr_backend = mex

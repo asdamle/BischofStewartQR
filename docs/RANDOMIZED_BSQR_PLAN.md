@@ -103,31 +103,26 @@ versus the deterministic `O(nk^2)`. With the threshold keeping `S_i = O(1)`, the
 randomized kernel is essentially **n-independent**, so the speedup grows linearly
 in `n` for `k << n`.
 
-Measured (Apple Silicon, MEX, k=64, `gaussian` orthonormal rows, default block
-`ceil(k/2)=32`, norm-weighted sampling, `t_rand` is the default `[p,Q,R11]`
-product — measured before the lazy economy-`Q` output was added to it and
-before the deterministic baseline was widened to `[Q,R,p]`; both changes are
-n-independent `O(k³)`-scale `dorgqr` calls, so rerun numbers should be within
-noise of these):
+Measured (2026-07-13 Phase 6 rerun on an idle machine: Apple Silicon, MEX,
+k=64, `gaussian` orthonormal rows, batched default block `= k`, norm-weighted
+sampling; `t_rand` times the default `[p, Q, R11]` product and the
+deterministic baseline times `[Q, R, p]` with the vector permutation — every
+timing via `timeit`; seed medians):
 
 | size       | speedup vs det | speedup vs dgeqp3 |
 |------------|---------------:|------------------:|
-| 64×8000    | 19×            | 7×                |
-| 64×32000   | 70×            | 16×               |
-| 64×64000   | 103×           | 38×               |
+| 64×8000    | 53×            | 19×               |
+| 64×32000   | 110×           | 25×               |
+| 64×64000   | 148×           | 52×               |
 
 `t_rand` is nearly flat across `n` while both baselines grow `O(nk^2)`, so the
-speedup grows with `n` while the conditioning stays far under the guarantee. The
-comparison uses norm-weighted (column-norm) sampling, which is robust across
-leverage profiles, so the stress families reach the *same* ~100× at k=64 (§11);
-its `O(mn)` norm precompute is the only `n`-growing term in `t_rand` and is why
-these numbers are lower than uniform sampling's (which is the right choice only
-when leverage is known uniform).
-The numbers reflect three landed optimizations (§10; earlier BLAS-2 /
-`O(n)`-shuffle versions were only ~3–6×) and the block size: the default
-`ceil(k/2)` favors conditioning, while a smaller block trades that for raw speed
-(§11). With uniform sampling on benign input the kernel is fully n-independent and
-the speedup is several × higher again (e.g. 345× vs det at 64×64000).
+speedup grows with `n` while the conditioning stays far under the guarantee.
+The comparison uses norm-weighted (column-norm) sampling, which is robust
+across leverage profiles, so the stress families land in the same range at the
+top size (spiked_leverage 117×, needle 134× vs det); its `O(mn)` norm
+precompute is the only `n`-growing term in `t_rand`. Uniform sampling skips
+that precompute and is faster still on benign input, but is the right choice
+only when leverage is known flat (see the largen study).
 
 ## 5. Outputs (`matlab_rand/bsqr_rand.m`)
 
