@@ -66,7 +66,6 @@ command -v julia  >/dev/null || { log "julia not on PATH"; exit 1; }
 [[ -f ext_comparisons/Adaptive-Randomized-Pivoting-main/code/rejection_rpqr.m ]] \
   || { log "ext_comparisons missing (needed for rpqr/largen/approx suites); see matlab_rand/README.md"; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || log "WARNING: working tree not clean"
-pmset -g ps | grep -q "AC Power" || log "WARNING: on battery -- plug in AC (lid-closed battery sleep ignores caffeinate)"
 
 # --- steps -----------------------------------------------------------------
 run_step build_mex matlab -batch "addpath('matlab'); build_bsqr_mex; addpath('matlab_rand'); build_bsqr_rand_mex"
