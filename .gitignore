@@ -8,3 +8,4 @@ matlab_rand/benchmark/results/
 # Third-party comparison algorithms: not redistributed here. Comparisons are
 # documented; download the code from each algorithm's original source.
 ext_comparisons/
+.phase6/

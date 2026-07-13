@@ -418,6 +418,15 @@ artifact on the corrected pipeline.
 
 ## Phase 6 — Final regeneration and freeze (already planned)
 
+Driver: `./phase6_rerun.sh` at the repo root runs the whole sweep
+sequentially (MEX builds → both publication runs → smoke perf gates vs the
+Phase 0 baselines → all matlab_rand suites → final test suites), with
+per-step logs and resumable markers in `.phase6/`, self-wrapped in
+`caffeinate` so screen lock does not stop it. Launch it detached so it also
+survives the terminal/session: `nohup ./phase6_rerun.sh >/dev/null 2>&1 &`,
+then `./phase6_rerun.sh --status` / `tail -f .phase6/console.log`. Keep the
+machine on AC with the lid open, and idle (these are timing runs).
+
 - [ ] Rerun both languages' publication benchmarks on the final tree
       (the user's planned pre-submission rerun); commit artifacts. Also rerun
       `run_largen_scaling` (author-approved; deferred 2026-07-10; the default
