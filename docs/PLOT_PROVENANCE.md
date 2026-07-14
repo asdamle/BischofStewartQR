@@ -5,7 +5,8 @@ plots), the script that produces the underlying data, the data file it writes,
 and the script that renders the figure. Rerun the data script, then the plot
 script, to regenerate any figure from scratch; rerunning only the plot script
 re-renders from the existing data file. See CLAUDE.md for the exact
-command-line invocations.
+command-line invocations, and `docs/MANUSCRIPT_FIGURES.md` for which figures
+appear in the manuscript under which figure number.
 
 ## Julia publication pipeline
 
