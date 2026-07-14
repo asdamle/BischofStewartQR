@@ -3,7 +3,10 @@ notes/
 julia/benchmark/results/publication_smoke/
 matlab/benchmark/results/publication_smoke/
 matlab_rand/mex/*.mex*
-matlab_rand/benchmark/results/
+# Working results are ignored, but the committed publication-run snapshot is
+# kept (a dir-level ignore would make the exception impossible, hence /*).
+matlab_rand/benchmark/results/*
+!matlab_rand/benchmark/results/publication/
 
 # Third-party comparison algorithms: not redistributed here. Comparisons are
 # documented; download the code from each algorithm's original source.

@@ -80,6 +80,12 @@ for K = [64 128 256]; run_rand_experiments('k', K); plot_rand_experiments('k', K
 
 This writes `benchmark/results/exp_*_k<K>.csv` and `benchmark/plots/fig_*_k<K>.png`.
 
+`benchmark/results/` is git-ignored working space, with one exception: the
+committed `benchmark/results/publication/` snapshot holds the exact CSVs
+behind the committed figures (provenance in its `metadata.txt`). Any plot
+script can re-render from the snapshot without rerunning the benchmarks via
+`'resultsdir', 'matlab_rand/benchmark/results/publication'`.
+
 ## External comparison: `rejection_rpqr` (Adaptive Randomized Pivoting)
 
 A standalone comparison against the `rejection_rpqr` selector from Epperly et

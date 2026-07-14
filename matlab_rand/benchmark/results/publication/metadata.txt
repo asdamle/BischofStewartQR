@@ -1,0 +1,32 @@
+Publication-run snapshot of the matlab_rand benchmark CSVs.
+
+These are the exact data files behind the committed figures in
+matlab_rand/benchmark/plots/ (manuscript Figures 1-7; see
+docs/MANUSCRIPT_FIGURES.md and docs/PLOT_PROVENANCE.md). To re-render a
+figure from this snapshot without rerunning the benchmarks, point the plot
+script at this directory, e.g.
+  plot_largen_scaling('resultsdir', 'matlab_rand/benchmark/results/publication')
+
+run           = Phase 6 publication sweep (phase6_rerun.sh), 2026-07-12/13
+code_state    = commit 1ac05c1 (artifacts committed as d38daef)
+machine       = Apple M3, 16 GB RAM, macOS 15.7.7, otherwise idle
+matlab        = 25.2.0.3150157 (R2025b) Update 4
+blas_threads  = 8 (maxNumCompThreads)
+timing        = timeit throughout; bands/whiskers in the figures span seeds
+backend       = bsqr_rand_mex (compiled kernel), check_finite=false on timed
+                paths; rejection_rpqr from ext_comparisons (not redistributed)
+
+File -> generating script (all in matlab_rand/benchmark/, default options
+unless noted):
+  exp_scaling_k{64,128,256}.csv    run_rand_experiments('k', K)   [trials=20]
+  exp_blocksize_k{64,128,256}.csv  run_rand_experiments('k', K)
+  exp_sampling_k{64,128,256}.csv   run_rand_experiments('k', K)
+  exp_rpqr_k{64,128,256}.csv       run_rpqr_comparison('k', K)    [trials=20,
+                                     ns=1000..32000, gaussian/spiked_leverage/needle]
+  exp_largen.csv                   run_largen_scaling             [k=64, trials=20,
+                                     ns=1000*2.^(0:11) = 1000..2048000]
+  exp_approx.csv                   run_approx_comparison          [ks=4..256, trials=20]
+  exp_approx_synth.csv             run_approx_synth_comparison    [ks=4..256, trials=20]
+  exp_approx_cond.csv              run_approx_cond_comparison     [ks=1:80, trials=20,
+                                     noise_rel=1e-2]
+  rand_timings.csv                 run_rand_benchmarks

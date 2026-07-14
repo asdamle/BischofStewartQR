@@ -48,7 +48,12 @@ iteration variant.
 ## Randomized BSQR experiments (`matlab_rand/benchmark/`)
 
 Figures land in `matlab_rand/benchmark/plots/` (committed); data CSVs in the
-gitignored `results/`. The `_k<K>` families exist for K = 64, 128, 256 — one
+gitignored `results/`. The publication run's CSVs (the exact data behind the
+committed figures) are snapshotted in the committed
+`matlab_rand/benchmark/results/publication/` (see its `metadata.txt`); pass
+`'resultsdir', 'matlab_rand/benchmark/results/publication'` to any plot
+script to re-render a figure from the snapshot without rerunning benchmarks.
+The `_k<K>` families exist for K = 64, 128, 256 — one
 figure per K, all from the K-tagged CSV of the same runner (pass `'k', K` to
 both scripts).
 
