@@ -47,6 +47,7 @@ for fi = 1:nf
         band_line(ax, T, base & T.method == M{mi, 1}, M{mi, 3}, M{mi, 4}, M{mi, 2});
     end
     grid(ax, 'on'); xlabel(ax, 'n'); ylabel(ax, 'time (s)');
+    xlim(ax, [min(T.n), max(T.n)]);   % end the axis at the last data point
     title(ax, fam, 'Interpreter', 'none');
 end
 lg = legend(ax, 'Orientation', 'horizontal'); lg.Layout.Tile = 'south';
@@ -69,6 +70,7 @@ plot(ax, x, ym, ['-' marker], 'Color', color, 'MarkerFaceColor', color, ...
 end
 
 function save_fig(fig, stem, formats)
+bump_fonts(fig, 2);
 for i = 1:numel(formats)
     switch formats{i}
         case 'png'; exportgraphics(fig, [stem, '.png'], 'Resolution', 150);
@@ -78,4 +80,17 @@ for i = 1:numel(formats)
 end
 fprintf('Wrote %s.%s\n', stem, strjoin(formats, ','));
 close(fig);
+end
+
+function bump_fonts(fig, delta)
+% Enlarge tick labels, axis labels, and legends by delta points; panel titles
+% and the tiledlayout super-title keep their original size.
+for ax = reshape(findall(fig, 'Type', 'axes'), 1, [])
+    tfs = ax.Title.FontSize;             % pin the panel title
+    ax.FontSize = ax.FontSize + delta;   % ticks + x/y labels scale with this
+    ax.Title.FontSize = tfs;
+end
+for lg = reshape(findall(fig, 'Type', 'legend'), 1, [])
+    lg.FontSize = lg.FontSize + delta;
+end
 end

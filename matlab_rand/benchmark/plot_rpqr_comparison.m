@@ -167,6 +167,7 @@ plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, 'LineWidth', 1.5
 end
 
 function save_fig(fig, stem, formats)
+bump_fonts(fig, 2);
 for i = 1:numel(formats)
     switch formats{i}
         case 'png'; exportgraphics(fig, [stem, '.png'], 'Resolution', 150);
@@ -176,4 +177,17 @@ for i = 1:numel(formats)
 end
 fprintf('Wrote %s.%s\n', stem, strjoin(formats, ','));
 close(fig);
+end
+
+function bump_fonts(fig, delta)
+% Enlarge tick labels, axis labels, and legends by delta points; panel titles
+% and the tiledlayout super-title keep their original size.
+for ax = reshape(findall(fig, 'Type', 'axes'), 1, [])
+    tfs = ax.Title.FontSize;             % pin the panel title
+    ax.FontSize = ax.FontSize + delta;   % ticks + x/y labels scale with this
+    ax.Title.FontSize = tfs;
+end
+for lg = reshape(findall(fig, 'Type', 'legend'), 1, [])
+    lg.FontSize = lg.FontSize + delta;
+end
 end

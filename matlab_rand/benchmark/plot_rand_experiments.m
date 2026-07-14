@@ -190,7 +190,8 @@ f = fullfile(opt.resultsdir, ['exp_sampling' opt.tag '.csv']);
 if ~isfile(f); warning('missing %s', f); return; end
 T = readtable(f, 'TextType', 'string');
 fams = unique(T.family, 'stable');
-metrics = {'tested_per_k', 'columns tested / m'; 'frobinv', '||R_{11}^{-1}||_F'; 'time_s', 'time (s)'};
+T.cond_ratio = T.frobinv ./ T.osinsky;   % vs the guaranteed bound, as in the other figures
+metrics = {'tested_per_k', 'columns tested / m'; 'cond_ratio', '||R_{11}^{-1}||_F / bound'; 'time_s', 'time (s)'};
 fig = figure('Position', [100 100 1300 380], 'Color', 'w');
 tl = tiledlayout(fig, 1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 for mi = 1:size(metrics, 1)
@@ -220,6 +221,9 @@ for mi = 1:size(metrics, 1)
             'MarkerEdgeColor', 'k', 'LineStyle', 'none', 'DisplayName', 'built-in QR');
     end
     ylabel(ax, metrics{mi, 2}); grid(ax, 'on');
+    if strcmp(metrics{mi, 1}, 'cond_ratio')
+        yline(ax, 1, 'k--', 'HandleVisibility', 'off');
+    end
     if strcmp(metrics{mi, 1}, 'tested_per_k')
         % Log y-axis: keep the (small, ~block) norm-weighted bars visible by
         % putting the bar baseline and the lower y-limit below the data minimum.
@@ -294,6 +298,7 @@ plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, ...
 end
 
 function save_fig(fig, stem, formats)
+bump_fonts(fig, 2);
 for i = 1:numel(formats)
     fmt = formats{i};
     switch fmt
@@ -305,4 +310,17 @@ for i = 1:numel(formats)
 end
 fprintf('Wrote %s.%s\n', stem, strjoin(formats, ','));
 close(fig);
+end
+
+function bump_fonts(fig, delta)
+% Enlarge tick labels, axis labels, and legends by delta points; panel titles
+% and the tiledlayout super-title keep their original size.
+for ax = reshape(findall(fig, 'Type', 'axes'), 1, [])
+    tfs = ax.Title.FontSize;             % pin the panel title
+    ax.FontSize = ax.FontSize + delta;   % ticks + x/y labels scale with this
+    ax.Title.FontSize = tfs;
+end
+for lg = reshape(findall(fig, 'Type', 'legend'), 1, [])
+    lg.FontSize = lg.FontSize + delta;
+end
 end
