@@ -8,8 +8,9 @@ oracle (`matlab/tests/oracle_bsqr.m`): full pivot vector, `R`, and (where flagge
 Julia consumers therefore see bit-identical inputs. Inputs are screened at generation
 time so no pivot step has a criterion near-tie (`gap_min` column of `manifest.csv`),
 which is what makes exact pivot-sequence comparison fair across BLAS runtimes. The
-acceptance tolerances (`rtol_R`, `rtol_rinv` columns) are defined once on the zoo
-members in `matlab/tests/parity_zoo.m` and flow to both consumers through the manifest.
+acceptance tolerances (`rtol_R`, `rtol_rinv`, `rtol_crit` columns) are defined once on
+the zoo members in `matlab/tests/parity_zoo.m` and flow to both consumers through the
+manifest.
 
 - Regenerate: `matlab -batch "addpath('matlab/tests'); generate_parity_fixtures"`
 - MATLAB consumer: `matlab/tests/test_parity_fixtures.m`

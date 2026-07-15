@@ -1,6 +1,6 @@
 # Panel/Blocked BSQR: Method, Analysis, and Experimental Results
 
-Working notes behind Appendix A of the manuscript (`notes/GKSevolved_draft.tex`; P3 of
+Working notes behind Appendix A of the manuscript (`notes/GKSevolved.tex`; P3 of
 `docs/VALIDATION_AND_PERF_PLAN.md`; landed and default as of 2026-06-11). Notation follows
 Algorithm A.1 of the manuscript, 1-indexed, keeping this file's legacy symbols `s_j`, `β_j`
 for the manuscript's `ρ_j²`, `α_j` (see the symbol map in `docs/VALIDATION.md`). A panel
@@ -263,7 +263,13 @@ Every claim above is pinned by the Part-I harness rather than by inspection:
   rank flips pivots among noise-level columns — by design, not by bug; validation excludes
   that regime via gap screening (and it is where `rank_stop` applies).
 
-## 10. Key experimental outcomes (publication grid, committed artifacts)
+## 10. Key experimental outcomes (publication grid, at the P3 landing 2026-06-11)
+
+The committed artifacts have since been regenerated (the Phase 6 publication
+rerun, 2026-07-13); see `{julia,matlab}/benchmark/results/publication/
+publication_summary.md` for the current numbers, which are modestly better
+than the "new" column below. The table is retained as the record of the
+unblocked→panel change itself.
 
 Geomean relative time vs the built-in pivoted QR baseline (old = unblocked kernel, new =
 panel default with crossover; both languages on Apple Silicon/Accelerate):

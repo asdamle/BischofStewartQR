@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Two parallel implementations of Bischof-Stewart column-pivoted QR (BSQR), built for a publication: `julia/` (canonical, package `BSPivotQR`) and `matlab/` (pure `.m` kernel plus a C++ MEX backend). The original Bischof and Stewart papers (the ground-truth description of the algorithm) and the manuscript draft (`GKSevolved_draft.tex`, compiled as `manuscript_draft.pdf`; the deterministic algorithm is its Appendix A, Algorithm A.1) live in the local-only `notes/` folder at the repo root — it is gitignored, so consult it on disk, not in git history. Repo docs cite the manuscript by its rendered numbering (Alg. A.1, Thm. 3.1, Cor. 3.2, Thm. 5.1, eqs. (2.3)/(2.4)/(A.2), Remark 7); the manuscript will be added to the repository once final. Everything is Float64-only.
+Two parallel implementations of Bischof-Stewart column-pivoted QR (BSQR), built for a publication: `julia/` (canonical, package `BSPivotQR`) and `matlab/` (pure `.m` kernel plus a C++ MEX backend). The original Bischof and Stewart papers (the ground-truth description of the algorithm) and the manuscript (`GKSevolved.tex`, compiled as `GKSevolved.pdf`; the deterministic algorithm is its Appendix A, Algorithm A.1) live in the local-only `notes/` folder at the repo root — it is gitignored, so consult it on disk, not in git history. Repo docs cite the manuscript by its rendered numbering (Alg. A.1, Thm. 3.1, Cor. 3.2, Thm. 5.1, eqs. (2.3)/(2.4)/(A.2), Remark 8); the manuscript will be added to the repository once final. Everything is Float64-only.
 
 The two implementations are intentionally kept algorithmically identical: same pivot criterion `(1 + ||w_j||^2) / ||a_j||^2` with strict `<` tie-breaking (first minimum wins), same running column-norm downdates with a recompute tolerance (default `sqrt(eps)`), same workspace layout. Changes to kernel behavior in one language generally need a matching change in the other.
 
@@ -68,13 +68,15 @@ matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_app
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_synth_comparison; plot_approx_comparison('tag','_synth')"
 # R11-conditioning companion (gaussian/spiked_leverage/collinear_cluster, every k to 80); add ('norm','2') for the spectral figure
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"
-# large-n sampler scaling (k=64, n to 1e6): bsqr norm-weighted vs uniform vs rejection_rpqr, on gaussian + needle
+# large-n sampler scaling (k=64, n to 2e6): bsqr norm-weighted vs uniform vs rejection_rpqr, on gaussian + needle
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_largen_scaling; plot_largen_scaling"
 ```
 
 Figures land in `matlab_rand/benchmark/plots/` (`fig_approx_quality`,
 `fig_approx_synth_quality`, `fig_approx_cond_quality{,_spec}`, `fig_largen_scaling`);
-CSVs in the git-ignored `results/`. The suite keeps its own matrix builders and
+CSVs in the git-ignored `results/` — except `results/publication/`, the committed
+snapshot of the publication-run CSVs (do not delete; plot scripts can re-render from
+it via `'resultsdir'`). The suite keeps its own matrix builders and
 helpers — it is not coupled to the deterministic kernels and uses no `inv()`.
 
 ### Validation harness
@@ -111,7 +113,7 @@ Kernel knobs that tests rely on: `k` (early stop), `rank_stop`, `norm_recomp_tol
 
 - `bsqr.m` — user-facing dispatcher. `backend='auto'` (default) uses `bsqr_mex` when built, else falls back to `private/bsqr_mfile.m`. The m-file kernel mirrors the Julia kernel; the MEX (`mex/src/bsqr_mex.cpp`, BLAS/LAPACK calls, persistent workspace) mirrors it too.
 - The pure `.m` backend exists for correctness testing and development; publication benchmarks are MEX-only and error without `bsqr_mex`.
-- MEX status (see `matlab/mex/README.md`): `backend='auto'` already dispatches to the MEX whenever it is built (`startup` builds it), with the pure-`.m` kernel as fallback; keeping that preference is gated on benchmark evidence — ≥20% median speedup on short-wide focus cases with no residual/orthogonality regression — evaluated against the final publication rerun.
+- MEX status (see `matlab/mex/README.md`): `backend='auto'` dispatches to the MEX whenever it is built (`startup` builds it), with the pure-`.m` kernel as fallback. The promotion gate (≥20% median speedup on short-wide focus cases, no residual/orthogonality regression) was evaluated and passed decisively (median ~15x, 2026-07-14), so the MEX preference is settled.
 
 ### Publication benchmark pipeline
 

@@ -10,8 +10,9 @@ Two workstreams:
 
 1. **Validation** — establish, with executable evidence, that the Julia kernel, the MATLAB
    m-file kernel, and the MEX kernel all implement the Bischof–Stewart algorithm exactly as
-   specified by the references (Bischof 1990, Stewart 1990, and Algorithm 1 of
-   `notes/bischof_stewart_pivoting.tex`), modulo a short, documented list of mathematically
+   specified by the references (Bischof 1990, Stewart 1990, and the algorithm writeup —
+   at the time `notes/bischof_stewart_pivoting.tex`, now Algorithm A.1 in Appendix A of
+   `notes/GKSevolved.tex`), modulo a short, documented list of mathematically
    equivalent stability modifications.
 2. **Performance** — a structured search for optimizations that close the gap to the
    Accelerate-backed built-in pivoted QR (`dgeqp3`), under the constraint that the algorithm

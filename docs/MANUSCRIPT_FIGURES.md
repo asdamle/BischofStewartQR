@@ -2,8 +2,8 @@
 
 Translation table between manuscript figure numbers and the figure files in
 this repository, so figure refinements can be requested by number. All
-manuscript figures except Figure 9 come from the randomized comparison suite
-and live in `matlab_rand/benchmark/plots/`; Figure 9 comes from the Julia
+manuscript figures except Figure 8 come from the randomized comparison suite
+and live in `matlab_rand/benchmark/plots/`; Figure 8 comes from the Julia
 publication pipeline. See `docs/PLOT_PROVENANCE.md` for the data and plot
 scripts that regenerate each one.
 

@@ -42,6 +42,8 @@ MATLAB-only.) See [julia/README.md](julia/README.md).
 - `matlab_rand/` — randomized `bsqr_rand` (m-file + MEX), tests, benchmarks.
 - `julia/` — `BSPivotQR` package (depends only on `LinearAlgebra`);
   `julia/benchmark/` is a separate environment for the benchmark pipeline.
+- `parity/` — cross-language parity fixtures (oracle outputs consumed by both
+  test suites; see `parity/README.md`).
 - `docs/` — design notes and validation.
 - `startup.m` / `startup.jl` — one-shot setup for MATLAB / Julia.
 

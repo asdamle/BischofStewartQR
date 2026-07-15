@@ -76,6 +76,22 @@ Quality/CI knobs:
 - `BS_PUB_RESID_FACTOR` (default: `2500`)
 - `BS_PUB_ORTH_FACTOR` (default: `2500`)
 
+Environment/backend knobs (read by `bench_common.jl`, included by the runner):
+
+- `BS_USE_ACCELERATE` (default: `1`; macOS only — load Apple Accelerate as the
+  BLAS/LAPACK backend)
+- `BS_REQUIRE_ACCELERATE` (default: `0`; macOS only — error if Accelerate did
+  not activate instead of silently continuing on OpenBLAS)
+- `BS_BLAS_THREADS` (default: unset; overrides the BLAS thread count for the
+  whole run — the per-case `BS_PUB_THREADS` sweep still applies when unset)
+
+Kernel fastpath knobs (read by the kernel itself, so they affect any
+benchmarked factorization; defaults in `julia/src/kernel.jl`):
+
+- `BS_SHORT_WIDE_FASTPATH` (default: `1`; `0` disables the short-wide fastpath)
+- `BS_SHORT_WIDE_FASTPATH_ASPECT`, `BS_SHORT_WIDE_FASTPATH_MMAX`,
+  `BS_SHORT_WIDE_FASTPATH_NMIN` (crossover tuning; see the kernel comments)
+
 ## Output Artifacts
 
 - `julia/benchmark/results/publication/publication_timings.csv`

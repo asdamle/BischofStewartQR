@@ -114,7 +114,9 @@ size, not on `n`.
 Within a block, candidates are drawn **without replacement, weighted by their
 initial squared column norms** `gⱼ = ‖aⱼ‖²` (robust across leverage profiles;
 uniform sampling is available when leverage is known to be flat), using
-Efraimidis–Spirakis keys `−log(uⱼ)/gⱼ`, `uⱼ ∼ Unif(0,1)`, smallest keys first.
+Efraimidis–Spirakis keys `−log(uⱼ)/gⱼ`, `uⱼ ∼ Unif(0,1)`, smallest keys first
+(the m-file mechanism; the MEX draws sequentially via a Fenwick tree with
+remove/restore — distributionally equivalent).
 Sampled-but-rejected columns stay in the pool: on the batched path they can
 be redrawn by the very next block, and on the single-select path by the next
 step (within one step a rejected column is not revisited — `θ` and every `cⱼ`

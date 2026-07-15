@@ -10,7 +10,7 @@ sampled block is brought to the current frame once, then BSQR is run within it t
 take as many columns as the bound allows before resampling -- amortizing the
 per-block reflector apply over many selections (`O(k^3)` overall vs the
 single-select `O(k^4)`). See `docs/RANDOMIZED_BSQR_PLAN.md` for the math and §5
-of the manuscript (`notes/GKSevolved_draft.tex`, local-only until final;
+of the manuscript (`notes/GKSevolved.tex`, local-only until final;
 Thm. 5.1 `thm:randBSpivot`) for the guarantee it relies on.
 
 This is **separate from and does not modify** the deterministic implementations
@@ -38,7 +38,7 @@ output is requested — `p = bsqr_rand(M)` never pays for it.
 
 ## Build the MEX backend
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand'); build_bsqr_rand_mex"
 ```
 
@@ -48,7 +48,7 @@ benchmarks use the MEX.
 
 ## Tests
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand'); run('matlab_rand/tests/run_rand_tests.m')"
 ```
 
@@ -59,7 +59,7 @@ guarantees must hold.
 
 ## Benchmarks
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand'); addpath('matlab'); addpath('matlab_rand/benchmark'); run_rand_benchmarks"
 ```
 
@@ -102,7 +102,7 @@ curl -L https://github.com/eepperly/Adaptive-Randomized-Pivoting/archive/refs/he
 It ships a compiled `rejection_helper` MEX for Apple Silicon; on other platforms
 run its `code/compile_script.m`. Then:
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand/benchmark'); run_rpqr_comparison('k', 64); plot_rpqr_comparison('k', 64)"
 ```
 
@@ -126,7 +126,7 @@ two leverage regimes — `gaussian` (benign; uniform is fine) and `needle`
 (~`k` high-leverage columns among many near-null ones; uniform keeps missing them
 and must resample ~`n/k` times to find each).
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_largen_scaling; plot_largen_scaling"
 ```
 
@@ -167,7 +167,7 @@ The matrix is fixed per family (matching the ARP accuracy study's design); trial
 vary only the selectors' RNG. `bsqr_rand` runs with its public defaults (batched,
 norm-weighted). Run and plot:
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_comparison; plot_approx_comparison"
 ```
 
@@ -187,7 +187,7 @@ comparison** (`gaussian`, `spiked_leverage`, `needle` — see `approx_synth_matr
 The three families share one spectrum, so the optimal-error curve is identical
 across panels and only the leverage structure varies:
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_synth_comparison; plot_approx_comparison('tag','_synth')"
 ```
 
@@ -217,7 +217,7 @@ plotted.) Families are the leverage profiles that make candidate columns near-co
 `k` up to 80** (linear axis); the prescribed spectrum has a sharp cliff at `k~50`
 so the ID-error rows show a clear knee.
 
-```matlab
+```bash
 matlab -batch "addpath('matlab_rand'); addpath('matlab_rand/benchmark'); run_approx_cond_comparison; plot_approx_cond_comparison"
 ```
 

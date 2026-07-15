@@ -88,6 +88,12 @@ nf = numel(fams);
 fig = figure('Position', [100 100 max(440 * nf, 720) 480], 'Color', 'w');
 tl = tiledlayout(fig, 2, nf, 'TileSpacing', 'compact', 'Padding', 'compact');
 methods = {'bsqr', 'randBSQR', C.bsqr; 'rejection_rpqr', 'rejection\_rpqr', C.rpqr};
+% Row-wise y-limits from the data so the min/max bands are never clipped,
+% consistent across the family panels; keep the bound line at 1 in view.
+sel = T.method == "bsqr" | T.method == "rejection_rpqr";
+rf = T.frobinv(sel) ./ T.osinsky(sel);
+rs = 1 ./ (T.sigma_min(sel) .* sqrt(1 + T.k(sel) .* (T.n(sel) - T.k(sel))));
+rmax = struct('frob', max(rf(isfinite(rf))), 'smin', max(rs(isfinite(rs))));   % finite only, as in ratio_line
 ax = [];
 for row = {'frob', 'smin'}
     for fi = 1:nf
@@ -97,7 +103,7 @@ for row = {'frob', 'smin'}
             ratio_line(ax, T, base & T.method == methods{mi, 1}, row{1}, methods{mi, 3}, methods{mi, 2});
         end
         yline(ax, 1, 'k--', 'HandleVisibility', 'off');   % the bound
-        ylim(ax, [0 1.5]);   % consistent axis across families; rejection_rpqr bands clip here
+        ylim(ax, [0, max(1.1, 1.05 * rmax.(row{1}))]);
         grid(ax, 'on');
         if strcmp(row{1}, 'frob')
             title(ax, fam, 'Interpreter', 'none');

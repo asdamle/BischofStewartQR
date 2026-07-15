@@ -13,6 +13,8 @@ appear in the manuscript under which figure number.
 Figures land in `julia/benchmark/results/publication/plots/` (committed);
 `plain/` is the standard factorization, `rinv/` the `R11^{-1}R12`-returning
 variant. All scripts live in `julia/benchmark/` and run in that environment.
+`plot_publication_results.jl` is a validating wrapper; the actual renderer it
+invokes is `julia/benchmark/plot_publication.py`.
 
 | Figure | Data produced by | Data file | Plot produced by |
 |---|---|---|---|

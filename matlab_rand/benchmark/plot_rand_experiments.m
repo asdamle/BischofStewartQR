@@ -39,7 +39,7 @@ if ~isfolder(opt.plotdir); mkdir(opt.plotdir); end
 
 C = struct('det', [0 0 0], 'builtin', [0.55 0.55 0.55], ...
     'rm', [0.00 0.45 0.74], 'wc', [0.85 0.33 0.10], 'r12', [0.49 0.18 0.56], ...
-    'uniform', [0.00 0.45 0.74], 'normweighted', [0.47 0.67 0.19]);
+    'uniform', [0.00 0.60 0.30], 'normweighted', [0.00 0.45 0.74]);   % match fig_largen_scaling: nw blue, unif green
 
 plot_scaling(opt, C);
 plot_blocksize(opt, C);

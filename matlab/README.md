@@ -73,7 +73,7 @@ addpath('matlab/benchmark')
 run_publication_benchmarks
 ```
 
-Run a fast smoke benchmark (small cases, warmup enabled):
+Run a fast smoke benchmark (small cases, one seed; separate output dir):
 
 ```matlab
 addpath('matlab')

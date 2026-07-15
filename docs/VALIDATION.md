@@ -5,8 +5,8 @@ Companion to `docs/VALIDATION_AND_PERF_PLAN.md` (Part I). This file is the livin
 literal Algorithm A.1 of the manuscript, and (c) which test pins each claim.
 
 Ground truth: Bischof (1990), Stewart (1990) — both in `notes/` — distilled as Algorithm A.1
-in Appendix A of the manuscript (`notes/GKSevolved_draft.tex`, compiled as
-`notes/manuscript_draft.pdf`; local-only until the final version is added to the repository).
+in Appendix A of the manuscript (`notes/GKSevolved.tex`, compiled as
+`notes/GKSevolved.pdf`; local-only until it is added to the repository).
 "The writeup" below refers to that appendix. The executable ground truth is
 `matlab/tests/oracle_bsqr.m` (V1 oracle): a literal transcription that recomputes
 `w_j = R11^{-1} R12(:,j)` by triangular solve and tail norms from scratch each step, sharing no
@@ -51,7 +51,7 @@ Frobenius tracking is Stewart's contribution.
 | Fig. 2.2 init: `σ_j = 0`, `ω_j` = column norms | the `‖w_j‖ = 0` convention on Alg. A.1 line 4 (= Businger–Golub at step 1) | `wnorm2 = 0`, `s` init |
 | Fig. 2.2: `ω_j ← √(ω_j² − ρ_{k+1,j}²)` | Alg. A.1 line 8 downdate | `s[j] -= α²` |
 | §2 end: Householder variant, `ω_i` = norms of `A22` columns | Algorithm A.1 (stated directly for general `m×n`) | tail norms `s` |
-| Footnote 2: care in `ω` updates, cites LINPACK `sqrdc`; recompute `S` column *ab initio* on cancellation | Remark 7 (safeguarded recomputation; `ρ²` part) | recompute guard on `s` only — see open items |
+| Footnote 2: care in `ω` updates, cites LINPACK `sqrdc`; recompute `S` column *ab initio* on cancellation | Remark 8 (safeguarded recomputation; `ρ²` part) | recompute guard on `s` only — see open items |
 
 **Confirmations.** The criterion, the `S`/`w` update, the `ω` downdate with safeguard, the
 first-step reduction to Businger–Golub, and the Householder-variant tail-norm denominators all
@@ -70,7 +70,7 @@ is pinned by `testCriterionTraceMatchesInverseFrobNorm`.
    the current column on ties and is consistent with, and a total refinement of, Stewart's.
 3. *Deviation #1 provenance:* the norm-downdate safeguard is not merely "LAPACK-style" — it is
    prescribed by Stewart himself (footnote 2, citing LINPACK `sqrdc`) and now by the
-   manuscript's Remark 7.
+   manuscript's Remark 8.
 
 **Intentionally out of scope (papers contain, we do not implement):**
 
@@ -112,7 +112,7 @@ scoped #7 to the unblocked kernel.
 
 ## Deviation table
 
-Sanctioned deviations from the literal Algorithm 1. "Pinned by" names the test that fails if the
+Sanctioned deviations from the literal Algorithm A.1. "Pinned by" names the test that fails if the
 equivalence claim is wrong.
 
 "All three kernels" means the Julia, MATLAB m-file, and MEX implementations. Since P3
@@ -127,12 +127,12 @@ orthonormal-rows (GKS) case.
 
 | # | Deviation | Where | Why mathematically equivalent | Pinned by |
 |---|---|---|---|---|
-| 1 | Norm downdate `s_j -= α_j²` with recompute guard `s_j ≤ s_ref_j·tol` instead of from-scratch norms | all three kernels | recomputation returns the same mathematical quantity; the guard is prescribed by the manuscript's Remark 7 | `test_oracle_parity` (oracle uses exact norms; pivot sequences must still match); Julia testset "Norm recompute tolerance knob" |
+| 1 | Norm downdate `s_j -= α_j²` with recompute guard `s_j ≤ s_ref_j·tol` instead of from-scratch norms | all three kernels | recomputation returns the same mathematical quantity; the guard is prescribed by the manuscript's Remark 8 | `test_oracle_parity` (oracle uses exact norms; pivot sequences must still match); Julia testset "Norm recompute tolerance knob" |
 | 2 | Householder sign convention `ρ = -sign(x₁)‖x‖` (LAPACK), identity reflector when the tail is zero; Alg. A.1 leaves the sign free (`±‖x‖e₁`), so this row pins the shared choice rather than a deviation | all three kernels and the oracle (Julia and MEX both call `dlarfg` directly since V5; the m-file and the oracle implement the same convention in plain MATLAB — hypot-based, without `dlarfg`'s subnormal rescaling loop, which is inert within the documented column-norm domain) | row sign flips cancel in `(D·R11)⁻¹(D·R12)`, so every `w_j` and the criterion are unchanged; `Q` absorbs `D` (proof sketch in `oracle_bsqr.m` header) | direct (sign-normalization-free) Q/R comparison in `test_oracle_parity` |
 | 3 | Clamp `wnorm2` and `s` at 0 after downdates | all three kernels | guards `-eps`-level negatives of nonnegative quantities | indirectly by parity; dedicated near-zero unit test pending |
 | 4 | `s(i) = β_i²` refresh of the pivot column post-reflection | all three kernels | exact identity after the reflection | `test_oracle_parity` |
 | 5 | BLAS-2 organization of the W update: all dots `w_jᵀw*` computed from the pre-update `W` prefix (`gemv`), then the rank-1 update (`ger`) | all three kernels (the m-file via the equivalent vectorized matrix ops) | regrouping of Alg. A.1 line 9's per-column updates (Stewart (1990) §2); same recurrence | `test_oracle_parity` (oracle has no recurrence at all) |
-| 6 | `rank_stop` early-exit option | Julia only, off by default in `bsqr` | extension, not in Algorithm 1; cross-language defaults agree (no early exit) | Julia testset "Rank-stop policy"; default-behavior parity pinned by the V3 fixture suite (both languages run at defaults) |
+| 6 | `rank_stop` early-exit option | Julia only, off by default in `bsqr` | extension, not in Algorithm A.1; cross-language defaults agree (no early exit) | Julia testset "Rank-stop policy"; default-behavior parity pinned by the V3 fixture suite (both languages run at defaults) |
 | 7 | Short-wide fastpath (inline W-row materialization) | Julia unblocked kernel only (above the panel crossover it is reached only with `BS_PANEL_NB=0`) | pure memory-layout reordering; identical arithmetic | Julia testset "Kernel helper invariants and fastpath knobs" |
 | 8 | First-minimum tie-breaking via strict `<` | all three kernels and the oracle | Alg. A.1 allows any tie rule ("any reasonable choice is fine, e.g., picking the smaller index" — exactly our first-minimum scan); consistent with Stewart's "ties by doing nothing" | dedicated exact-tie tests: `testTieBreakFirstMinimum` (MATLAB, both backends) and Julia "Exact criterion ties: first minimum wins"; also `testPivotTieStability` (MATLAB), Julia "Criterion-consistent pivot sequence" |
 | 9 | `‖w_j‖²` maintained by the manuscript's eq. (A.2) recurrence instead of Stewart's direct `σ_j = ‖s_j‖` recomputation | all three kernels | algebraic expansion of `‖s_j − β_j s_k‖² + β_j²`; identical in exact arithmetic (the manuscript notes the formula is optional for the asymptotic cost) | `test_oracle_parity` (oracle computes `‖w_j‖` from scratch) |
