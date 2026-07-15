@@ -319,7 +319,9 @@ def fig_relative_time_composite(rows, outdir, formats):
                        for th in threads)]
     nrows = len(row_keys)
 
-    fig, ax = plt.subplots(1, 1, figsize=(SINGLE_COL_W, 0.52 * nrows + 1.45),
+    # Wider than SINGLE_COL_W: the long legend entries below already force the
+    # rendered (bbox-tight) image to this width, so the axes may as well use it.
+    fig, ax = plt.subplots(1, 1, figsize=(SINGLE_COL_W * 1.2, 0.52 * nrows + 1.45),
                            constrained_layout=True)
     y_base = np.arange(nrows, dtype=float)[::-1]
     series = [(name, th) for name in ("plain", "rinv") for th in threads]
@@ -346,6 +348,7 @@ def fig_relative_time_composite(rows, outdir, formats):
                         markerfacecolor=face, markersize=4.0, linestyle="none",
                         capsize=2.0, elinewidth=0.9, zorder=3)
     ax.axvline(1.0, color="black", ls="--", lw=0.8, zorder=1)
+    ax.set_xlim(right=max(1.63, ax.get_xlim()[1]))   # keep a 1.6 tick in view
     ax.set_yticks(y_base)
     ax.set_yticklabels([f"{FAMILY_DISPLAY.get(fam, fam)} {REGIME_DISPLAY[regime]}"
                         for fam, regime in row_keys])
