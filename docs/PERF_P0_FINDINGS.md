@@ -2,7 +2,7 @@
 
 > **Historical record.** Findings of the completed P0 measurement campaign
 > (2026-06-11); numbers predate later kernel changes. The live pre-submission
-> plan is `docs/PUBLICATION_READINESS_PLAN.md`.
+> pass concluded with the 2026-07 publication-readiness work (see git history).
 
 Phase P0 of `docs/VALIDATION_AND_PERF_PLAN.md` (Part II). Reproduce with
 `julia --project=julia julia/benchmark/perf_p0_measure.jl` (gaussian family, BLAS pinned to

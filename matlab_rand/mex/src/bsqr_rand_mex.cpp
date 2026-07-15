@@ -51,7 +51,7 @@ enum class Pick { BestInBlock, First };
 
 struct Options {
     mwSize k = 0;
-    mwSize block_size = 0;   // 0 = auto (set to rand_default_block(k) once k is known)
+    mwSize block_size = 0;   // 0 = auto (batched: k; single-select: rand_default_block(k))
     ThresholdMode threshold_mode = ThresholdMode::RunningMean;
     double slack = 1.0;
     double norm_recomp_tol = std::sqrt(std::numeric_limits<double>::epsilon());

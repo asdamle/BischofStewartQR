@@ -162,3 +162,33 @@ Notes on test design choices:
 - Forward agreement of `Q`, `rinv_r12`, and `inv(R11)` is condition-sensitive even with
   identical pivots, so graded-spectrum zoo members check pivot sequence + `R` agreement only;
   their `Q`/solve quality is covered by backward-style contract tests instead.
+
+## External review response (Phase R, 2026-07-10)
+
+An external review of the repository found the core algorithms clean — no
+undocumented mathematical deviations, all validation metrics measuring what
+their labels say, zero bound violations across 9,600 conditioning rows — plus
+two experiment-aggregation defects and six documentation drifts, all
+independently verified before fixing and all resolved before the final
+(Phase 6, 2026-07-13) regeneration of the committed benchmark artifacts:
+
+- **R1 — MATLAB publication baseline dedupe.** The runner timed the
+  `qr_pivoted` baseline twice per case (once per pass), so the CSV carried
+  duplicate baseline rows and the relative-time join double-weighted them.
+  Restructured to mirror Julia (plain pass: `bsqr_full` + `qr_pivoted`; rinv
+  pass: `bsqr_rinv` + `qr_pivoted_trsm`), with a one-row-per-(case, method)
+  invariant asserted before the CSV is written. Quality metrics were never
+  affected.
+- **R2 — randomized sampling instrumentation undercount.** On the batched
+  path, sampled blocks that yielded no selection were evaluated but not
+  counted (demonstrated ~8× undercount on uniform/needle). Both backends now
+  carry pending counters so `total_tested`/`blocks_sampled`/`rounds` are true
+  totals, in lockstep; pinned by `testInstrumentationCountsAllWork`.
+  Selection, timing, conditioning, and accuracy outputs were untouched by
+  construction.
+- **R3 — documentation drift** (six sites), resolved toward the code:
+  plot-header row descriptions, unplotted-`T_proj` claims, spectral-row
+  direction comments, `tci_low/high` described as empirical 2.5%/97.5%
+  quantiles (not confidence intervals), the figure-spec table entry, and the
+  `slack > 1` wording (the Osinsky guarantee no longer applies; the effect is
+  not proportional).

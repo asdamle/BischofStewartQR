@@ -16,12 +16,15 @@ function _load(csv_path::String)
     data, raw_header = readdlm(csv_path, ',', header = true)
     header = _as_string.(vec(raw_header))
     idx = Dict{String,Int}(h => i for (i, h) in enumerate(header))
-    required = ["family", "regime", "m", "n", "aspect", "seed", "method", "tmed_s"]
+    required = ["family", "regime", "m", "n", "aspect", "seed", "blas_threads", "method", "tmed_s"]
     for c in required
         haskey(idx, c) || error("Missing required column '$c' in $csv_path")
     end
 
-    out = Dict{Tuple{String,String,Int,Int,Float64,Int,String},Float64}()
+    # blas_threads is part of the key: the publication CSV sweeps it, and
+    # omitting it would silently overwrite one thread count's rows with the
+    # other's before gating.
+    out = Dict{Tuple{String,String,Int,Int,Float64,Int,Int,String},Float64}()
     for i in 1:size(data, 1)
         row = view(data, i, :)
         method = _as_string(row[idx["method"]])
@@ -33,8 +36,10 @@ function _load(csv_path::String)
             _as_int(row[idx["n"]]),
             _as_float(row[idx["aspect"]]),
             _as_int(row[idx["seed"]]),
+            _as_int(row[idx["blas_threads"]]),
             method,
         )
+        haskey(out, key) && error("Duplicate row for key=$key in $csv_path")
         out[key] = _as_float(row[idx["tmed_s"]])
     end
     return out
@@ -58,14 +63,14 @@ function main()
     isempty(common_keys) && error("No overlapping rows between baseline and candidate.")
 
     by_method = Dict("bsqr_full" => Float64[], "bsqr_rinv" => Float64[])
-    violations = Tuple{Tuple{String,String,Int,Int,Float64,Int,String},Float64}[]
+    violations = Tuple{Tuple{String,String,Int,Int,Float64,Int,Int,String},Float64}[]
     ngated = 0
     for k in common_keys
         tb = base[k]
         tc = cand[k]
         tb > 0 || error("Non-positive baseline tmed for key=$k")
         slowdown = tc / tb - 1.0
-        push!(by_method[k[7]], slowdown)
+        push!(by_method[k[8]], slowdown)
         tb >= min_tmed || continue
         ngated += 1
         if isfinite(slowdown) && slowdown > max_slowdown

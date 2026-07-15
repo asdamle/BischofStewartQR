@@ -1,6 +1,6 @@
 function stats = fuzz_cross_language_gen(outdir, ncases, seed0)
 %FUZZ_CROSS_LANGUAGE_GEN Generate randomized cross-language parity cases.
-%   Opt-in stress tool (Phase 2 of docs/PUBLICATION_READINESS_PLAN.md), not
+%   Opt-in stress tool (from the 2026-07 publication-readiness bug hunt), not
 %   part of the test suite. Writes NCASES randomized fixtures in exactly the
 %   parity/ format (manifest.csv + <name>_{A,p,R,crit[,rinv]}.csv, %.17g
 %   round-trip formatting), using matlab/tests/oracle_bsqr.m as the expected

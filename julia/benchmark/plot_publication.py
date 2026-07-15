@@ -8,7 +8,8 @@ change to figure semantics, labels, or styling must land in both.
 Usage:
   python3 plot_publication.py CSV OUTDIR TABLEDIR BSQR_METHOD BASELINE_METHOD MODE
 
-MODE is "plain" or "rinv" and selects the display labels.
+MODE is "plain", "rinv" (display labels), or "composite" (the top-level
+overlaid relative-time figure; the method arguments are ignored).
 """
 
 import csv

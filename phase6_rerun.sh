@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Phase 6 publication rerun driver (docs/PUBLICATION_READINESS_PLAN.md).
+# Publication benchmark regeneration driver (the 2026-07 'Phase 6' rerun).
 #
 # Runs the full benchmark regeneration sequentially with per-step logs and
 # resumable step markers, wrapped in caffeinate so the system does not sleep

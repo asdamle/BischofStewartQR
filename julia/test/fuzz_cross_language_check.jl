@@ -1,5 +1,5 @@
 # Cross-language differential fuzz checker (opt-in; Phase 2 of
-# docs/PUBLICATION_READINESS_PLAN.md). Not included by runtests.jl.
+# the 2026-07 publication-readiness bug hunt). Not included by runtests.jl.
 #
 # Consumes a directory of randomized fixtures written by
 # matlab/tests/fuzz_cross_language_gen.m (same format as parity/) and checks

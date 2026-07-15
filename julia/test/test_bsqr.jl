@@ -202,7 +202,7 @@ end
 @testset "Coverage: long-tail norm recompute and panel rank-stop" begin
     # norm_recomp_tol = 1 forces an exact recompute at every step; with
     # m - i - 1 > 256 the recompute takes the BLAS.nrm2 branch of
-    # _recompute_norm2 rather than the short-tail scalar loop.
+    # _tail_colnorm2 rather than the short-tail scalar loop.
     rng = MersenneTwister(20260713)
     A = randn(rng, 320, 24)
     F = bsqr(A; norm_recomp_tol = 1.0)

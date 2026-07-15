@@ -1,5 +1,5 @@
 function b = rand_default_block(k)
-%RAND_DEFAULT_BLOCK Default sampling block size as a function of k.
+%RAND_DEFAULT_BLOCK Default single-select sampling block size (batched uses k).
 %   b = ceil(k/2), clamped to [16, 64].
 %
 %   Block size trades compute for *realized* selection quality: with

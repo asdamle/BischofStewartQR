@@ -2,7 +2,7 @@
 
 > **Historical record.** Part I (validation, V0–V5) and P0 are done and the
 > P3 panel kernel landed 2026-06-11; the remaining P1/P2/P4 candidates are
-> carried forward by `docs/PUBLICATION_READINESS_PLAN.md` Phase 5, which
+> carried forward by the 2026-07 publication-readiness pass (Phase 5), which
 > supersedes this file as the live plan. Measured numbers reflect the tree at
 > the time. The living deviation audit is `docs/VALIDATION.md`.
 

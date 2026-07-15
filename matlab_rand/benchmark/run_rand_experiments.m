@@ -3,8 +3,9 @@ function run_rand_experiments(varargin)
 %
 %   Writes three tidy CSVs under matlab_rand/benchmark/results/, tagged by k
 %   (e.g. exp_scaling_k64.csv, exp_scaling_k128.csv, ...):
-%     exp_scaling_k<K>.csv   - time / conditioning / samples vs n, per family,
-%                              deterministic vs randomized (both modes + R12).
+%     exp_scaling_k<K>.csv   - time / conditioning / samples vs n, per family:
+%                              deterministic, built-in QR, randomized
+%                              (running_mean), and randomized+R12.
 %     exp_blocksize_k<K>.csv - effect of block_size (k-relative sweep) on time /
 %                              samples / cond, batched + norm-weighted.
 %     exp_sampling_k<K>.csv  - uniform vs norm-weighted sampling across families.
@@ -69,7 +70,8 @@ for fi = 1:numel(families)
             % choice for cross-method comparisons -- robust across leverage profiles
             % and matching the sampling used by the rejection_rpqr comparison.
             % running_mean is the default threshold; worstcase_allowance is a
-            % documented option kept out of the plots for a cleaner narrative.
+            % documented option kept out of this experiment (not recorded in the
+            % CSV) for a cleaner narrative.
             r = measure_rand(M, k, 'running_mean', 'normweighted', db, 1000 * fi + s);
             rows(end+1, :) = {fam, k, n, s, 'rand', 'running_mean', 'normweighted', db, ...
                 r.time, r.frobinv, r.osinsky, r.tested_per_k, r.sigma_min}; %#ok<AGROW>

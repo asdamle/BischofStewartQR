@@ -3,8 +3,8 @@ function [A, info] = approx_test_matrix(family, seed, sz)
 %   comparison (randomized BSQR vs rejection_rpqr). Unlike rand_test_matrix --
 %   which returns a k-by-n matrix with orthonormal rows (already a basis) -- this
 %   returns a *full* m-by-n matrix A drawn from an application. The comparison
-%   harness then computes accurate leading right singular vectors V_k via svds and
-%   selects k of the n columns; the metric is the resulting low-rank
+%   harness then computes accurate leading right singular vectors V_k (one dense
+%   economy SVD per family in run_approx_comparison) and selects k of the n columns; the metric is the resulting low-rank
 %   approximation error. Each family has a rapidly *decaying* spectrum so that a
 %   rank-k approximation (and hence the choice of columns) is meaningful.
 %

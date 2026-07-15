@@ -3,7 +3,8 @@ function plot_rand_experiments(varargin)
 %
 %   Reads the k-tagged exp_*_k<K>.csv from the results dir and writes k-tagged
 %   figures fig_*_k<K>.png to matlab_rand/benchmark/plots/:
-%     fig_scaling_time_k<K>.png    - runtime vs n (per family): %                                    BSQR, built-in qr, randBSQR, randBSQR+R12.
+%     fig_scaling_time_k<K>.png    - runtime vs n (per family): deterministic
+%                                    BSQR, built-in QR, randBSQR, randBSQR+R12.
 %     fig_scaling_speedup_k<K>.png - randBSQR speedup over each baseline vs n.
 %     fig_scaling_quality_k<K>.png - two rows vs n: ||R11^{-1}||_F / bound and
 %                                    ||R11^{-1}||_2 / bound.
@@ -17,7 +18,6 @@ function plot_rand_experiments(varargin)
 % Options: 'k' (default 64), 'resultsdir', 'plotdir', 'formats' (default
 %   {'png','pdf'} -- vector PDF for publication alongside PNG; pass {'png'} to
 %   skip the PDF for quick iteration).
-%   (cellstr, default {'png'}).
 
 ip = inputParser;
 addParameter(ip, 'k', 64);

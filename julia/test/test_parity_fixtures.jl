@@ -2,7 +2,7 @@
 # Julia kernel against the committed fixtures under <repo_root>/parity.
 #
 # The fixtures are outputs of the MATLAB V1 oracle (matlab/tests/oracle_bsqr.m,
-# a literal transcription of Algorithm 1 with no incremental recurrences),
+# a literal transcription of Algorithm A.1 with no incremental recurrences),
 # written by matlab/tests/generate_parity_fixtures.m with %.17g formatting so
 # both languages read bit-identical inputs. Inputs are screened at generation
 # time for criterion near-ties, which is what makes exact pivot-sequence

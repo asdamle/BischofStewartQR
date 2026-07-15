@@ -127,7 +127,8 @@ end
 end
 
 function rows = bench_pair(A, k, norm_recomp_tol, include_rinv)
-% Each pass times its own baseline exactly once (mirroring the Julia runner):
+% Each pass times its own baseline exactly once (matching the rows the Julia
+% runner emits; Julia's rinv pass still times dgeqp3 internally, then drops the row):
 % the plain pass produces bsqr_full + qr_pivoted, the rinv pass bsqr_rinv +
 % qr_pivoted_trsm. Timing qr_pivoted in both passes double-weighted the
 % baseline in every downstream per-seed pairing.

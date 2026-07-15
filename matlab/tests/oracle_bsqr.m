@@ -5,7 +5,7 @@ function out = oracle_bsqr(A, k)
 %
 %   This is the V1 validation oracle from docs/VALIDATION_AND_PERF_PLAN.md:
 %   a deliberately naive transcription of Algorithm A.1 (Appendix A) of the
-%   manuscript, notes/GKSevolved_draft.tex. Each step recomputes from
+%   manuscript, notes/GKSevolved.tex. Each step recomputes from
 %   scratch the quantities the production kernels maintain incrementally:
 %
 %     w_j = R11^{-1} R12(:,j)   by triangular solve   (Alg. A.1 line 9 state)
@@ -69,12 +69,12 @@ Q = eye(m);
 crit_best = zeros(1, k);
 crit_gap = zeros(1, k);
 
-% Alg. A.1, lines 2-3 are storage initialization for the incrementally
-% maintained W and s. The oracle keeps neither: both are recomputed from
-% scratch inside the loop, which is the entire point of this implementation.
+% Alg. A.1 initializes the incrementally maintained w_j and rho_j^2 in line 1
+% (and updates them in lines 8-9). The oracle keeps neither: both are recomputed
+% from scratch inside the loop, which is the entire point of this implementation.
 
-for i = 1:k                                 % Alg. A.1, line 4
-    % --- Pivot selection (Alg. A.1, lines 5-8) ---
+for i = 1:k                                 % Alg. A.1, lines 2-3 (while / i = i+1)
+    % --- Pivot selection (Alg. A.1, line 4) ---
     % R11 is the leading (i-1)x(i-1) triangle of the reduced matrix. It is
     % genuinely upper triangular here because each completed step zeroed
     % its subdiagonal explicitly (see below); triu() only asserts that.
@@ -90,13 +90,13 @@ for i = 1:k                                 % Alg. A.1, line 4
         % s_j == 0 leaves c(j) = Inf, matching the kernels' guard.
     end
 
-    [cbest, rel_idx] = min(c(i:n));         % line 8; min() takes the FIRST minimum
+    [cbest, rel_idx] = min(c(i:n));         % line 4; min() takes the FIRST minimum
     jstar = i - 1 + rel_idx;
 
     if ~isfinite(cbest)
         error('oracle_bsqr:RankDeficient', ...
             ['All remaining columns have zero tail norm at step %d; ', ...
-             'Algorithm 1 requires full-rank progress through k steps.'], i);
+             'Algorithm A.1 requires full-rank progress through k steps.'], i);
     end
 
     crit_best(i) = cbest;
@@ -107,15 +107,15 @@ for i = 1:k                                 % Alg. A.1, line 4
         crit_gap(i) = Inf;
     end
 
-    % --- Swap columns i and j* (Alg. A.1, lines 9-10) ---
-    % Only A and p exist here; the W and s swaps of line 10 are vacuous
+    % --- Swap columns i and j* (Alg. A.1, line 5) ---
+    % Only A and p exist here; the w_j and rho_j^2 swaps of line 5 are vacuous
     % because the oracle recomputes both from scratch each step.
     if jstar ~= i
         Awork(:, [i, jstar]) = Awork(:, [jstar, i]);
         p([i, jstar]) = p([jstar, i]);
     end
 
-    % --- Householder reduction of column i (Alg. A.1, lines 11-12) ---
+    % --- Householder reduction of column i (Alg. A.1, lines 6-7) ---
     [H, rho] = householder_matrix(Awork(i:m, i));
     Awork(i:m, i:n) = H * Awork(i:m, i:n);
     Q(:, i:m) = Q(:, i:m) * H;              % H symmetric: Q = H_1*...*H_k
@@ -131,9 +131,9 @@ for i = 1:k                                 % Alg. A.1, line 4
         Awork(i+1:m, i) = 0;
     end
 
-    % Alg. A.1, lines 13-19 (incremental W and s updates) are intentionally
-    % absent: the next iteration recomputes both quantities from scratch.
-end                                          % Alg. A.1, line 20 returns p
+    % Alg. A.1, lines 8-9 (the incremental rho_j^2 and w_j updates) are
+    % intentionally absent: the next iteration recomputes both from scratch.
+end                                          % Alg. A.1, line 11 returns p (with R, Q)
 
 out = struct();
 out.p = p;
