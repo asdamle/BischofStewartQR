@@ -282,7 +282,7 @@ For `A` `m×n` and `k` selected columns (default `k = min(m,n)`):
 | `seed` | `[]` | RNG seed for reproducibility |
 | `return_r12` | `false` | compute `R12` as a 5th output |
 | `backend` | `auto` | `auto` / `mfile` / `mex` |
-| `check_finite` | `true` | validate inputs |
+| `check_finite` | `false` | full O(mn) finiteness scan (norm-weighted sampling detects NaN/Inf for free from its weights; only `uniform` needs `true`) |
 
 ## `stats` (4th output)
 

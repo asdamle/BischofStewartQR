@@ -58,7 +58,12 @@ function varargout = bsqr_rand(A, varargin)
 %   'seed'           - RNG seed for reproducibility (default [], leaves rng)
 %   'return_r12'     - logical, compute R12 as a 5th output (default false)
 %   'backend'        - 'auto' (default), 'mfile', or 'mex'
-%   'check_finite'   - validate inputs are finite (default true)
+%   'check_finite'   - validate inputs are finite with a full O(m*n) scan
+%                      (default false: the scan can rival the selection cost
+%                      at large n. Norm-weighted sampling (the default) still
+%                      detects non-finite input for free from its precomputed
+%                      weights; only 'uniform' sampling needs this set to
+%                      true to catch NaN/Inf inputs.)
 %
 % STATS fields (per-step arrays are 1-by-k, indexed by selection step):
 %   f2             - running ||R11^{-1}||_F^2 after each step

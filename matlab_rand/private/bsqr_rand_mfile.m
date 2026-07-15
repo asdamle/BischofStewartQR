@@ -43,6 +43,13 @@ needweights = strcmp(opts.sampling, 'normweighted');
 g = [];
 if needweights
     g = sum(Awork.^2, 1);          % original squared column norms (O(m*n))
+    % Free non-finite detection: any NaN/Inf in A makes its column's squared
+    % norm non-finite, so this O(n) scan of the already-computed sampling
+    % weights catches bad input even with check_finite=false (the default).
+    % Uniform sampling has no such pass; there bad input needs check_finite.
+    if ~all(isfinite(g))
+        error('bsqr_rand:NonFiniteInput', 'A contains non-finite values.');
+    end
 end
 
 b = opts.block_size;

@@ -166,7 +166,15 @@ verifyError(testCase, @() bsqr_rand(W, 'threshold_mode', 'bogus'), 'bsqr_rand:In
 verifyError(testCase, @() bsqr_rand(W, 'sampling', 'bogus'), 'bsqr_rand:InvalidSampling');
 verifyError(testCase, @() bsqr_rand(W, 'pick', 'bogus'), 'bsqr_rand:InvalidPick');
 verifyError(testCase, @() bsqr_rand(W, 'backend', 'bogus'), 'bsqr_rand:InvalidBackend');
+% check_finite defaults to false, but the default norm-weighted sampling
+% still detects non-finite input for free from its precomputed weights ...
 verifyError(testCase, @() bsqr_rand([1 Inf; 2 3]), 'bsqr_rand:NonFiniteInput');
+% ... while uniform sampling needs the explicit O(m*n) scan (both backends).
+for be = {'mfile', 'mex'}
+    if strcmp(be{1}, 'mex') && ~bsqr_rand_mex_available(); continue; end
+    verifyError(testCase, @() bsqr_rand([1 Inf; 2 3], 'sampling', 'uniform', ...
+        'check_finite', true, 'backend', be{1}), 'bsqr_rand:NonFiniteInput');
+end
 end
 
 function testMexAgreesOnInvariants(testCase)

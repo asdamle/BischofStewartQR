@@ -147,7 +147,9 @@ off and untimed by default).
 `sampling` (`normweighted` default — by *starting* squared column norms, adds an
 `O(mn)` precompute — | `uniform`), `pick` (single-select only: `best_in_block`
 default | `first`), `seed`, `return_r12`, `backend` (`auto`/`mfile`/`mex`),
-`check_finite`, `norm_recomp_tol` (default `sqrt(eps)` — the batched path's
+`check_finite` (default `false`; the O(mn) scan can rival the selection cost,
+and norm-weighted sampling detects non-finite input for free from its
+precomputed weights), `norm_recomp_tol` (default `sqrt(eps)` — the batched path's
 inline norm-recompute safeguard; no-op in the m-file, which recomputes exactly).
 
 ## 7. Instrumentation (the two requested metrics)

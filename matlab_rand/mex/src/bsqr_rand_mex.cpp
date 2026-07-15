@@ -60,7 +60,7 @@ struct Options {
     bool has_seed = false;
     unsigned long long seed = 0;
     bool return_r12 = false;
-    bool check_finite = true;
+    bool check_finite = false;
     bool batched = true;     // default kernel path: in-block BSQR (multiple picks/block)
 };
 
@@ -342,6 +342,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         for (mwSize j = 0; j < n; ++j) {
             const double nrm = dnrm2(&mm, const_cast<double *>(&A[static_cast<size_t>(j) * m]), &inc1);
             g[j] = nrm * nrm;
+        }
+        // Free non-finite detection: any NaN/Inf in A makes its column's
+        // squared norm non-finite, so this O(n) scan of the already-computed
+        // sampling weights catches bad input even with check_finite=false
+        // (the default). Uniform sampling has no such pass; there bad input
+        // needs check_finite=true.
+        for (mwSize j = 0; j < n; ++j) {
+            if (!std::isfinite(g[j])) {
+                fail("bsqr_rand:NonFiniteInput", "A contains non-finite values.");
+            }
         }
         bit.init(g);
         drawn.reserve(n);

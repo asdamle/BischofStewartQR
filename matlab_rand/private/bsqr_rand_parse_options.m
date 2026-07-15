@@ -28,7 +28,7 @@ addParameter(parser, 'batched', true, @(x) (islogical(x) || isnumeric(x)) && iss
 addParameter(parser, 'seed', [], @(x) isempty(x) || (isnumeric(x) && isscalar(x) && isfinite(x) && x >= 0));
 addParameter(parser, 'return_r12', false, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
 addParameter(parser, 'backend', 'auto', @(x) ischar(x) || isstring(x));
-addParameter(parser, 'check_finite', true, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
+addParameter(parser, 'check_finite', false, @(x) (islogical(x) || isnumeric(x)) && isscalar(x));
 parse(parser, varargin{:});
 
 opts = parser.Results;
