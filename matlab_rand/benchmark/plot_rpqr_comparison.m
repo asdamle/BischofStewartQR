@@ -173,7 +173,7 @@ plot(ax, x, ym, '-o', 'Color', color, 'MarkerFaceColor', color, 'LineWidth', 1.5
 end
 
 function save_fig(fig, stem, formats)
-bump_fonts(fig, 2);
+bump_fonts(fig, 4);
 for i = 1:numel(formats)
     switch formats{i}
         case 'png'; exportgraphics(fig, [stem, '.png'], 'Resolution', 150);
@@ -186,14 +186,18 @@ close(fig);
 end
 
 function bump_fonts(fig, delta)
-% Enlarge tick labels, axis labels, and legends by delta points; panel titles
-% and the tiledlayout super-title keep their original size.
+% Enlarge all figure text by delta points: ticks, axis labels, and panel
+% titles scale with the axes font; legends are bumped directly; the
+% tiledlayout super-title is set to match the axis-label size.
+labelsz = 0;
 for ax = reshape(findall(fig, 'Type', 'axes'), 1, [])
-    tfs = ax.Title.FontSize;             % pin the panel title
-    ax.FontSize = ax.FontSize + delta;   % ticks + x/y labels scale with this
-    ax.Title.FontSize = tfs;
+    ax.FontSize = ax.FontSize + delta;   % ticks, labels, and panel title
+    labelsz = max(labelsz, ax.FontSize * ax.LabelFontSizeMultiplier);
 end
 for lg = reshape(findall(fig, 'Type', 'legend'), 1, [])
     lg.FontSize = lg.FontSize + delta;
+end
+for tl = reshape(findall(fig, 'Type', 'tiledlayout'), 1, [])
+    tl.Title.FontSize = labelsz;
 end
 end

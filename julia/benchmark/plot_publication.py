@@ -51,13 +51,13 @@ plt.rcParams.update({
     "font.family": "serif",
     "font.serif": ["STIXGeneral", "Times New Roman", "Times", "DejaVu Serif"],
     "mathtext.fontset": "cm",
-    "font.size": 8.5,
-    "axes.titlesize": 9,
-    "axes.labelsize": 8.5,
-    "legend.fontsize": 7.5,
-    "legend.title_fontsize": 8,
-    "xtick.labelsize": 7.5,
-    "ytick.labelsize": 7.5,
+    "font.size": 10.5,
+    "axes.titlesize": 10.5,
+    "axes.labelsize": 10.5,
+    "legend.fontsize": 9.5,
+    "legend.title_fontsize": 10,
+    "xtick.labelsize": 9.5,
+    "ytick.labelsize": 9.5,
     "axes.linewidth": 0.7,
     "lines.linewidth": 1.2,
     "lines.markersize": 3.6,
@@ -362,7 +362,7 @@ def fig_relative_time_composite(rows, outdir, formats):
                                   markerfacecolor=("black" if ti == 0 else "white"),
                                   label=f"{th} BLAS {unit}"))
     ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.10),
-              ncol=1, frameon=False, fontsize=6.8, handletextpad=0.4)
+              ncol=1, frameon=False, fontsize=8.8, handletextpad=0.4)
     save_fig(fig, outdir, "fig_relative_time_composite", formats)
 
 
