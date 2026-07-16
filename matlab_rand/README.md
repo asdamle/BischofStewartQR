@@ -88,8 +88,8 @@ script can re-render from the snapshot without rerunning the benchmarks via
 
 ## External comparison: `rejection_rpqr` (Adaptive Randomized Pivoting)
 
-A standalone comparison against the `rejection_rpqr` selector from Epperly et
-al.'s Adaptive Randomized Pivoting. The third-party code is **not** redistributed
+A standalone comparison against the `rejection_rpqr` selector from Epperly's
+Adaptive Randomized Pivoting. The third-party code is **not** redistributed
 here (`ext_comparisons/` is git-ignored); download it yourself:
 
 ```bash

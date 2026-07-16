@@ -411,7 +411,7 @@ a Fenwick-tree weighted sampler.)
 ## 13. External comparison: `rejection_rpqr` (Adaptive Randomized Pivoting)
 
 `run_rpqr_comparison.m` / `plot_rpqr_comparison.m` compare `bsqr_rand` against the
-`rejection_rpqr` selector from Epperly et al.'s Adaptive Randomized Pivoting
+`rejection_rpqr` selector from Epperly's Adaptive Randomized Pivoting
 (download into `ext_comparisons/`, git-ignored — see `matlab_rand/README.md`).
 Same three metrics, separate figures `fig_rpqr_{time,speedup,quality}_k<K>.png`.
 
