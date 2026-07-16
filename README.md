@@ -55,7 +55,25 @@ MIT — see [LICENSE](LICENSE).
 
 ## How to cite
 
-If you use this software, please cite the accompanying paper — its reference
-will be added here (and as the `preferred-citation` in
+If you use this software, please cite the accompanying paper:
+
+> Anil Damle. *Computing Strong Rank-Revealing Factorizations for Matrices
+> with Orthonormal Rows*. arXiv:2607.13532, 2026.
+> https://arxiv.org/abs/2607.13532
+
+```bibtex
+@misc{Damle2026bsqr,
+  title  = {Computing Strong Rank-Revealing Factorizations for Matrices
+            with Orthonormal Rows},
+  author = {Damle, Anil},
+  year   = {2026},
+  eprint = {2607.13532},
+  archivePrefix = {arXiv},
+  doi    = {10.48550/arXiv.2607.13532},
+  url    = {https://arxiv.org/abs/2607.13532}
+}
+```
+
+The same reference is the `preferred-citation` in
 [CITATION.cff](CITATION.cff), which drives GitHub's "Cite this repository"
-widget) once it is available.
+widget.

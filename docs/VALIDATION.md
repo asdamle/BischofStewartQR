@@ -5,8 +5,8 @@ Companion to `docs/VALIDATION_AND_PERF_PLAN.md` (Part I). This file is the livin
 literal Algorithm A.1 of the manuscript, and (c) which test pins each claim.
 
 Ground truth: Bischof (1990), Stewart (1990) — both in `notes/` — distilled as Algorithm A.1
-in Appendix A of the manuscript (`notes/GKSevolved.tex`, compiled as
-`notes/GKSevolved.pdf`; local-only until it is added to the repository).
+in Appendix A of the manuscript ([arXiv:2607.13532](https://arxiv.org/abs/2607.13532);
+source `notes/GKSevolved.tex`, local-only).
 "The writeup" below refers to that appendix. The executable ground truth is
 `matlab/tests/oracle_bsqr.m` (V1 oracle): a literal transcription that recomputes
 `w_j = R11^{-1} R12(:,j)` by triangular solve and tail norms from scratch each step, sharing no

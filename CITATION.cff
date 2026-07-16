@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite the accompanying paper (reference forthcoming; see README). This file's software metadata is provided for repository identification, not as the preferred citation."
+message: "If you use this software, please cite the accompanying paper (see preferred-citation). This file's software metadata is provided for repository identification, not as the preferred citation."
 title: "BSQR — Bischof–Stewart column-pivoted QR"
 authors:
   - family-names: Damle
@@ -8,17 +8,16 @@ authors:
 version: 1.0.0
 license: MIT
 repository-code: "https://github.com/asdamle/BischofStewartQR"
-# The accompanying paper is the preferred citation. Once its details are
-# available, fill in and uncomment the preferred-citation block below --
-# citation tools and GitHub's "Cite this repository" widget then point at the
-# paper automatically -- and update `message` to name it.
-# preferred-citation:
-#   type: article
-#   title: "<paper title>"
-#   authors:
-#     - family-names: Damle
-#       given-names: Anil
-#   year: <year>
-#   doi: "10.xxxx/xxxxx"
-#   # journal: "<journal name>"        # for a journal article
-#   # url: "https://arxiv.org/abs/xxxx.xxxxx"  # for a preprint
+preferred-citation:
+  type: article
+  title: "Computing Strong Rank-Revealing Factorizations for Matrices with Orthonormal Rows"
+  authors:
+    - family-names: Damle
+      given-names: Anil
+  year: 2026
+  doi: "10.48550/arXiv.2607.13532"
+  url: "https://arxiv.org/abs/2607.13532"
+  identifiers:
+    - type: other
+      value: "arXiv:2607.13532"
+      description: "arXiv preprint"

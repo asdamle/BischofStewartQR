@@ -10,7 +10,7 @@ sampled block is brought to the current frame once, then BSQR is run within it t
 take as many columns as the bound allows before resampling -- amortizing the
 per-block reflector apply over many selections (`O(k^3)` overall vs the
 single-select `O(k^4)`). See `docs/RANDOMIZED_BSQR_PLAN.md` for the math and §5
-of the manuscript (`notes/GKSevolved.tex`, local-only until final;
+of the manuscript ([arXiv:2607.13532](https://arxiv.org/abs/2607.13532);
 Thm. 5.1 `thm:randBSpivot`) for the guarantee it relies on.
 
 This is **separate from and does not modify** the deterministic implementations
