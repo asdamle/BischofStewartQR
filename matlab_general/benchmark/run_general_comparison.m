@@ -26,11 +26,11 @@ function run_general_comparison(varargin)
 %   'families' (default all five in general_test_matrix), 'trials' (seeds,
 %   default 10), 'k' (default [] -> m; an explicit k tags the CSV and voids
 %   the bound column), 'outdir', 'exclude' (cell of {method, family} pairs
-%   recorded as NaN rows instead of being run; default skips
-%   bsqr_rand_direct on spectrum_needle -- bsqr_rand's MEX has a KNOWN
-%   OPEN BUG on that family's concentrated-norm general input: it can return
-%   pivot index n+1 and corrupt the heap, eventually crashing MATLAB
-%   (observed 2026-07-20; pass 'exclude',{} to run it anyway).
+%   recorded as NaN rows instead of being run; default {}. It used to skip
+%   bsqr_rand_direct on spectrum_needle while bsqr_rand's MEX could return
+%   pivot index n+1 and corrupt the heap on that family's concentrated-norm
+%   input (Fenwick-sampler drift, observed 2026-07-20); fixed in commit
+%   20f562f, so all cells run by default now.
 %
 %   The CSV is checkpointed after every family/size block, so a crash loses
 %   at most one block.
@@ -45,7 +45,7 @@ addParameter(ip, 'families', {'graded_cols', 'loud_collinear', ...
 addParameter(ip, 'trials', 10);
 addParameter(ip, 'k', []);
 addParameter(ip, 'outdir', '');
-addParameter(ip, 'exclude', {{'bsqr_rand_direct', 'spectrum_needle'}});
+addParameter(ip, 'exclude', {});
 parse(ip, varargin{:});
 opt = ip.Results;
 if isempty(opt.k); opt.tag = ''; else; opt.tag = sprintf('_k%d', opt.k); end
@@ -164,9 +164,9 @@ try
         p = pivots();
     end
     if any(p(1:k) < 1) || any(p(1:k) > size(A, 2))
-        % Observed from bsqr_rand's MEX on concentrated-norm general A after a
-        % long call history (out-of-range pivot indices) -- record the failure
-        % honestly instead of crashing the sweep.
+        % Safety net kept from the (since fixed, 20f562f) bsqr_rand MEX bug
+        % that returned pivot index n+1 on concentrated-norm general A --
+        % record any such failure honestly instead of crashing the sweep.
         error('run_general_comparison:InvalidPivots', ...
             'selected pivot indices out of range (max %d, n = %d)', ...
             max(p(1:k)), size(A, 2));
