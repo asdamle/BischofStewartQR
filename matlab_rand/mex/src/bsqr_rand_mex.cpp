@@ -336,6 +336,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     Fenwick bit;
     std::vector<double> g;          // original squared column norms
     std::vector<mwSize> drawn;      // columns drawn (and zeroed) within a step
+    // Exact pool membership (1 = weight currently in the tree). The Fenwick
+    // total and node sums drift under floating point when weights spanning
+    // many orders of magnitude are removed and restored (cur_total is a
+    // separately rounded running sum), so find() alone cannot be trusted to
+    // return an in-pool index: x can exceed the tree-reachable prefix sum
+    // (find then returns n, one past the end) or land on a removed,
+    // zero-weight column. Every draw is validated against this array.
+    std::vector<unsigned char> inpool;
     if (weighted) {
         g.assign(n, 0.0);
         ptrdiff_t mm = static_cast<ptrdiff_t>(m), inc1 = 1;
@@ -355,6 +363,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         }
         bit.init(g);
         drawn.reserve(n);
+        inpool.assign(n, 1);
     } else {
         remaining.resize(n);
         std::iota(remaining.begin(), remaining.end(), static_cast<mwSize>(0));
@@ -484,6 +493,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 taken[gmin_id] = 1;
                 if (weighted) {
                     bit.add(gmin_id, -g[gmin_id]);
+                    inpool[gmin_id] = 0;
                 } else {
                     mwSize w = 0;
                     for (mwSize jj = 0; jj < rcount; ++jj)
@@ -512,17 +522,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             if (weighted) {
                 drawn.clear();
                 for (mwSize t = 0; t < bcount; ++t) {
-                    mwSize id;
+                    mwSize id = n;
                     const double total = bit.cur_total;
-                    if (total <= 0.0) {
-                        id = n;
-                        for (mwSize j = 0; j < n; ++j) { if (!taken[j]) { id = j; break; } }
-                    } else {
+                    if (total > 0.0) {
                         double x = unif01(rng) * total;
                         if (x >= total) x = std::nextafter(total, 0.0);
                         id = bit.find(x);
                     }
+                    if (id >= n || !inpool[id]) {
+                        // Degenerate or drifted draw (all remaining weights ~0,
+                        // x beyond the tree total, or a removed column hit at an
+                        // exact prefix boundary): fall back to the first column
+                        // still in the pool. One always exists: draws per block
+                        // never exceed the number of in-pool columns.
+                        for (mwSize j = 0; j < n; ++j) { if (inpool[j]) { id = j; break; } }
+                    }
                     bit.add(id, -g[id]);
+                    inpool[id] = 0;
                     drawn.push_back(id);
                     idblk[t] = id;
                     const double *src = &A[static_cast<size_t>(id) * m];
@@ -710,7 +726,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             // --- return the unselected drawn columns to the pool ---
             if (weighted) {
                 for (mwSize id : drawn) {
-                    if (!taken[id]) bit.add(id, g[id]);
+                    if (!taken[id]) { bit.add(id, g[id]); inpool[id] = 1; }
                 }
             } else {
                 // Only the drawn columns (remaining[0..bcount-1]) can have been
@@ -759,18 +775,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                     std::swap(remaining[p], remaining[d(rng)]);
                     id = remaining[p];
                 } else {
+                    id = n;
                     double total = bit.cur_total;
-                    if (total <= 0.0) {  // degenerate: all remaining weights ~0
-                        id = n;          // sentinel -> linear fallback below
-                        for (mwSize j = 0; j < n; ++j) {
-                            if (!taken[j]) { id = j; break; }
-                        }
-                    } else {
+                    if (total > 0.0) {
                         double x = unif01(rng) * total;
                         if (x >= total) x = std::nextafter(total, 0.0);
                         id = bit.find(x);
                     }
+                    if (id >= n || !inpool[id]) {
+                        // Degenerate or drifted draw; see the batched path.
+                        for (mwSize j = 0; j < n; ++j) { if (inpool[j]) { id = j; break; } }
+                    }
                     bit.add(id, -g[id]);   // remove for without-replacement draws
+                    inpool[id] = 0;
                     drawn.push_back(id);
                 }
                 ids[t] = id;
@@ -912,7 +929,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             remaining[accept_pos] = remaining[rem_count - 1];  // O(1) swap-pop
         } else {
             for (mwSize id : drawn) {
-                if (id != accept_id) bit.add(id, g[id]);  // restore non-selected draws
+                if (id != accept_id) { bit.add(id, g[id]); inpool[id] = 1; }  // restore non-selected draws
             }
             // accept_id stays removed (taken).
         }
