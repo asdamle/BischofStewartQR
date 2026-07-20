@@ -10,6 +10,8 @@ The two implementations are intentionally kept algorithmically identical: same p
 
 There is also an **experimental randomized variant** in `matlab_rand/` (`bsqr_rand`, a pure `.m` kernel plus a `bsqr_rand_mex` C++ backend). It selects columns by a sampling/acceptance rule that maintains the same `||R11^{-1}||_F` guarantee without computing the full pivot criterion for every column at every step — different pivots, same theoretical bound. It is self-contained and must **not** be coupled to the deterministic kernels (it deliberately keeps its own copies of helpers rather than sharing their tested code). See `docs/RANDOMIZED_BSQR_PLAN.md` and `matlab_rand/README.md`.
 
+Finally, `matlab_general/` (`bsqr_general`) extends the selection guarantee to **general** full-row-rank short-wide A: it computes `qr(A','econ')`, runs a selector on the orthonormal-row basis `Qt'`, and reassembles a QR of the permuted A, so that at k = m `sigma_min(A(:,S)) >= sigma_min(A)/sqrt(m(n-m+1))` (a k = m statement only; early stop is mechanical). Unlike `matlab_rand/`, this layer is a thin wrapper **by design** — it intentionally calls both `matlab/bsqr.m` and `matlab_rand/bsqr_rand.m` (the decoupling rule above is about kernel code, which this folder contains none of) and is pure `.m` with no MEX of its own. See `matlab_general/README.md`.
+
 ## Commands
 
 ### Julia
@@ -78,6 +80,21 @@ CSVs in the git-ignored `results/` — except `results/publication/`, the commit
 snapshot of the publication-run CSVs (do not delete; plot scripts can re-render from
 it via `'resultsdir'`). The suite keeps its own matrix builders and
 helpers — it is not coupled to the deterministic kernels and uses no `inv()`.
+
+### MATLAB general-A wrapper (`matlab_general/`)
+
+```bash
+matlab -batch "addpath('matlab_general/tests'); run_general_tests"    # tests
+# five-method comparison (builtin pivoted qr / bsqr / bsqr_rand direct on A vs bsqr_general with each selector)
+matlab -batch "addpath('matlab_general/benchmark'); run_general_comparison; plot_general_comparison"
+```
+
+The runner/plotter add all needed sibling paths themselves. Figures land in
+`matlab_general/benchmark/plots/` (`fig_general_{time,quality,phase,msweep}`); CSVs in the
+git-ignored `matlab_general/benchmark/results/`. Quality figures plot
+`sigma_min(A(:,S))/sigma_min(A)` against the `1/sqrt(m(n-m+1))` guarantee (higher is better);
+the phase figure shows the `qr(A','econ')` preprocessing vs selection split — the wrapper is
+not expected to win on time, only on guaranteed quality.
 
 ### Validation harness
 

@@ -8,6 +8,7 @@ function startup(varargin)
 %       R = bsqr(A)                            % deterministic BS pivoted QR
 %       [Q, R, E] = bsqr(A)                    % E: permutation matrix (see matlab/README.md)
 %       [p, Q, R11] = bsqr_rand(A)             % randomized variant
+%       [Q, R, E] = bsqr_general(A)            % general short-wide A (row-space reduction)
 %
 %   Both dispatch to the compiled MEX backend by default; pass
 %   'backend','mfile' for the pure-MATLAB reference implementation.
@@ -19,7 +20,8 @@ function startup(varargin)
 
 root = fileparts(mfilename('fullpath'));
 addpath(fullfile(root, 'matlab'),      fullfile(root, 'matlab', 'mex'), ...
-        fullfile(root, 'matlab_rand'), fullfile(root, 'matlab_rand', 'mex'));
+        fullfile(root, 'matlab_rand'), fullfile(root, 'matlab_rand', 'mex'), ...
+        fullfile(root, 'matlab_general'));
 
 force = any(strcmpi(varargin, 'rebuild'));
 ok_det  = build_if_needed('bsqr',      @bsqr_mex_available,      @build_bsqr_mex,      force);
@@ -31,8 +33,9 @@ if ~(ok_det && ok_rand); backend = 'pure-MATLAB fallback for the ones that faile
 fprintf(['\nBSQR ready (%s).\n', ...
     '  R = bsqr(A)              [Q,R,E] = bsqr(A)            deterministic BS pivoted QR\n', ...
     '  [p,Q,R11] = bsqr_rand(A)                             randomized variant\n', ...
-    'Pass ''backend'',''mfile'' for the pure-MATLAB reference; see the matlab/ and\n', ...
-    'matlab_rand/ READMEs.\n'], backend);
+    '  [Q,R,E] = bsqr_general(A)                            general short-wide A\n', ...
+    'Pass ''backend'',''mfile'' for the pure-MATLAB reference; see the matlab/,\n', ...
+    'matlab_rand/, and matlab_general/ READMEs.\n'], backend);
 end
 
 function ok = build_if_needed(name, avail_fn, build_fn, force)

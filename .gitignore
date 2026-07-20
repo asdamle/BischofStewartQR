@@ -7,6 +7,7 @@ matlab_rand/mex/*.mex*
 # kept (a dir-level ignore would make the exception impossible, hence /*).
 matlab_rand/benchmark/results/*
 !matlab_rand/benchmark/results/publication/
+matlab_general/benchmark/results/
 
 # Third-party comparison algorithms: not redistributed here. Comparisons are
 # documented; download the code from each algorithm's original source.
