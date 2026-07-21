@@ -87,10 +87,12 @@ helpers — it is not coupled to the deterministic kernels and uses no `inv()`.
 matlab -batch "addpath('matlab_general/tests'); run_general_tests"    # tests
 # five-method comparison (builtin pivoted qr / bsqr / bsqr_rand direct on A vs bsqr_general with each selector)
 matlab -batch "addpath('matlab_general/benchmark'); run_general_comparison; plot_general_comparison"
+# large-n head-to-head (default graded_cols, m=k=256, n to 128k): builtin pivoted qr vs bsqr_general+randBSQR
+matlab -batch "addpath('matlab_general/benchmark'); run_general_largen; plot_general_largen"
 ```
 
-The runner/plotter add all needed sibling paths themselves. Figures land in
-`matlab_general/benchmark/plots/` (`fig_general_{time,quality,phase,msweep}`); CSVs in the
+The runners/plotters add all needed sibling paths themselves. Figures land in
+`matlab_general/benchmark/plots/` (`fig_general_{time,quality,phase,msweep,largen}`); CSVs in the
 git-ignored `matlab_general/benchmark/results/`. Quality figures plot
 `sigma_min(A(:,S))/sigma_min(A)` against the `1/sqrt(m(n-m+1))` guarantee (higher is better);
 the phase figure shows the `qr(A','econ')` preprocessing vs selection split — the wrapper is

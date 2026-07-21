@@ -109,3 +109,19 @@ CSVs land in the git-ignored `benchmark/results/`; figures in
 figure: the wrapper pays an extra O(nm²) for `qr(A','econ')` up front, so it
 will not beat direct BSQR on time — the story is guaranteed subset quality at
 a bounded constant-factor cost.
+
+There is one timing regime where the wrapper wins outright — against
+**built-in column-pivoted QR** at large n:
+
+```bash
+matlab -batch "addpath('matlab_general/benchmark'); run_general_largen; plot_general_largen"
+```
+
+runs the two-method head-to-head (default `graded_cols`, m = k = 256, n up to
+128k, `fig_general_largen`). LAPACK `dgeqp3`'s per-column pivot/norm-update
+pass is BLAS-2-bound and jumps super-linearly once the trailing matrix falls
+out of cache, while the wrapper's unpivoted `qr(A','econ')` is blocked BLAS-3
+and its randomized selection stays a small fraction of the budget: on the
+benchmark machine `bsqr_general(A,'selector','bsqr_rand')` overtakes
+`qr(A,'econ','vector')` at n ≈ 9k and holds a 1.2–1.6× lead through n = 128k,
+while staying an order of magnitude above the sigma_min guarantee.
