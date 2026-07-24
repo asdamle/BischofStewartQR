@@ -10,6 +10,8 @@ The two implementations are intentionally kept algorithmically identical: same p
 
 There is also an **experimental randomized variant** in `matlab_rand/` (`bsqr_rand`, a pure `.m` kernel plus a `bsqr_rand_mex` C++ backend). It selects columns by a sampling/acceptance rule that maintains the same `||R11^{-1}||_F` guarantee without computing the full pivot criterion for every column at every step — different pivots, same theoretical bound. It is self-contained and must **not** be coupled to the deterministic kernels (it deliberately keeps its own copies of helpers rather than sharing their tested code). See `docs/RANDOMIZED_BSQR_PLAN.md` and `matlab_rand/README.md`.
 
+The randomized variant has a **Julia port** in `julia_rand/` (package `BSRandPivotQR`), not used in the publication. One kernel only (no m-file/MEX split): a port of the MEX backend's design (compact-WY applies, Fenwick-tree norm-weighted sampling, incremental in-block downdates), kept *behaviourally* in lockstep with `matlab_rand` — same acceptance rule, threshold formulas, fallback semantics, and stats attribution; kernel-behavior changes in one need a matching change in the other. Its RNG is its own, so pivot sequences do not match MATLAB and there are **no parity fixtures** for it — the cross-language contract is the guarantees, not pivots. Same decoupling rule as `matlab_rand/`: stdlib deps only, own helper copies; `BSPivotQR` appears only as a test-target dep (via `[sources]`) and in `julia_rand/benchmark/`. See `julia_rand/README.md`.
+
 Finally, `matlab_general/` (`bsqr_general`) extends the selection guarantee to **general** full-row-rank short-wide A: it computes `qr(A','econ')`, runs a selector on the orthonormal-row basis `Qt'`, and reassembles a QR of the permuted A, so that at k = m `sigma_min(A(:,S)) >= sigma_min(A)/sqrt(m(n-m+1))` (a k = m statement only; early stop is mechanical). Unlike `matlab_rand/`, this layer is a thin wrapper **by design** — it intentionally calls both `matlab/bsqr.m` and `matlab_rand/bsqr_rand.m` (the decoupling rule above is about kernel code, which this folder contains none of) and is pure `.m` with no MEX of its own. See `matlab_general/README.md`.
 
 ## Commands
@@ -38,6 +40,20 @@ julia --project=julia/benchmark julia/benchmark/run_publication_smoke_benchmark.
 julia --project=julia/benchmark julia/benchmark/plot_publication_results.jl       # plots/tables from CSV
 julia --project=julia/benchmark julia/benchmark/check_publication_perf_gate.jl    # perf gate
 ```
+
+### Julia randomized variant (`julia_rand/`)
+
+```bash
+julia --project=julia_rand           -e 'using Pkg; Pkg.instantiate()'   # package env
+julia --project=julia_rand/benchmark -e 'using Pkg; Pkg.instantiate()'   # benchmark env
+julia --project=julia_rand           -e 'using Pkg; Pkg.test()'          # tests
+# opt-in statistical sweep (seeds x paths x sampling x threshold modes x families)
+julia --project=julia_rand julia_rand/test/stress_bsqr_rand_bounds.jl 100
+# validation benchmark: randomized vs deterministic BSPivotQR vs built-in qr(..., ColumnNorm())
+julia --project=julia_rand/benchmark julia_rand/benchmark/run_rand_benchmarks.jl
+```
+
+The benchmark is implementation-validation only (no committed snapshot, no plots; configure with `BS_RAND_SIZES`/`BS_RAND_FAMILIES`/`BS_RAND_SEED`/`BS_RAND_OUTDIR`); CSVs land in the git-ignored `julia_rand/benchmark/results/`. Test-matrix families live in `julia_rand/benchmark/rand_test_matrix.jl`, included by both the tests and the runner.
 
 ### MATLAB
 
